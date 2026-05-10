@@ -49,6 +49,8 @@ class PowerupMino extends Piece {
     // Override draw method to render custom full-size powerup blocks
     draw(scene, offsetX, offsetY, cellSize, ghost = false, alpha = 1) {
         const finalAlpha = ghost ? 0.3 : alpha;
+        const g = scene.add.graphics();
+        let drewCell = false;
         for (let r = 0; r < this.shape.length; r++) {
             for (let c = 0; c < this.shape[r].length; c++) {
                 if (!this.shape[r][c]) continue;
@@ -57,7 +59,6 @@ class PowerupMino extends Piece {
 
                 const x = offsetX + (this.x + c) * cellSize - cellSize / 2;
                 const y = offsetY + (pieceY - 2) * cellSize - cellSize / 2;
-                const g = scene.add.graphics();
                 // Fill
                 g.fillStyle(this.powerupFillColor, finalAlpha);
                 g.fillRect(x, y, cellSize, cellSize);
@@ -86,8 +87,13 @@ class PowerupMino extends Piece {
                     g.fillRect(cx - w / 2, cy - cellSize * 0.12, w, h);
                     g.fillRect(cx - w / 2, cy + cellSize * 0.05, w, h);
                 }
-                scene.gameGroup.add(g);
+                drewCell = true;
             }
+        }
+        if (drewCell) {
+            scene.gameGroup.add(g);
+        } else {
+            g.destroy();
         }
     }
     
@@ -237,19 +243,8 @@ class PowerupEffectHandler {
         }
         if (rowsToDelete.length === 0) return;
 
-        // Sequentially clear every other row with a short stagger
-        const sorted = rowsToDelete.slice().sort((a, b) => a - b);
-        let delay = 0;
-        const stepMs = 120;
-        sorted.forEach((row, idx) => {
-            this.gameScene.time.delayedCall(delay, () => {
-                // Adjust row index as rows above have been removed
-                const adjustedRow = row - idx;
-                this.deleteRows([adjustedRow]);
-                this.playPowerupEffectSound('del_even');
-            });
-            delay += stepMs;
-        });
+        this.deleteRows(rowsToDelete);
+        this.playPowerupEffectSound('del_even');
     }
     
     // Free fall effect with shake then gravity + line clear

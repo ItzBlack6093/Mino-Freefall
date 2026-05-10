@@ -724,11 +724,11 @@ function computeFinesseActual(piece) {
 
 // ARS (Arika Rotation System) color scheme
 const ARS_COLORS = {
-  I: 0xff0000, // red
-  T: 0x00ffff, // cyan
+  I: 0xff0000,
+  O: 0x0000ff,
+  T: 0xffff00,
   S: 0xff00ff, // purple
   Z: 0x00ff00, // green
-  O: 0xffff00, // yellow
   L: 0xffa500, // orange
   J: 0x0000ff, // blue
 };
@@ -1206,6 +1206,23 @@ const ARS_KICKS = {
   ],
 };
 
+function ensureMonochromeMinoTextures(scene) {
+  if (!scene || !scene.textures || !scene.add) return;
+  const pairs = [
+    ["mino_srs", "mono"],
+    ["mino_ars", "mono_ars"],
+  ];
+  pairs.forEach(([sourceKey, targetKey]) => {
+    if (scene.textures.exists(targetKey) || !scene.textures.exists(sourceKey)) return;
+    const rt = scene.add.renderTexture(0, 0, 64, 64);
+    rt.setVisible(false);
+    rt.fill(0xffffff, 0);
+    rt.draw(sourceKey, 32, 32);
+    rt.saveTexture(targetKey);
+    rt.destroy();
+  });
+}
+
 class Board {
   constructor(rows = 22, cols = 10, cellSize = 24, textureKey = "mino_srs") {
     this.rows = rows || 22;
@@ -1256,6 +1273,11 @@ class Board {
               powerupType: piece.powerupType,
               borderColor: piece.powerupColors ? piece.powerupColors[piece.powerupType] : piece.color,
               originalColor: piece.baseColor || piece.color,
+            };
+          } else if (piece.textureKey) {
+            this.grid[y + r][x + c] = {
+              color: piece.textureKey.startsWith("mono") ? 0xffffff : piece.color,
+              textureKey: piece.textureKey,
             };
           } else {
             this.grid[y + r][x + c] = piece.color;
@@ -1412,19 +1434,11 @@ class Board {
           }
 
           const cellVal = this.grid[r][c];
-          const isPowerObj = cellVal && typeof cellVal === "object";
-          const color = isPowerObj ? cellVal.color : cellVal;
-          if (scene.minoFadeActive) {
-            const minoIndex = scene.placedMinos.findIndex(
-              (mino) => mino.x === c && mino.y === r && mino.color === color,
-            );
-            if (minoIndex !== -1 && scene.placedMinos[minoIndex].faded) {
-              continue;
-            }
-          }
-
-          const textureKey = scene.monochromeActive && this.currentTextureKey
-            ? this.currentTextureKey
+          const isCellObj = cellVal && typeof cellVal === "object";
+          const isPowerObj = isCellObj && !!cellVal.powerupType;
+          const color = isCellObj ? cellVal.color : cellVal;
+          const textureKey = cellVal?.textureKey
+            ? cellVal.textureKey
             : scene.rotationSystem === "ARS"
               ? "mino_ars"
               : "mino_srs";
@@ -1433,13 +1447,11 @@ class Board {
             ? rowAlpha // already set to stackAlpha outside fade, or fading value during fade
             : rowAlpha * (scene.stackAlpha || 1);
           const tintColor =
-            scene.monochromeActive && textureKey.startsWith("mono")
+            textureKey.startsWith("mono")
               ? 0xffffff
               : color;
-          const texture = scene.textures ? scene.textures.get(textureKey) : null;
-          const textureSource = texture && texture.source ? texture.source[0] : null;
           const hasValidTextureSource =
-            !!texture && !!textureSource && !!textureSource.image;
+            !!(scene.textures && scene.textures.exists(textureKey));
           const drawX = offsetX + c * cellSize;
           const drawY = offsetY + (r - startRow) * cellSize;
           // X-ray effect: only render current sweep column (ghost still visible elsewhere)
@@ -1462,10 +1474,7 @@ class Board {
             scene.gameGroup.add(sprite);
           } else {
             const graphics = scene.add.graphics();
-            const fillColor =
-              scene.monochromeActive && textureKey.startsWith("mono")
-                ? 0xffffff
-                : color || 0x010101;
+            const fillColor = color || 0x010101;
             graphics.fillStyle(fillColor, baseAlpha);
             graphics.fillRect(
               renderX - drawCellSize / 2,
@@ -1731,19 +1740,16 @@ class Piece {
           // Only draw pieces that are in the visible area (row 2 and below in the 22-row matrix)
           if (pieceY >= 2) {
             const textureKey =
-              scene.monochromeActive && scene.board && scene.board.currentTextureKey
-                ? scene.board.currentTextureKey
-                : scene.rotationSystem === "ARS"
-                  ? "mino_ars"
-                  : "mino_srs";
+              this.textureKey ||
+              (scene.rotationSystem === "ARS"
+                ? "mino_ars"
+                : "mino_srs");
             const tintColor =
-              scene.monochromeActive && textureKey.startsWith("mono")
-                ? (scene.rotationSystem === "ARS" ? 0xffffff : 0x00ff00)
+              textureKey.startsWith("mono")
+                ? 0xffffff
                 : this.color;
-            const texture = scene.textures ? scene.textures.get(textureKey) : null;
-            const textureSource = texture && texture.source ? texture.source[0] : null;
             const hasValidTextureSource =
-              !!texture && !!textureSource && !!textureSource.image;
+              !!(scene.textures && scene.textures.exists(textureKey));
             const drawX = offsetX + (this.x + c) * cellSize;
             const drawY = offsetY + (pieceY - 2) * cellSize;
             const renderX = bigBlocks ? drawX - cellSize / 2 : drawX;
@@ -1761,7 +1767,7 @@ class Piece {
             } else {
               const graphics = scene.add.graphics();
               const fillColor =
-                scene.monochromeActive && textureKey.startsWith("mono")
+                textureKey.startsWith("mono")
                   ? 0xffffff
                   : this.color;
               graphics.fillStyle(fillColor, finalAlpha);
@@ -1780,7 +1786,7 @@ class Piece {
   }
 
   getGhostPosition(board) {
-    const ghost = new Piece(this.type, this.rotationSystem, this.rotation);
+    const ghost = new Piece(this.type, this.rotationSystem, this.rotation, this.textureKey);
     ghost.x = this.x;
     ghost.y = this.y;
     ghost.hardDrop(board);
@@ -1806,146 +1812,7 @@ class MenuScene extends Phaser.Scene {
   constructor() {
     super({ key: "MenuScene" });
 
-    // Mode categories and their modes
-    this.modeTypes = [
-      {
-        name: "EASY",
-        modes: [
-          {
-            id: "tgm2_normal",
-            name: "Normal",
-            description: "Score as many points as you can within 300 levels!",
-          },
-          {
-            id: "tgm3_easy",
-            name: "Easy",
-            description: "TGM3 Easy with Hanabi scoring and credit roll",
-          },
-        ],
-      },
-      {
-        name: "STANDARD",
-        modes: [
-          {
-            id: "sprint_40",
-            name: "Sprint 40L",
-            description: "Clear 40 lines as fast as possible",
-          },
-          {
-            id: "sprint_100",
-            name: "Sprint 100L",
-            description: "Clear 100 lines as fast as possible",
-          },
-          { id: "ultra", name: "Ultra", description: "2-minute score attack" },
-          { id: "marathon", name: "Marathon", description: "Clear 150 lines" },
-          { id: "zen", name: "Zen", description: "Endless relaxed play" },
-        ],
-      },
-      {
-        name: "MASTER",
-        modes: [
-          {
-            id: "tgm1",
-            name: "TGM1",
-            description:
-              "The Tetris game you know and love. Scale through the grades and be a Grand Master!",
-          },
-          {
-            id: "tgm2",
-            name: "TGM2",
-            description:
-              "Brand new mechanics, brand new challenges! Do you have what it takes?",
-          },
-          {
-            id: "tgm_plus",
-            name: "TGM+",
-            description: "Rising garbage mode with fixed 24-row pattern!",
-          },
-          {
-            id: "tgm3",
-            name: "TGM3",
-            description: "Try to be COOL!!, or you will REGRET!! it",
-          },
-          { id: "tgm4", name: "TGM4", description: "Patience is key..." },
-        ],
-      },
-      {
-        name: "20G",
-        modes: [
-          {
-            id: "20g",
-            name: "20G",
-            description: "Maximum gravity from the start! Good luck!",
-          },
-          {
-            id: "tadeath",
-            name: "T.A.Death",
-            description: "Difficult 20G challenge mode. Speed is key!",
-          },
-          {
-            id: "shirase",
-            name: "Shirase",
-            description: "Lightning-fast speeds. Do you have what it takes?",
-          },
-          {
-            id: "master20g",
-            name: "Master",
-            description:
-              "Brand new, unique game mechanics. Can you handle them?",
-          },
-        ],
-      },
-      {
-        name: "RACE",
-        modes: [
-          {
-            id: "asuka_easy",
-            name: "Asuka Easy",
-            description: "20G Tetris stacking introduction",
-          },
-          {
-            id: "asuka_normal",
-            name: "Asuka",
-            description: "Race mode. Finish 1300 levels in 7 minutes.",
-          },
-          {
-            id: "asuka_hard",
-            name: "Asuka Hard",
-            description: "The true test of skill and speed!",
-          },
-        ],
-      },
-      {
-        name: "ALL CLEAR",
-        modes: [
-          {
-            id: "konoha_easy",
-            name: "Konoha Easy",
-            description: "Easy all-clear challenge with 5 pieces!",
-          },
-          {
-            id: "konoha_hard",
-            name: "Konoha Hard",
-            description: "Hard all-clear challenge with all 7 pieces!",
-          },
-        ],
-      },
-      {
-        name: "PUZZLE",
-        modes: [
-          {
-            id: "tgm3_sakura",
-            name: "TGM3-Sakura",
-            description: "Puzzle mode from TGM3",
-          },
-          {
-            id: "flashpoint",
-            name: "Flashpoint",
-            description: "From Flashpoint.",
-          },
-        ],
-      },
-    ];
+    this.modeTypes = this.getModeTypesFromManager();
 
     this.currentModeTypeIndex = 0;
     this.currentSubmodeIndex = 0;
@@ -1968,21 +1835,29 @@ class MenuScene extends Phaser.Scene {
     this.settingsBorder = null;
   }
 
+  getModeTypesFromManager() {
+    if (typeof getModeManager === "undefined") {
+      return [];
+    }
+    const modeManager = getModeManager();
+    return modeManager.getMenuModeTypes();
+  }
+
   create() {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
     this.tPieceX = centerX;
     this.tPieceY = centerY - 90;
+    this.modeTypes = this.getModeTypesFromManager();
 
-    this.events.on("wake", () => {
-      this.updateMenuDisplay();
-    });
-
-    this.events.on("resume", () => {
-      this.updateMenuDisplay();
-    });
+    this.events.off("wake", this.handleMenuWake, this);
+    this.events.off("resume", this.handleMenuWake, this);
+    this.events.on("wake", this.handleMenuWake, this);
+    this.events.on("resume", this.handleMenuWake, this);
 
     this.events.once("shutdown", () => {
+      this.events.off("wake", this.handleMenuWake, this);
+      this.events.off("resume", this.handleMenuWake, this);
       if (this.input && this.input.keyboard && this.input.keyboard.removeAllListeners) {
         this.input.keyboard.removeAllListeners();
       }
@@ -2011,6 +1886,15 @@ class MenuScene extends Phaser.Scene {
     this.setupKeyboardControls();
 
     createOrUpdateGlobalOverlay(this, { ...this.getOverlayModeInfo(), showMode: false });
+  }
+
+  handleMenuWake() {
+    if (this.modeTypes.length === 0) {
+      this.modeTypes = this.getModeTypesFromManager();
+    }
+    if (this.modeTypes.length > 0) {
+      this.updateMenuDisplay();
+    }
   }
 
   createMenuUI() {
@@ -2982,6 +2866,9 @@ class SettingsScene extends Phaser.Scene {
     this.zenCheeseIntervalText = null;
     this.zenSpinModeText = null;
     this.zenInfiniteResetsText = null;
+    this.settingsTabs = [];
+    this.activeSettingsTab = "controls";
+    this.settingTabObjects = {};
   }
 
   preload() {
@@ -3010,6 +2897,8 @@ class SettingsScene extends Phaser.Scene {
   create() {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
+    this.tPieceX = centerX;
+    this.tPieceY = centerY - 35;
 
     this.events.once("shutdown", () => {
       if (this.input && this.input.keyboard) {
@@ -3028,10 +2917,31 @@ class SettingsScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const tabY = centerY - 145;
+    this.settingsTabs = [
+      { key: "controls", label: "Controls", x: centerX - 330 },
+      { key: "handling", label: "Handling", x: centerX - 110 },
+      { key: "rotation", label: "Rotation System", x: centerX + 130 },
+      { key: "audio", label: "Audio", x: centerX + 350 },
+    ].map((tab) => {
+      const text = this.add
+        .text(tab.x, tabY, tab.label, {
+          fontSize: "18px",
+          fill: "#ffffff",
+          fontFamily: "Courier New",
+        })
+        .setOrigin(0.5)
+        .setInteractive();
+      text.on("pointerdown", () => {
+        this.setSettingsTab(tab.key);
+      });
+      return { ...tab, text };
+    });
+
     // Rotation system toggle - moved up 50px
     const rotationSystem = localStorage.getItem("rotationSystem") || "SRS";
     this.rotationText = this.add
-      .text(centerX, centerY - 130, `Rotation System: ${rotationSystem}`, {
+      .text(centerX, centerY - 95, `Rotation System: ${rotationSystem}`, {
         fontSize: "24px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -3060,7 +2970,7 @@ class SettingsScene extends Phaser.Scene {
       (localStorage.getItem("arsMoveReset") || "false") === "true";
     // ARS reset label (two-line: label + value)
     this.arsResetLabel = this.add
-      .text(centerX, centerY - 40, "ARS Lock Reset", {
+      .text(centerX, centerY + 55, "ARS Lock Reset", {
         fontSize: "18px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -3070,7 +2980,7 @@ class SettingsScene extends Phaser.Scene {
     this.arsResetModeText = this.add
       .text(
         centerX,
-        centerY - 20,
+        centerY + 80,
         arsResetIsMove ? "Move (SRS-style)" : "Step (default)",
         {
           fontSize: "18px",
@@ -3089,11 +2999,11 @@ class SettingsScene extends Phaser.Scene {
     this.updateArsResetModeVisibility(rotationSystem);
 
     // Keybind settings - moved to left side
-    const keybindsX = centerX - 300; // Moved to left
-    const keybindsY = centerY - 100;
+    const keybindsX = centerX;
+    const keybindsY = centerY - 95;
 
-    this.add
-      .text(keybindsX, keybindsY - 40, "Keybinds (Click to change)", {
+    const keybindsHeader = this.add
+      .text(keybindsX, keybindsY - 45, "Keybinds (Click to change)", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -3102,11 +3012,15 @@ class SettingsScene extends Phaser.Scene {
 
     let yOffset = keybindsY;
     const spacing = 35;
+    const keybindActionKeys = Object.keys(this.keybindActions);
+    const keybindRows = Math.ceil(keybindActionKeys.length / 2);
 
-    Object.keys(this.keybindActions).forEach((action) => {
+    keybindActionKeys.forEach((action, index) => {
+      const columnX = index < keybindRows ? centerX - 290 : centerX + 290;
+      yOffset = keybindsY + (index % keybindRows) * spacing;
       // Label
       this.keybindLabels[action] = this.add
-        .text(keybindsX - 80, yOffset, this.keybindActions[action] + ":", {
+        .text(columnX - 25, yOffset, this.keybindActions[action] + ":", {
           fontSize: "18px",
           fill: "#ffffff",
           fontFamily: "Courier New",
@@ -3116,7 +3030,7 @@ class SettingsScene extends Phaser.Scene {
       // Current keybind
       const currentKey = this.getCurrentKeybind(action);
       this.keybindTexts[action] = this.add
-        .text(keybindsX + 80, yOffset, currentKey, {
+        .text(columnX + 35, yOffset, currentKey, {
           fontSize: "18px",
           fill: "#00ff00",
           fontFamily: "Courier New",
@@ -3128,13 +3042,11 @@ class SettingsScene extends Phaser.Scene {
       this.keybindTexts[action].on("pointerdown", () => {
         this.startListeningForKey(action);
       });
-
-      yOffset += spacing;
     });
 
     // Volume controls - moved to right side with main volume control
-    const volumeX = centerX + 300; // Moved to right
-    const volumeY = centerY - 100;
+    const volumeX = centerX - 280; // Moved to right
+    const volumeY = centerY - 45;
 
     // Main Volume
     this.mainVolumeLabel = this.add
@@ -3222,9 +3134,12 @@ class SettingsScene extends Phaser.Scene {
       this.draggingMainVolume = false;
     });
 
+    const bgmSliderX = centerX;
+    const bgmSliderY = mainSliderY;
+
     // BGM Volume
     this.bgmVolumeLabel = this.add
-      .text(volumeX, volumeY + 40, "BGM Volume", {
+      .text(bgmSliderX, volumeY - 60, "BGM Volume", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -3232,8 +3147,6 @@ class SettingsScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // BGM Volume slider background
-    const bgmSliderX = volumeX;
-    const bgmSliderY = volumeY + 80;
 
     this.bgmVolumeSlider = this.add.graphics();
     this.bgmVolumeSlider.fillStyle(0x333333);
@@ -3306,9 +3219,12 @@ class SettingsScene extends Phaser.Scene {
       this.draggingBGMVolume = false;
     });
 
+    const sfxSliderX = centerX + 280;
+    const sfxSliderY = mainSliderY;
+
     // SFX Volume
     this.sfxVolumeLabel = this.add
-      .text(volumeX, volumeY + 160, "SFX Volume", {
+      .text(sfxSliderX, volumeY - 60, "SFX Volume", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -3316,8 +3232,6 @@ class SettingsScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     // SFX Volume slider background
-    const sfxSliderX = volumeX;
-    const sfxSliderY = volumeY + 200;
 
     this.sfxVolumeSlider = this.add.graphics();
     this.sfxVolumeSlider.fillStyle(0x333333);
@@ -3396,8 +3310,8 @@ class SettingsScene extends Phaser.Scene {
     });
 
     // Timing sliders (right column, aligned with master volume)
-    const timingX = volumeX + 240; // move timing sliders further right of audio sliders
-    const timingY = volumeY - 50; // so DAS slider center lines up with master volume slider
+    const timingX = centerX - 300; // move timing sliders further right of audio sliders
+    const timingY = centerY - 95; // so DAS slider center lines up with master volume slider
     const timingSliderWidth = 200;
     const timingSliderHeight = 10;
 
@@ -3617,9 +3531,10 @@ class SettingsScene extends Phaser.Scene {
 
     // Line ARE / Line Clear Delay slider
     const lineAreValue = this.getTimingFrames("timing_line_are_frames", 7);
-    const lineAreSliderY = areSliderY + 70;
+    const lineAreX = centerX + 300;
+    const lineAreSliderY = dasSliderY;
     this.lineAreLabel = this.add
-      .text(timingX, lineAreSliderY - 30, "Line ARE / LCD (frames)", {
+      .text(lineAreX, lineAreSliderY - 30, "Line ARE / LCD (frames)", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -3629,7 +3544,7 @@ class SettingsScene extends Phaser.Scene {
     this.lineAreSlider = this.add.graphics();
     this.lineAreSlider.fillStyle(0x333333);
     this.lineAreSlider.fillRect(
-      timingX - timingSliderWidth / 2,
+      lineAreX - timingSliderWidth / 2,
       lineAreSliderY - timingSliderHeight / 2,
       timingSliderWidth,
       timingSliderHeight,
@@ -3638,7 +3553,7 @@ class SettingsScene extends Phaser.Scene {
     this.lineAreSliderFill = this.add.graphics();
     this.lineAreSliderFill.fillStyle(0x00ff00);
     this.lineAreSliderFill.fillRect(
-      timingX - timingSliderWidth / 2,
+      lineAreX - timingSliderWidth / 2,
       lineAreSliderY - timingSliderHeight / 2,
       timingSliderWidth * this.timingToPct(lineAreValue, 0, 60),
       timingSliderHeight,
@@ -3647,13 +3562,13 @@ class SettingsScene extends Phaser.Scene {
     this.lineAreSliderKnob = this.add.graphics();
     this.lineAreSliderKnob.fillStyle(0xffffff);
     this.lineAreSliderKnob.fillCircle(
-      timingX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(lineAreValue, 0, 60),
+      lineAreX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(lineAreValue, 0, 60),
       lineAreSliderY,
       8,
     );
 
     this.lineAreText = this.add
-      .text(timingX, lineAreSliderY + 25, `${lineAreValue.toFixed(0)}f`, {
+      .text(lineAreX, lineAreSliderY + 25, `${lineAreValue.toFixed(0)}f`, {
         fontSize: "16px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -3662,7 +3577,7 @@ class SettingsScene extends Phaser.Scene {
 
     this.lineAreSlider.setInteractive(
       new Phaser.Geom.Rectangle(
-        timingX - timingSliderWidth / 2,
+        lineAreX - timingSliderWidth / 2,
         lineAreSliderY - timingSliderHeight / 2,
         timingSliderWidth,
         timingSliderHeight,
@@ -3672,7 +3587,7 @@ class SettingsScene extends Phaser.Scene {
     this.lineAreSlider.on("pointerdown", (pointer) => {
       this.draggingLineARE = true;
       this.updateLineAREFromPointer(pointer, {
-        x: timingX,
+        x: lineAreX,
         width: timingSliderWidth,
         y: lineAreSliderY,
       });
@@ -3681,7 +3596,7 @@ class SettingsScene extends Phaser.Scene {
       if (pointer.isDown) {
         this.draggingLineARE = true;
         this.updateLineAREFromPointer(pointer, {
-          x: timingX,
+          x: lineAreX,
           width: timingSliderWidth,
           y: lineAreSliderY,
         });
@@ -3690,14 +3605,14 @@ class SettingsScene extends Phaser.Scene {
     this.input.on("pointermove", (pointer) => {
       if (this.draggingLineARE && pointer.isDown) {
         this.updateLineAREFromPointer(pointer, {
-          x: timingX,
+          x: lineAreX,
           width: timingSliderWidth,
           y: lineAreSliderY,
         });
       }
     });
     this.updateLineAREDisplay(lineAreValue, {
-      x: timingX,
+      x: lineAreX,
       width: timingSliderWidth,
       y: lineAreSliderY,
     });
@@ -3707,7 +3622,7 @@ class SettingsScene extends Phaser.Scene {
     const sdfValue = this.getStoredTiming("timing_sdf_mult", sdfDefault);
     const sdfSliderY = lineAreSliderY + 70;
     this.sdfLabel = this.add
-      .text(timingX, sdfSliderY - 30, "SDF (x speed)", {
+      .text(lineAreX, sdfSliderY - 30, "SDF (x speed)", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -3717,7 +3632,7 @@ class SettingsScene extends Phaser.Scene {
     this.sdfSlider = this.add.graphics();
     this.sdfSlider.fillStyle(0x333333);
     this.sdfSlider.fillRect(
-      timingX - timingSliderWidth / 2,
+      lineAreX - timingSliderWidth / 2,
       sdfSliderY - timingSliderHeight / 2,
       timingSliderWidth,
       timingSliderHeight,
@@ -3726,7 +3641,7 @@ class SettingsScene extends Phaser.Scene {
     this.sdfSliderFill = this.add.graphics();
     this.sdfSliderFill.fillStyle(0x00ff00);
     this.sdfSliderFill.fillRect(
-      timingX - timingSliderWidth / 2,
+      lineAreX - timingSliderWidth / 2,
       sdfSliderY - timingSliderHeight / 2,
       timingSliderWidth * this.timingToPct(sdfValue, 5, 100),
       timingSliderHeight,
@@ -3735,14 +3650,14 @@ class SettingsScene extends Phaser.Scene {
     this.sdfSliderKnob = this.add.graphics();
     this.sdfSliderKnob.fillStyle(0xffffff);
     this.sdfSliderKnob.fillCircle(
-      timingX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(sdfValue, 5, 100),
+      lineAreX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(sdfValue, 5, 100),
       sdfSliderY,
       8,
     );
 
     const sdfDisplay = this.formatSDFDisplay(sdfValue);
     this.sdfText = this.add
-      .text(timingX, sdfSliderY + 25, sdfDisplay, {
+      .text(lineAreX, sdfSliderY + 25, sdfDisplay, {
         fontSize: "16px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -3751,7 +3666,7 @@ class SettingsScene extends Phaser.Scene {
 
     this.sdfSlider.setInteractive(
       new Phaser.Geom.Rectangle(
-        timingX - timingSliderWidth / 2,
+        lineAreX - timingSliderWidth / 2,
         sdfSliderY - timingSliderHeight / 2,
         timingSliderWidth,
         timingSliderHeight,
@@ -3760,24 +3675,24 @@ class SettingsScene extends Phaser.Scene {
     );
     this.sdfSlider.on("pointerdown", (pointer) => {
       this.draggingSDF = true;
-      this.updateSDFFromPointer(pointer, { x: timingX, width: timingSliderWidth, y: sdfSliderY });
+      this.updateSDFFromPointer(pointer, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
     });
     this.sdfSlider.on("pointermove", (pointer) => {
       if (pointer.isDown) {
         this.draggingSDF = true;
-        this.updateSDFFromPointer(pointer, { x: timingX, width: timingSliderWidth, y: sdfSliderY });
+        this.updateSDFFromPointer(pointer, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
       }
     });
     this.input.on("pointermove", (pointer) => {
       if (this.draggingSDF && pointer.isDown) {
-        this.updateSDFFromPointer(pointer, { x: timingX, width: timingSliderWidth, y: sdfSliderY });
+        this.updateSDFFromPointer(pointer, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
       }
     });
-    this.updateSDFDisplay(sdfValue, { x: timingX, width: timingSliderWidth, y: sdfSliderY });
+    this.updateSDFDisplay(sdfValue, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
 
     // Reset to defaults button - moved down 70px
     this.resetButton = this.add
-      .text(centerX, centerY + 190, "Reset to Defaults", {
+      .text(centerX, centerY + 210, "Reset to Defaults", {
         fontSize: "18px",
         fill: "#ff8800",
         fontFamily: "Courier New",
@@ -3791,7 +3706,7 @@ class SettingsScene extends Phaser.Scene {
 
     // Reset high scores button - moved down 70px
     this.resetScoresButton = this.add
-      .text(centerX, centerY + 230, "Reset High Scores", {
+      .text(centerX, centerY + 255, "Reset High Scores", {
         fontSize: "18px",
         fill: "#ff8800",
         fontFamily: "Courier New",
@@ -3803,9 +3718,68 @@ class SettingsScene extends Phaser.Scene {
       this.resetHighScores();
     });
 
+    this.settingTabObjects = {
+      controls: [
+        keybindsHeader,
+        ...Object.values(this.keybindLabels),
+        ...Object.values(this.keybindTexts),
+      ],
+      handling: [
+        this.dasLabel,
+        this.dasSlider,
+        this.dasSliderFill,
+        this.dasSliderKnob,
+        this.dasText,
+        this.arrLabel,
+        this.arrSlider,
+        this.arrSliderFill,
+        this.arrSliderKnob,
+        this.arrText,
+        this.areLabel,
+        this.areSlider,
+        this.areSliderFill,
+        this.areSliderKnob,
+        this.areText,
+        this.lineAreLabel,
+        this.lineAreSlider,
+        this.lineAreSliderFill,
+        this.lineAreSliderKnob,
+        this.lineAreText,
+        this.sdfLabel,
+        this.sdfSlider,
+        this.sdfSliderFill,
+        this.sdfSliderKnob,
+        this.sdfText,
+      ],
+      rotation: [
+        this.rotationText,
+        this.tPieceDisplay?.container,
+        this.arsResetLabel,
+        this.arsResetModeText,
+      ],
+      audio: [
+        this.mainVolumeLabel,
+        this.mainVolumeSlider,
+        this.mainVolumeSliderFill,
+        this.mainVolumeKnob,
+        this.mainVolumeText,
+        this.bgmVolumeLabel,
+        this.bgmVolumeSlider,
+        this.bgmVolumeSliderFill,
+        this.bgmVolumeKnob,
+        this.bgmVolumeText,
+        this.sfxVolumeLabel,
+        this.sfxVolumeSlider,
+        this.sfxVolumeSliderFill,
+        this.sfxVolumeKnob,
+        this.sfxVolumeText,
+      ],
+    };
+    this.setSettingsTab(this.activeSettingsTab);
+
     // Back to menu - moved down 70px
     this.backButton = this.add
-      .text(centerX, centerY + 270, "Back to Menu", {
+      .text(centerX, centerY + 310, "Back to Menu", {
         fontSize: "24px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -3819,6 +3793,22 @@ class SettingsScene extends Phaser.Scene {
 
     // Setup keyboard input for keybind changes
     this.input.keyboard.on("keydown", this.onKeyDown, this);
+  }
+
+  setSettingsTab(tabKey) {
+    this.activeSettingsTab = tabKey;
+    this.settingsTabs.forEach((tab) => {
+      tab.text.setFill(tab.key === tabKey ? "#ffff00" : "#ffffff");
+    });
+    Object.keys(this.settingTabObjects).forEach((key) => {
+      const visible = key === tabKey;
+      this.settingTabObjects[key].forEach((object) => {
+        if (!object) return;
+        if (typeof object.setVisible === "function") object.setVisible(visible);
+        if (object.input) object.input.enabled = visible;
+      });
+    });
+    this.updateArsResetModeVisibility(this.rotationSystem);
   }
 
   getCurrentKeybind(action) {
@@ -4285,6 +4275,17 @@ class SettingsScene extends Phaser.Scene {
     };
   }
 
+  startListeningForKey(action) {
+    if (!this.keybindTexts[action]) return;
+    if (this.listeningForKey && this.keybindTexts[this.listeningForKey]) {
+      this.keybindTexts[this.listeningForKey].setText(this.getCurrentKeybind(this.listeningForKey));
+      this.keybindTexts[this.listeningForKey].setStyle({ fill: "#00ff00" });
+    }
+    this.listeningForKey = action;
+    this.keybindTexts[action].setText("Press key...");
+    this.keybindTexts[action].setStyle({ fill: "#ffff00" });
+  }
+
   onKeyDown(event) {
     if (this.listeningForKey) {
       const action = this.listeningForKey;
@@ -4395,9 +4396,9 @@ class SettingsScene extends Phaser.Scene {
   updateMainVolumeFromPointer(pointer) {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300; // Main slider X position
+    const sliderX = centerX - 280; // Main slider X position
     const sliderWidth = 200;
-    const sliderY = centerY - 120; // Match slider draw position
+    const sliderY = centerY - 65; // Match slider draw position
 
     // Calculate volume based on pointer position
     const relativeX = pointer.x - (sliderX - sliderWidth / 2);
@@ -4409,9 +4410,9 @@ class SettingsScene extends Phaser.Scene {
   updateBGMVolumeFromPointer(pointer) {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300; // BGM slider X position
+    const sliderX = centerX; // BGM slider X position
     const sliderWidth = 200;
-    const sliderY = centerY - 20; // Match slider draw position
+    const sliderY = centerY - 65; // Match slider draw position
 
     // Calculate volume based on pointer position
     const relativeX = pointer.x - (sliderX - sliderWidth / 2);
@@ -4423,9 +4424,9 @@ class SettingsScene extends Phaser.Scene {
   updateSFXVolumeFromPointer(pointer) {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300; // SFX slider X position
+    const sliderX = centerX + 280; // SFX slider X position
     const sliderWidth = 200;
-    const sliderY = centerY + 100; // Match slider draw position
+    const sliderY = centerY - 65; // Match slider draw position
 
     // Calculate volume based on pointer position
     const relativeX = pointer.x - (sliderX - sliderWidth / 2);
@@ -4667,9 +4668,9 @@ class SettingsScene extends Phaser.Scene {
     const volume = this.getMasterVolume();
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300;
+    const sliderX = centerX - 280;
     const sliderWidth = 200;
-    const sliderY = centerY - 120;
+    const sliderY = centerY - 65;
 
     // Update slider fill
     if (this.mainVolumeSliderFill) {
@@ -4704,9 +4705,9 @@ class SettingsScene extends Phaser.Scene {
     const volume = this.getBGMVolume();
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300;
+    const sliderX = centerX;
     const sliderWidth = 200;
-    const sliderY = centerY - 20;
+    const sliderY = centerY - 65;
 
     // Update slider fill
     if (this.bgmVolumeSliderFill) {
@@ -4741,9 +4742,9 @@ class SettingsScene extends Phaser.Scene {
     const volume = this.getSFXVolume();
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
-    const sliderX = centerX + 300;
+    const sliderX = centerX + 280;
     const sliderWidth = 200;
-    const sliderY = centerY + 100;
+    const sliderY = centerY - 65;
 
     // Update slider fill
     if (this.sfxVolumeSliderFill) {
@@ -5024,6 +5025,15 @@ class SettingsScene extends Phaser.Scene {
     const centerX = this.tPieceX || this.cameras.main.width / 2;
     const centerY = this.tPieceY || this.cameras.main.height / 2 - 90;
     this.tPieceDisplay = this.createTPieceDisplay(centerX, centerY, newSystem);
+    if (this.settingTabObjects && this.settingTabObjects.rotation) {
+      this.settingTabObjects.rotation = [
+        this.rotationText,
+        this.tPieceDisplay?.container,
+        this.arsResetLabel,
+        this.arsResetModeText,
+      ];
+      this.tPieceDisplay.container.setVisible(this.activeSettingsTab === "rotation");
+    }
 
     // Animate 360-degree rotation with the new shape/color
     this.tweens.add({
@@ -5095,9 +5105,10 @@ class SettingsScene extends Phaser.Scene {
   }
 
   updateArsResetModeVisibility(rotationSystem) {
-    const visible = rotationSystem === "ARS";
+    const visible = rotationSystem === "ARS" && this.activeSettingsTab === "rotation";
     if (this.arsResetModeText) this.arsResetModeText.setVisible(visible);
     if (this.arsResetLabel) this.arsResetLabel.setVisible(visible);
+    if (this.arsResetModeText?.input) this.arsResetModeText.input.enabled = visible;
   }
 }
 
@@ -5146,6 +5157,8 @@ class AssetLoaderScene extends Phaser.Scene {
     // Load all assets for the game
     ensureImageTexture("mino_srs", "img/mino.png");
     ensureImageTexture("mino_ars", "img/minoARS.png");
+    ensureImageTexture("mono", "img/mono.png");
+    ensureImageTexture("mono_ars", "img/monoARS.png");
 
     // Load BGM files from the correct directory paths
     try {
@@ -6498,9 +6511,10 @@ class GameScene extends Phaser.Scene {
       this.readyGoPhase ||
       !this.isNormalOrEasyMode()
     ) {
+      this.hintPlacement = null;
+      this.hintSignature = null;
       return;
     }
-    // Color hint based on current piece color
     const hintColor = this.currentPiece && this.currentPiece.color
       ? this.currentPiece.color
       : 0x00e0ff;
@@ -6509,116 +6523,133 @@ class GameScene extends Phaser.Scene {
     const rows = this.board.rows;
     const cols = this.board.cols;
     const baseGrid = this.board.grid;
-
-    const makeGridWithPiece = (piece) => {
-      const grid = baseGrid.map((row) => row.slice());
-      for (let r = 0; r < piece.shape.length; r++) {
-        for (let c = 0; c < piece.shape[r].length; c++) {
-          if (!piece.shape[r][c]) continue;
-          const gx = piece.x + c;
-          const gy = piece.y + r;
-          if (gy >= 0 && gy < rows && gx >= 0 && gx < cols) {
-            grid[gy][gx] = 1;
-          }
-        }
-      }
-      return grid;
-    };
-
-    const computeHeights = (grid) => {
-      const heights = Array(cols).fill(0);
-      for (let x = 0; x < cols; x++) {
-        let y = 0;
-        while (y < rows && grid[y][x] === 0) y++;
-        heights[x] = rows - y;
-      }
-      return heights;
-    };
-
-    const scorePlacement = (piece) => {
-      const grid = makeGridWithPiece(piece);
-      const heights = computeHeights(grid);
-
-      // Holes: empty cell with at least one filled above
-      let holes = 0;
-      let coveredHoles = 0;
-      for (let x = 0; x < cols; x++) {
-        let seenBlock = false;
-        for (let y = 0; y < rows; y++) {
-          const filled = grid[y][x] !== 0;
-          if (filled) {
-            seenBlock = true;
-          } else if (seenBlock) {
-            holes++;
-            // Covered hole: if there is also a block immediately above
-            if (y > 0 && grid[y - 1][x] !== 0) coveredHoles++;
-          }
-        }
-      }
-
-      // Surface stats
-      const maxHeight = Math.max(...heights);
-      const aggregateHeight = heights.reduce((a, b) => a + b, 0);
-      let bumpiness = 0;
-      for (let i = 0; i < cols - 1; i++) {
-        bumpiness += Math.abs(heights[i] - heights[i + 1]);
-      }
-
-      // Ceiling penalty (hidden rows: y < 2)
-      let aboveCeilPenalty = 0;
-      for (let r = 0; r < piece.shape.length; r++) {
-        for (let c = 0; c < piece.shape[r].length; c++) {
-          if (!piece.shape[r][c]) continue;
-          const gy = piece.y + r;
-          if (gy < 2) {
-            aboveCeilPenalty += (2 - gy) * 50;
-          }
-        }
-      }
-
-      // Weighted score (lower is better)
-      const score =
-        holes * 1000 +
-        coveredHoles * 800 +
-        bumpiness * 5 +
-        aggregateHeight * 2 +
-        maxHeight * 3 +
-        aboveCeilPenalty +
-        piece.x * 0.01; // slight tie-breaker to favor leftmost
-
-      return score;
-    };
-
-    const placements = [];
-    const rotations = [0, 1, 2, 3];
-    const pieceType = this.currentPiece.type;
-    for (const rot of rotations) {
-      const shape = new Piece(pieceType, this.rotationSystem, rot).shape;
-      const width = shape[0].length;
-      for (let x = -2; x < this.board.cols; x++) {
-        const tmpPiece = new Piece(pieceType, this.rotationSystem, rot);
-        tmpPiece.x = x;
-        tmpPiece.y = -4;
-        // Move down until collision
-        while (this.board.isValidPosition(tmpPiece, tmpPiece.x, tmpPiece.y + 1)) {
-          tmpPiece.y += 1;
-        }
-        if (!this.board.isValidPosition(tmpPiece, tmpPiece.x, tmpPiece.y)) {
-          continue;
-        }
-        // Skip if out of bounds horizontally
-        if (tmpPiece.x < -2 || tmpPiece.x + width > this.board.cols + 2) {
-          continue;
-        }
-
-        const score = scorePlacement(tmpPiece);
-        placements.push({ score, piece: tmpPiece });
+    let boardSignature = "";
+    for (let r = 0; r < rows; r++) {
+      const row = baseGrid[r];
+      for (let c = 0; c < cols; c++) {
+        boardSignature += row[c] ? "1" : "0";
       }
     }
+    const hintSignature = `${this.currentPiece.type}|${this.rotationSystem}|${rows}x${cols}|${boardSignature}`;
 
-    if (!placements.length) return;
-    placements.sort((a, b) => a.score - b.score);
-    this.hintPlacement = placements[0].piece;
+    if (this.hintSignature !== hintSignature) {
+      const makeGridWithPiece = (piece) => {
+        const grid = baseGrid.map((row) => row.slice());
+        for (let r = 0; r < piece.shape.length; r++) {
+          for (let c = 0; c < piece.shape[r].length; c++) {
+            if (!piece.shape[r][c]) continue;
+            const gx = piece.x + c;
+            const gy = piece.y + r;
+            if (gy >= 0 && gy < rows && gx >= 0 && gx < cols) {
+              grid[gy][gx] = 1;
+            }
+          }
+        }
+        return grid;
+      };
+
+      const computeHeights = (grid) => {
+        const heights = Array(cols).fill(0);
+        for (let x = 0; x < cols; x++) {
+          let y = 0;
+          while (y < rows && grid[y][x] === 0) y++;
+          heights[x] = rows - y;
+        }
+        return heights;
+      };
+
+      const scorePlacement = (piece) => {
+        const grid = makeGridWithPiece(piece);
+        const heights = computeHeights(grid);
+
+        // Holes: empty cell with at least one filled above
+        let holes = 0;
+        let coveredHoles = 0;
+        for (let x = 0; x < cols; x++) {
+          let seenBlock = false;
+          for (let y = 0; y < rows; y++) {
+            const filled = grid[y][x] !== 0;
+            if (filled) {
+              seenBlock = true;
+            } else if (seenBlock) {
+              holes++;
+              // Covered hole: if there is also a block immediately above
+              if (y > 0 && grid[y - 1][x] !== 0) coveredHoles++;
+            }
+          }
+        }
+
+        // Surface stats
+        const maxHeight = Math.max(...heights);
+        const aggregateHeight = heights.reduce((a, b) => a + b, 0);
+        let bumpiness = 0;
+        for (let i = 0; i < cols - 1; i++) {
+          bumpiness += Math.abs(heights[i] - heights[i + 1]);
+        }
+
+        // Ceiling penalty (hidden rows: y < 2)
+        let aboveCeilPenalty = 0;
+        for (let r = 0; r < piece.shape.length; r++) {
+          for (let c = 0; c < piece.shape[r].length; c++) {
+            if (!piece.shape[r][c]) continue;
+            const gy = piece.y + r;
+            if (gy < 2) {
+              aboveCeilPenalty += (2 - gy) * 50;
+            }
+          }
+        }
+
+        // Weighted score (lower is better)
+        const score =
+          holes * 1000 +
+          coveredHoles * 800 +
+          bumpiness * 5 +
+          aggregateHeight * 2 +
+          maxHeight * 3 +
+          aboveCeilPenalty +
+          piece.x * 0.01; // slight tie-breaker to favor leftmost
+
+        return score;
+      };
+
+      const placements = [];
+      const rotations = [0, 1, 2, 3];
+      const pieceType = this.currentPiece.type;
+      for (const rot of rotations) {
+        const shape = new Piece(pieceType, this.rotationSystem, rot).shape;
+        const width = shape[0].length;
+        for (let x = -2; x < this.board.cols; x++) {
+          const tmpPiece = new Piece(pieceType, this.rotationSystem, rot);
+          tmpPiece.x = x;
+          tmpPiece.y = -4;
+          // Move down until collision
+          while (this.board.isValidPosition(tmpPiece, tmpPiece.x, tmpPiece.y + 1)) {
+            tmpPiece.y += 1;
+          }
+          if (!this.board.isValidPosition(tmpPiece, tmpPiece.x, tmpPiece.y)) {
+            continue;
+          }
+          // Skip if out of bounds horizontally
+          if (tmpPiece.x < -2 || tmpPiece.x + width > this.board.cols + 2) {
+            continue;
+          }
+
+          const score = scorePlacement(tmpPiece);
+          placements.push({ score, piece: tmpPiece });
+        }
+      }
+
+      if (!placements.length) {
+        this.hintPlacement = null;
+        this.hintSignature = hintSignature;
+        return;
+      }
+      placements.sort((a, b) => a.score - b.score);
+      this.hintPlacement = placements[0].piece;
+      this.hintSignature = hintSignature;
+    }
+
+    if (!this.hintPlacement) return;
     const startRow = 2;
     const cell = this.cellSize;
     const offX = this.matrixOffsetX;
@@ -6792,12 +6823,14 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayOverride = 0;
     }
     // Soft drop speed multiplier (keep as-is, scalar not time-based)
-    this.softDropMultiplier = config.softDropMultiplier || 6;
-    if (isEligibleTimingOverride) {
+    this.softDropMultiplier = 1;
+    if (this.isStandardComboMode()) {
       const storedSdf = this.getStoredTiming("timing_sdf_mult", null);
       if (storedSdf !== null) {
         const clamped = Math.min(Math.max(storedSdf, 5), 100);
         this.softDropMultiplier = clamped;
+      } else {
+        this.softDropMultiplier = config.softDropMultiplier || 6;
       }
     }
 
@@ -7133,6 +7166,7 @@ class GameScene extends Phaser.Scene {
       Boolean(specialMechanics.tgm2Grading) ||
       (typeof modeId === "string" && modeId.startsWith("tgm2"));
     const isTgm3 = modeId === "tgm3_master" || modeId === "tgm3" || modeId === "tgm3_shirase" || modeId === "shirase";
+    const isTgm4 = typeof modeId === "string" && modeId.startsWith("tgm4");
     const hideGradePoints =
       modeId === "tgm1" ||
       modeId === "20g" ||
@@ -7145,6 +7179,7 @@ class GameScene extends Phaser.Scene {
       hasGrading &&
       !isTADeathMode &&
       !isTGM2Mode &&
+      !isTgm4 &&
       modeId !== "tgm3_master" &&
       modeId !== "tgm3" &&
       modeId !== "tgm3_shirase" &&
@@ -7154,8 +7189,8 @@ class GameScene extends Phaser.Scene {
       const gradeX = uiX + 25;
       const isTgm3Master = modeId === "tgm3_master" || modeId === "tgm3";
       const isShiraseMode = modeId === "tgm3_shirase" || modeId === "shirase";
-      // Push grade down in Ti Master/Shirase so it doesn't overlap HOLD
-      const gradeYOffset = isTgm3Master || isShiraseMode ? 140 : 0;
+      // Push grade down in Ti-like modes so it doesn't overlap HOLD
+      const gradeYOffset = isTgm3Master || isShiraseMode || isTgm4 ? 140 : 0;
       const gradeY = this.borderOffsetY + gradeYOffset;
       const gradeWidth = 80;
       this.gradeDisplay = this.add.graphics();
@@ -7976,6 +8011,7 @@ class GameScene extends Phaser.Scene {
   create() {
     // Initialize game elements here (spawn deferred until after READY/GO)
     this.gameGroup = this.add.group();
+    ensureMonochromeMinoTextures(this);
     // Overlay group for transient UI (e.g., READY/GO) that must survive draw() clears
     this.overlayGroup = this.add.group();
     this.hanabiContainer = this.add.group();
@@ -8525,6 +8561,25 @@ class GameScene extends Phaser.Scene {
       this.bravoHideEvent = null;
     });
     tl.play();
+  }
+
+  getAttackTableForSpin(spinType, lineClear) {
+    const selectedAttackTable = this.getSelectedAttackTable();
+    const basis = this.getSectionBasisValue();
+    const pendingEntries = Object.entries(this.coolAnnouncementsTargets || {});
+    if (pendingEntries.length === 0) return;
+
+    pendingEntries.forEach(([secStr, target]) => {
+      const sec = Number.parseInt(secStr, 10);
+      if (typeof target !== "number" || this.coolAnnouncementsShown.has(sec)) return;
+      const windowStart = target;
+      const windowEnd = target + 11; // 80–90 inclusive if target is 80–90
+      if (basis >= windowStart && basis <= windowEnd) {
+        this.showCoolRegretBanner("COOL");
+        this.coolAnnouncementsShown.add(sec);
+        delete this.coolAnnouncementsTargets[sec];
+      }
+    });
   }
 
   checkCoolRegretAnnouncements() {
@@ -9812,7 +9867,7 @@ class GameScene extends Phaser.Scene {
       }
 
       // Single press actions (keep JustDown for these)
-      if (justDown(this.cursors.down)) {
+      if (justDown(this.cursors.down) && !downDown) {
         this.recordFinesseInput(); // Count the keypress
         if (this.currentPiece.move(this.board, 0, 1)) {
           this.resetLockDelay();
@@ -9881,33 +9936,53 @@ class GameScene extends Phaser.Scene {
       const internalGravity = Math.max(1, this.getTGMGravitySpeed(this.level));
       if (!this.currentPiece) return;
 
-      // rowsPerSecond derived from internalGravity (1/256G units) assuming 60 fps baseline
-      let rowsPerSecond = (internalGravity / 256) * 60;
-      if (typeof zenRowsPerSecond === "number") {
-        rowsPerSecond = zenRowsPerSecond;
-      }
-      this.gravityAccum += rowsPerSecond * this.deltaTime; // deltaTime in seconds
-
-      const rowsToFall = Math.floor(this.gravityAccum);
-      if (rowsToFall > 0) {
-        let movedRows = 0;
-        for (let i = 0; i < rowsToFall; i++) {
-          if (this.currentPiece.move(this.board, 0, 1)) {
-            movedRows++;
-            this.isGrounded = false;
-            this.resetLockDelay();
-          } else {
-            // Piece can't move down anymore
-            if (!this.isGrounded) {
-              this.isGrounded = true;
-              this.lockDelay = this.deltaTime; // Start counting from current delta time
-              this.currentPiece.playGroundSound(this);
-            }
-            break;
-          }
+      if (internalGravity >= 5120) {
+        this.currentPiece.hardDrop(this.board);
+        this.isGrounded = true;
+        this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
+        this.gravityAccum = 0;
+      } else {
+        if (
+          this.isGrounded &&
+          this.board.isValidPosition(
+            this.currentPiece,
+            this.currentPiece.x,
+            this.currentPiece.y + 1,
+          )
+        ) {
+          this.isGrounded = false;
+          this.lockDelay = 0;
+          this.lastGroundedY = null;
         }
-        // retain fractional remainder only if we moved; if blocked, drop any accumulated
-        this.gravityAccum = movedRows > 0 ? this.gravityAccum - movedRows : 0;
+
+        // rowsPerSecond derived from internalGravity (1/256G units) assuming 60 fps baseline
+        let rowsPerSecond = (internalGravity / 256) * 60;
+        if (typeof zenRowsPerSecond === "number") {
+          rowsPerSecond = zenRowsPerSecond;
+        }
+        this.gravityAccum += rowsPerSecond * this.deltaTime; // deltaTime in seconds
+
+        const rowsToFall = Math.floor(this.gravityAccum);
+        if (rowsToFall > 0) {
+          let movedRows = 0;
+          for (let i = 0; i < rowsToFall; i++) {
+            if (this.currentPiece.move(this.board, 0, 1)) {
+              movedRows++;
+              this.isGrounded = false;
+              this.resetLockDelay();
+            } else {
+              // Piece can't move down anymore
+              if (!this.isGrounded) {
+                this.isGrounded = true;
+                this.lockDelay = this.deltaTime; // Start counting from current delta time
+                this.currentPiece.playGroundSound(this);
+              }
+              break;
+            }
+          }
+          // retain fractional remainder only if we moved; if blocked, drop any accumulated
+          this.gravityAccum = movedRows > 0 ? this.gravityAccum - movedRows : 0;
+        }
       }
     }
 
@@ -10138,8 +10213,7 @@ class GameScene extends Phaser.Scene {
     } catch {}
     const bottomRowIndex = this.board.rows - 1;
     const bottomRow = this.board.grid[bottomRowIndex] || [];
-    // Duplicate bottom row exactly (per doc) as the garbage line
-    const garbageRow = bottomRow.slice();
+    const garbageRow = bottomRow.map((cell) => (cell ? 0x444444 : 0));
     // Raise stack: remove top row, push garbage clone at bottom
     this.board.grid.shift();
     this.board.grid.push(garbageRow);
@@ -11321,7 +11395,8 @@ class GameScene extends Phaser.Scene {
       this.updateAttackStats(attackResult.attack, this.currentTime || 0);
       this.updateAttackUI();
       const shouldShowB2B =
-        attackResult.isDifficult || attackResult.b2bBroken || attackResult.newChain >= 1;
+        this.shouldShowB2BChain() &&
+        (attackResult.isDifficult || attackResult.b2bBroken || attackResult.newChain >= 1);
       if (shouldShowB2B && this.b2bChainText) this.b2bChainText.setVisible(true);
       this.showB2BChain(
         attackResult.b2bMaintained,
@@ -11456,11 +11531,16 @@ class GameScene extends Phaser.Scene {
   }
 
   getNextPieceTypeFromQueue() {
+    const entry = this.getNextPieceEntryFromQueue();
+    return entry.type;
+  }
+
+  getNextPieceEntryFromQueue() {
     if (this.nextPieces.length < 1) {
       this.generateNextPieces();
     }
     if (this.nextPieces.length < 1) {
-      return "I";
+      return { type: "I", textureKey: null };
     }
     const raw = this.nextPieces.shift();
     let t =
@@ -11472,7 +11552,11 @@ class GameScene extends Phaser.Scene {
             ? raw.piece
             : raw;
     if (typeof t !== "string") t = "I";
-    return t.toUpperCase();
+    const textureKey =
+      raw && typeof raw === "object" && raw.textureKey
+        ? raw.textureKey
+        : null;
+    return { type: t.toUpperCase(), textureKey };
   }
 
   performHoldSwap({ bypassCanHold = false, isIHS = false } = {}) {
@@ -11481,6 +11565,7 @@ class GameScene extends Phaser.Scene {
     if (!this.currentPiece) return false;
 
     const currentType = this.currentPiece.type;
+    const currentTextureKey = this.currentPiece.textureKey || null;
 
     // Normalize existing hold piece if stored as string
     if (this.holdPiece && typeof this.holdPiece === "string") {
@@ -11490,13 +11575,14 @@ class GameScene extends Phaser.Scene {
     if (this.holdPiece) {
       // Swap current with held
       const holdType = this.holdPiece.type;
-      this.holdPiece = new Piece(currentType, this.rotationSystem, 0);
-      this.currentPiece = new Piece(holdType, this.rotationSystem, 0);
+      const holdTextureKey = this.holdPiece.textureKey || null;
+      this.holdPiece = new Piece(currentType, this.rotationSystem, 0, currentTextureKey);
+      this.currentPiece = new Piece(holdType, this.rotationSystem, 0, holdTextureKey);
     } else {
       // Move current to hold, pull next from queue
-      this.holdPiece = new Piece(currentType, this.rotationSystem, 0);
-      const nextType = this.getNextPieceTypeFromQueue();
-      this.currentPiece = new Piece(nextType, this.rotationSystem, 0);
+      this.holdPiece = new Piece(currentType, this.rotationSystem, 0, currentTextureKey);
+      const nextEntry = this.getNextPieceEntryFromQueue();
+      this.currentPiece = new Piece(nextEntry.type, this.rotationSystem, 0, nextEntry.textureKey);
     }
 
     // Reset position/rotation on the new current piece
@@ -12349,6 +12435,23 @@ class GameScene extends Phaser.Scene {
           }
         }
 
+        // Ensure the last section completion hook runs (no transition after max level)
+        if (
+          this.gameMode &&
+          typeof this.gameMode.onSectionComplete === "function" &&
+          typeof this.sectionTimes[lastSectionIndex] === "number"
+        ) {
+          try {
+            this.gameMode.onSectionComplete(
+              this,
+              lastSectionIndex,
+              this.sectionTimes[lastSectionIndex],
+            );
+          } catch (e) {
+            console.warn("[maxLevel] onSectionComplete failed", e);
+          }
+        }
+
         // Start credits when reaching max level
         this.level999Reached = true;
 
@@ -12388,6 +12491,19 @@ class GameScene extends Phaser.Scene {
       if (this.gameMode && Array.isArray(this.sectionTimes)) {
         this.gameMode.sectionTimes = this.gameMode.sectionTimes || [];
         this.gameMode.sectionTimes[completedSection] = this.sectionTimes[completedSection];
+      }
+
+      // Mode hook for section completion (used by multiple TGM variants)
+      if (this.gameMode && typeof this.gameMode.onSectionComplete === "function") {
+        try {
+          this.gameMode.onSectionComplete(
+            this,
+            completedSection,
+            this.sectionTimes[completedSection],
+          );
+        } catch (e) {
+          console.warn("[handleSectionTransition] onSectionComplete failed", e);
+        }
       }
 
       // COOL/REGRET evaluation for TGM3 Master
@@ -12655,6 +12771,10 @@ class GameScene extends Phaser.Scene {
     return m === "ultra" || m === "zen" || m === "marathon" || m === "sprint_40" || m === "sprint_100";
   }
 
+  shouldShowB2BChain() {
+    return this.isStandardComboMode();
+  }
+
   updateStandardCombo(onLineClear, nowSeconds) {
     if (!this.standardComboText) return;
     if (this.standardComboFadeTween) {
@@ -12898,6 +13018,10 @@ class GameScene extends Phaser.Scene {
 
   showB2BChain(b2bMaintained, b2bBroken, prevChain, newChain) {
     if (!this.b2bChainText) return;
+    if (!this.shouldShowB2BChain()) {
+      this.b2bChainText.setVisible(false);
+      return;
+    }
     this.b2bChainText.setText(`B2B x${newChain}`);
 
     if (b2bMaintained && newChain > prevChain) {
@@ -13478,7 +13602,7 @@ class GameScene extends Phaser.Scene {
     try {
       // Use tm1_2.mp3 for TGM2 Normal mode credits, otherwise use tm1_endroll.mp3
       const creditsBGMKey =
-        this.selectedMode === "tgm2_normal" ? "stage2" : "credits";
+        this.selectedMode === "tgm2_normal" ? "tm1_2" : "tm1_endroll";
       this.creditsBGM = this.sound.add(creditsBGMKey, {
         loop: true,
         volume: 0.3,
@@ -14358,14 +14482,14 @@ class GameScene extends Phaser.Scene {
       sectionCap = this.selectedMode === "sprint_40" ? 40 : 100;
     } else {
       // TGM modes: default section calculation
-      const maxLevel = this.gameMode ? this.gameMode.getGravityLevelCap() : 999;
+      const rawMaxLevel = this.gameMode ? this.gameMode.getGravityLevelCap() : 999;
+      const maxLevel = Number.isFinite(rawMaxLevel) ? rawMaxLevel : 999;
       const section = Math.floor(this.level / 100);
       if (maxLevel === 300) {
         // TGM2 Normal: always show 300 as the cap
         sectionCap = 300;
       } else {
-        // Default: sections are 0-99, 100-199, etc. up to 999
-        sectionCap = section >= 9 ? 999 : (section + 1) * 100;
+        sectionCap = Math.min((section + 1) * 100, maxLevel);
       }
     }
 
@@ -14924,8 +15048,8 @@ class GameScene extends Phaser.Scene {
       }
 
       const previewTextureKey =
-        this.monochromeActive && this.board && this.board.currentTextureKey
-          ? this.board.currentTextureKey
+        rawNext && typeof rawNext === "object" && rawNext.textureKey
+          ? rawNext.textureKey
           : this.rotationSystem === "ARS"
             ? "mino_ars"
             : "mino_srs";
@@ -14979,7 +15103,7 @@ class GameScene extends Phaser.Scene {
         // Create a copy of the hold piece with default rotation for display
         let holdType =
           typeof this.holdPiece.type === "string" ? this.holdPiece.type : "I";
-        const displayPiece = new Piece(holdType, this.holdPiece.rotationSystem, 0);
+        const displayPiece = new Piece(holdType, this.holdPiece.rotationSystem, 0, this.holdPiece.textureKey || null);
         displayPiece.x = 0;
         displayPiece.y = 2; // Start from the top visible row
         displayPiece.draw(this, holdX, holdY + 30, previewCellSize);
