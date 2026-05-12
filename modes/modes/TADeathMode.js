@@ -70,6 +70,7 @@ class TADeathMode extends BaseMode {
             ghostEnabled: true,                // Ghost piece enabled
             levelUpType: 'piece',              // Level up per piece
             lineClearBonus: 1,
+            lowestGrade: '',
             gravityLevelCap: 999,
             hasGrading: true,
             specialMechanics: {
@@ -485,7 +486,7 @@ class TADeathMode extends BaseMode {
         super.reset();
         
         // Reset T.A. Death specific variables
-        this.displayedGrade = '9';
+        this.displayedGrade = '';
         this.internalGrade = 31;
         this.isMGrade = false;
         this.isGMGrade = false;

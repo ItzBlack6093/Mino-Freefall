@@ -214,6 +214,7 @@ const MODE_TYPE_BY_ID = {
   tgm3_sakura: "PUZZLE",
   flashpoint: "PUZZLE",
 };
+const BASE_FPS = 60;
 
 function getModeTypeNameFromId(modeId) {
   if (!modeId) return "";
@@ -4447,11 +4448,11 @@ class SettingsScene extends Phaser.Scene {
   }
 
   framesToMs(frames) {
-    return (frames / 60) * 1000;
+    return (frames / BASE_FPS) * 1000;
   }
 
   msToFrames(ms) {
-    return (ms / 1000) * 60;
+    return (ms / 1000) * BASE_FPS;
   }
 
   getTimingMs(key, defaultFrames) {
@@ -5618,6 +5619,8 @@ class GameScene extends Phaser.Scene {
     this.areHoldPressed = false;
     this.areLeftHeld = false;
     this.areRightHeld = false;
+    this.areLeftDasCharge = 0;
+    this.areRightDasCharge = 0;
     this.areRotationKeys = { k: false, space: false, l: false }; // Track which rotation keys are held during ARE
 
     // Enhanced scoring system
@@ -6382,9 +6385,10 @@ class GameScene extends Phaser.Scene {
     // Always start from the mode's lowest grade (or default "9"), ignoring any carried-over state
     // or mode getters that might be holding previous run values.
     const configLowestGrade =
-      (modeConfig && typeof modeConfig.lowestGrade === "string" && modeConfig.lowestGrade) ||
-      "9";
-    const baselineGrade = configLowestGrade || "9";
+      modeConfig && typeof modeConfig.lowestGrade === "string"
+        ? modeConfig.lowestGrade
+        : null;
+    const baselineGrade = configLowestGrade ?? "9";
     const baselineInternal =
       typeof modeConfig.initialInternalGrade === "number"
         ? modeConfig.initialInternalGrade
@@ -6823,6 +6827,7 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayOverride = 0;
     }
     // Soft drop speed multiplier (keep as-is, scalar not time-based)
+    // Non-Standard modes: fixed 1G speed (1 row per frame)
     this.softDropMultiplier = 1;
     if (this.isStandardComboMode()) {
       const storedSdf = this.getStoredTiming("timing_sdf_mult", null);
@@ -7161,15 +7166,18 @@ class GameScene extends Phaser.Scene {
         ? this.gameMode.getModeId()
         : this.selectedMode;
     const specialMechanics = modeConfig.specialMechanics || {};
-    const isTADeathMode = modeId === "tadeath";
+    const isTADeathMode = modeId === "tadeath" || modeId === "ta_death";
     const isTGM2Mode =
       Boolean(specialMechanics.tgm2Grading) ||
       (typeof modeId === "string" && modeId.startsWith("tgm2"));
     const isTgm3 = modeId === "tgm3_master" || modeId === "tgm3" || modeId === "tgm3_shirase" || modeId === "shirase";
     const isTgm4 = typeof modeId === "string" && modeId.startsWith("tgm4");
     const hideGradePoints =
+      isTADeathMode ||
       modeId === "tgm1" ||
       modeId === "20g" ||
+      modeId === "tgm3_shirase" ||
+      modeId === "shirase" ||
       (!isTgm3 &&
         this.gameMode &&
         typeof this.gameMode.isTwentyGMode === "function" &&
@@ -7199,9 +7207,9 @@ class GameScene extends Phaser.Scene {
       const initialDisplayedGrade =
         this.initialGradeBaseline !== null && this.initialGradeBaseline !== undefined
           ? this.initialGradeBaseline
-          : this.grade || "9";
+          : (this.grade ?? "9");
       this.grade = initialDisplayedGrade;
-      const gradeTextValue = this.grade || "9";
+      const gradeTextValue = this.grade ?? "9";
       const gradeVisible = !!gradeTextValue;
       this.gradeText = this.add
         .text(gradeX + gradeWidth / 2, gradeY + 40, gradeTextValue, {
@@ -7880,7 +7888,7 @@ class GameScene extends Phaser.Scene {
             fontFamily: "Courier New",
             fontStyle: "bold",
           });
-          const perfText = this.add.text(200, y + 3, "", {
+          const perfText = this.add.text(200, y, "", {
             fontSize: `${Math.max(sectionLabelFontSize - 2, 12)}px`,
             fill: "#ffff55",
             fontFamily: "Courier New",
@@ -9278,7 +9286,8 @@ class GameScene extends Phaser.Scene {
       // X key for hard drop - immediate response
       if (xKeyDown && !this.xKeyPressed) {
         this.xKeyPressed = true;
-        if (this.currentPiece) {
+        // Disable hard drop on TGM1 and 20G modes
+        if (this.selectedMode !== 'tgm1' && this.selectedMode !== '20g' && this.selectedMode !== 'master20g' && this.currentPiece) {
           this.recordFinesseInput(); // Count the keypress
           // Calculate hard drop rows before dropping
           const ghost = this.currentPiece.getGhostPosition(this.board);
@@ -9424,7 +9433,8 @@ class GameScene extends Phaser.Scene {
       // X key for hard drop - immediate response
       if (xKeyDown && !this.xKeyPressed) {
         this.xKeyPressed = true;
-        if (this.currentPiece) {
+        // Disable hard drop on TGM1 and 20G modes
+        if (this.selectedMode !== 'tgm1' && this.selectedMode !== '20g' && this.selectedMode !== 'master20g' && this.currentPiece) {
           this.recordFinesseInput(); // Count the keypress
           // Calculate hard drop rows before dropping
           const ghost = this.currentPiece.getGhostPosition(this.board);
@@ -9452,7 +9462,7 @@ class GameScene extends Phaser.Scene {
         // Wait for DAS delay
         if (this.leftTimer >= this.dasDelay) {
           this.leftInRepeat = true;
-          this.leftTimer = 0;
+          this.leftTimer -= this.dasDelay;
           if (this.currentPiece) {
             const moved = this.currentPiece.move(this.board, -1, 0);
             if (moved) {
@@ -9478,16 +9488,18 @@ class GameScene extends Phaser.Scene {
             }
           }
           this.leftTimer = 0;
-        } else if (this.leftTimer >= this.arrDelay) {
-          this.leftTimer = 0;
-          if (this.currentPiece) {
-            const moved = this.currentPiece.move(this.board, -1, 0);
-            if (moved) {
-              this.resetLockDelay();
-            } else {
-              // Piece tried to move left during ARR - no ground sound for movement failures
+        } else {
+          while (this.leftTimer >= this.arrDelay) {
+            this.leftTimer -= this.arrDelay;
+            if (this.currentPiece) {
+              const moved = this.currentPiece.move(this.board, -1, 0);
+              if (moved) {
+                this.resetLockDelay();
+              } else {
+                // Piece tried to move left during ARR - no ground sound for movement failures
+              }
+              // Don't set grounded state here - let gravity/soft drop logic handle it
             }
-            // Don't set grounded state here - let gravity/soft drop logic handle it
           }
         }
       }
@@ -9500,7 +9512,7 @@ class GameScene extends Phaser.Scene {
         // Wait for DAS delay
         if (this.rightTimer >= this.dasDelay) {
           this.rightInRepeat = true;
-          this.rightTimer = 0;
+          this.rightTimer -= this.dasDelay;
           if (this.currentPiece) {
             const moved = this.currentPiece.move(this.board, 1, 0);
             if (moved) {
@@ -9526,16 +9538,18 @@ class GameScene extends Phaser.Scene {
             }
           }
           this.rightTimer = 0;
-        } else if (this.rightTimer >= this.arrDelay) {
-          this.rightTimer = 0;
-          if (this.currentPiece) {
-            const moved = this.currentPiece.move(this.board, 1, 0);
-            if (moved) {
-              this.resetLockDelay();
-            } else {
-              // Piece tried to move right during ARR - no ground sound for movement failures
+        } else {
+          while (this.rightTimer >= this.arrDelay) {
+            this.rightTimer -= this.arrDelay;
+            if (this.currentPiece) {
+              const moved = this.currentPiece.move(this.board, 1, 0);
+              if (moved) {
+                this.resetLockDelay();
+              } else {
+                // Piece tried to move right during ARR - no ground sound for movement failures
+              }
+              // Don't set grounded state here - let gravity/soft drop logic handle it
             }
-            // Don't set grounded state here - let gravity/soft drop logic handle it
           }
         }
       }
@@ -9565,6 +9579,12 @@ class GameScene extends Phaser.Scene {
       if (allowAreInputs) {
         this.areLeftHeld = leftDown || zKeyDown;
         this.areRightHeld = rightDown || cKeyDown;
+        this.areLeftDasCharge = this.areLeftHeld
+          ? Math.min(this.dasDelay, this.areLeftDasCharge + this.deltaTime)
+          : 0;
+        this.areRightDasCharge = this.areRightHeld
+          ? Math.min(this.dasDelay, this.areRightDasCharge + this.deltaTime)
+          : 0;
         this.areRotationKeys.k = kKeyDown;
         this.areRotationKeys.space = spaceKeyDown;
         this.areRotationKeys.l = lKeyDown;
@@ -9602,6 +9622,8 @@ class GameScene extends Phaser.Scene {
         this.areRotationDirection = 0;
         this.irsActivated = false;
         this.areHoldPressed = false;
+        this.areLeftDasCharge = 0;
+        this.areRightDasCharge = 0;
       }
     } else {
       // Reset ARE rotation tracking when not in ARE and piece exists
@@ -9609,6 +9631,8 @@ class GameScene extends Phaser.Scene {
       this.areRotationDirection = 0;
       this.irsActivated = false;
       this.areHoldPressed = false;
+      this.areLeftDasCharge = 0;
+      this.areRightDasCharge = 0;
     }
 
     // Update mino fading system (runs even when game is over)
@@ -9807,18 +9831,48 @@ class GameScene extends Phaser.Scene {
           this.softDropPressed = true;
           this.recordFinesseInput(); // Count the keypress, not the repeats
         }
-        const maxSteps =
-          this.softDropMultiplier >= 100 ? 200 : Math.max(1, Math.floor(this.softDropMultiplier));
         let movedRows = 0;
-        for (let i = 0; i < maxSteps; i++) {
-          if (this.currentPiece.move(this.board, 0, 1)) {
-            movedRows += 1;
-            this.resetLockDelay();
-            this.wasGroundedDuringSoftDrop = false;
-            this.softDropRows += 1;
-          } else {
-            break;
+        // Non-Standard modes: use time-based 1G speed (60 rows/second)
+        // Standard modes: use multiplier-based per-frame movement
+        if (!this.isStandardComboMode()) {
+          // Time-based 1G soft drop for non-Standard modes
+          const softDropRowsPerSecond = 60; // 1G = 60 rows/second
+          if (!this.softDropAccum) this.softDropAccum = 0;
+          this.softDropAccum += softDropRowsPerSecond * this.deltaTime;
+          const rowsToFall = Math.floor(this.softDropAccum);
+          if (rowsToFall > 0) {
+            for (let i = 0; i < rowsToFall; i++) {
+              if (this.currentPiece.move(this.board, 0, 1)) {
+                movedRows += 1;
+                this.resetLockDelay();
+                this.wasGroundedDuringSoftDrop = false;
+                this.softDropRows += 1;
+              } else {
+                break;
+              }
+            }
+            this.softDropAccum -= rowsToFall;
           }
+        } else {
+          // Standard modes: use multiplier-based movement
+          const softDropRowsPerSecond =
+            this.softDropMultiplier >= 100
+              ? 20 * BASE_FPS
+              : Math.max(1, this.softDropMultiplier) * BASE_FPS;
+          if (!this.softDropAccum) this.softDropAccum = 0;
+          this.softDropAccum += softDropRowsPerSecond * this.deltaTime;
+          const maxSteps = Math.floor(this.softDropAccum);
+          for (let i = 0; i < maxSteps; i++) {
+            if (this.currentPiece.move(this.board, 0, 1)) {
+              movedRows += 1;
+              this.resetLockDelay();
+              this.wasGroundedDuringSoftDrop = false;
+              this.softDropRows += 1;
+            } else {
+              break;
+            }
+          }
+          if (maxSteps > 0) this.softDropAccum = Math.max(0, this.softDropAccum - maxSteps);
         }
 
         const canMoveFurther = this.board.isValidPosition(
@@ -9829,7 +9883,8 @@ class GameScene extends Phaser.Scene {
 
         if (!canMoveFurther) {
           if (!this.isGrounded) {
-            if (this.rotationSystem === "ARS") {
+            // Lock immediately when soft drop is held and piece touches ground (TGM1 and 20G modes)
+            if (this.selectedMode === 'tgm1' || this.selectedMode === '20g' || this.selectedMode === 'master20g') {
               if (
                 !this.wasGroundedDuringSoftDrop &&
                 this.currentPiece.isTouchingGround(this.board)
@@ -9839,21 +9894,36 @@ class GameScene extends Phaser.Scene {
               this.lockPiece();
               this.wasGroundedDuringSoftDrop = true;
             } else {
-              this.isGrounded = true;
-              this.lockDelay += this.deltaTime;
-              if (this.lockDelay >= this.lockDelayMax) {
+              // Non-TGM1/20G modes: use original logic based on rotation system
+              if (this.rotationSystem === "ARS") {
+                if (
+                  !this.wasGroundedDuringSoftDrop &&
+                  this.currentPiece.isTouchingGround(this.board)
+                ) {
+                  this.currentPiece.playGroundSound(this);
+                }
                 this.lockPiece();
-              }
-              if (
-                !this.wasGroundedDuringSoftDrop &&
-                this.currentPiece.isTouchingGround(this.board)
-              ) {
-                this.currentPiece.playGroundSound(this);
                 this.wasGroundedDuringSoftDrop = true;
+              } else {
+                this.isGrounded = true;
+                this.lockDelay += this.deltaTime;
+                if (this.lockDelay >= this.lockDelayMax) {
+                  this.lockPiece();
+                }
+                if (
+                  !this.wasGroundedDuringSoftDrop &&
+                  this.currentPiece.isTouchingGround(this.board)
+                ) {
+                  this.currentPiece.playGroundSound(this);
+                  this.wasGroundedDuringSoftDrop = true;
+                }
               }
             }
           } else {
-            // Already grounded; avoid repeated ground sounds
+            // Already grounded - lock immediately if soft drop is held in TGM1/20G modes
+            if (this.selectedMode === 'tgm1' || this.selectedMode === '20g' || this.selectedMode === 'master20g') {
+              this.lockPiece();
+            }
           }
         } else if (movedRows === 0) {
           // No movement, still airborne
@@ -9864,6 +9934,7 @@ class GameScene extends Phaser.Scene {
         // Reset flag when soft drop key is not held
         this.softDropPressed = false;
         this.wasGroundedDuringSoftDrop = false;
+        this.softDropAccum = 0; // Reset accumulation for non-Standard modes
       }
 
       // Single press actions (keep JustDown for these)
@@ -9918,7 +9989,8 @@ class GameScene extends Phaser.Scene {
         return;
       }
       let zenRowsPerSecond = null;
-      if (this.zenSandboxConfig) {
+      // Only apply zen sandbox gravity override if zen mode is actually active
+      if (zenActive && this.zenSandboxConfig) {
         const cfg = this.zenSandboxConfig;
         const mode = cfg.gravityMode || "none";
         if (mode === "none") {
@@ -10011,7 +10083,16 @@ class GameScene extends Phaser.Scene {
     // ARE (Appearance Delay) handling
     if (this.areActive) {
       this.areTimer += this.deltaTime;
-      if (this.areTimer >= this.areDelay) {
+      let areTransitions = 0;
+      while (this.areActive && areTransitions < 4) {
+        const currentDelay = this.areDelay;
+        if (currentDelay > 0) {
+          if (this.areTimer < currentDelay) break;
+          this.areTimer -= currentDelay;
+        } else {
+          this.areTimer = 0;
+        }
+        areTransitions += 1;
         if (this.lineClearDelayActive) {
           // Line clear delay completed, perform flash fade-out and enter line ARE
           this.lineClearDelayActive = false;
@@ -10044,9 +10125,7 @@ class GameScene extends Phaser.Scene {
 
     // Update piece active time for scoring
     if (this.currentPiece && this.pieceSpawnTime > 0) {
-      this.pieceActiveTime = Math.floor(
-        (this.time.now - this.pieceSpawnTime) / (1000 / 60),
-      ); // Convert to frames
+      this.pieceActiveTime += 1; // Increment by 1 frame per update call
     }
 
     // Update grade based on performance (only for modes with grading)
@@ -10129,7 +10208,7 @@ class GameScene extends Phaser.Scene {
 
     // Update credits system
     if (this.creditsActive) {
-      this.creditsTimer += 1 / 60; // Convert frame time to seconds
+      this.creditsTimer += this.deltaTime; // Use deltaTime for frame-rate independence
 
       // End credits after duration
       if (this.creditsTimer >= this.creditsDuration) {
@@ -10759,16 +10838,18 @@ class GameScene extends Phaser.Scene {
     // Log final piece state after spawn
     if (this.areLeftHeld) {
       this.leftKeyPressed = true;
-      this.leftTimer = this.dasDelay;
+      this.leftTimer = this.areLeftDasCharge;
       this.leftInRepeat = false;
     }
     if (this.areRightHeld) {
       this.rightKeyPressed = true;
-      this.rightTimer = this.dasDelay;
+      this.rightTimer = this.areRightDasCharge;
       this.rightInRepeat = false;
     }
     this.areLeftHeld = false;
     this.areRightHeld = false;
+    this.areLeftDasCharge = 0;
+    this.areRightDasCharge = 0;
 
     // Update level on piece spawn
     if (this.isFirstSpawn) {
@@ -14353,13 +14434,12 @@ class GameScene extends Phaser.Scene {
 
     const totalScrollDistance =
       creditsStartY + lastLineCenterOffset + lastLineHeight / 2 - matrixTopY;
-    this.creditsScrollSpeed = totalScrollDistance / (this.creditsDuration * 60); // pixels per frame
+    this.creditsScrollSpeed = totalScrollDistance / this.creditsDuration; // pixels per second
 
     // Clamp to duration so we don't loop; end position aligns with creditsDuration
     const scrollProgress =
       Math.min(this.creditsTimer, this.creditsDuration) *
-      this.creditsScrollSpeed *
-      60;
+      this.creditsScrollSpeed;
 
     // Draw lines in order; keep spacing by using cumulative offsets
     for (let i = 0; i < lines.length; i++) {
@@ -14765,11 +14845,10 @@ class GameScene extends Phaser.Scene {
         (typeof fetchedGrade === "string" && fetchedGrade.trim() !== "" && fetchedGrade) ||
         (typeof tgm3Grade === "string" && tgm3Grade.trim() !== "" && tgm3Grade) ||
         (this.grade && this.grade) ||
-        (this.initialGradeBaseline ? this.initialGradeBaseline : "9");
+        (this.initialGradeBaseline ?? "9");
       this.grade = gradeToShow;
       if (this.gradeText) {
         this.gradeText.setText(gradeToShow);
-        this.gradeText.setVisible(true);
       }
       if (this.gradePointsText) {
         const gradePoints =
@@ -14787,7 +14866,6 @@ class GameScene extends Phaser.Scene {
               : null);
         const gpVal = gradePoints != null ? gradePoints.toString() : "0";
         this.gradePointsText.setText(gpVal);
-        this.gradePointsText.setVisible(true);
       }
 
       if (this.nextGradeText && this.shouldShowNextGradeText) {

@@ -29,7 +29,7 @@ class TGM3ShiraseMode extends BaseMode {
             lineClearBonus: 1,
             lowestGrade: '',
             gravityLevelCap: 1300,
-            hasGrading: false,
+            hasGrading: true,
             specialMechanics: {
                 torikan: true,
                 torikanTimes: {
@@ -105,9 +105,10 @@ class TGM3ShiraseMode extends BaseMode {
         if (sectionIndex < regretTimes.length && sectionTimeSec > regretTimes[sectionIndex]) {
             this.sectionGrades[sectionIndex] = "REGRET";
         }
+        // Only show REGRET in section tracker, not S1, S2, etc.
         if (gameScene) {
             gameScene.sectionPerformance = gameScene.sectionPerformance || [];
-            gameScene.sectionPerformance[sectionIndex] = this.sectionGrades[sectionIndex];
+            gameScene.sectionPerformance[sectionIndex] = this.sectionGrades[sectionIndex] === "REGRET" ? "REGRET" : "";
         }
     }
 
@@ -117,6 +118,16 @@ class TGM3ShiraseMode extends BaseMode {
     getARR() { return this.config.arr; }
     getLockDelay() { return this.currentTiming?.lock ?? this.config.lockDelay; }
     getLineClearDelay() { return this.currentTiming?.lineClear ?? this.config.lineClearDelay; }
+
+    getDisplayedGrade() {
+        // Return the most recent completed section grade for the main grade display
+        const sectionKeys = Object.keys(this.sectionGrades).map(Number).sort((a, b) => b - a);
+        if (sectionKeys.length > 0) {
+            return this.sectionGrades[sectionKeys[0]];
+        }
+        // Default to empty string before any sections are completed
+        return '';
+    }
 }
 
 // Export
