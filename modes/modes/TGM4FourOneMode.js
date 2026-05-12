@@ -15,7 +15,7 @@ class TGM4FourOneMode extends TGM4MasterMode {
             lineAre: 6/60,
             lockDelay: 8/60,
             lineClearDelay: 6/60,
-            nextPieces: 3,
+            nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
             levelUpType: 'piece',

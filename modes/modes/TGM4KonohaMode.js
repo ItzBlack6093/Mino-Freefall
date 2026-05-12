@@ -18,7 +18,7 @@ class TGM4KonohaMode extends BaseMode {
             lineAre: 12/60,
             lockDelay: 30/60,
             lineClearDelay: 6/60,
-            nextPieces: 3,
+            nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
             levelUpType: 'lines',

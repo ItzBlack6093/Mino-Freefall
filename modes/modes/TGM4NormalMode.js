@@ -33,7 +33,7 @@ class TGM4NormalMode extends BaseMode {
             lineAre: 30/60,
             lockDelay: 30/60,
             lineClearDelay: 41/60,
-            nextPieces: 3,
+            nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
             levelUpType: 'piece',
@@ -55,12 +55,7 @@ class TGM4NormalMode extends BaseMode {
 
     getTimingForLevel(level) {
         const frame = n => n / 60;
-        if (level < 500) return { are: frame(30), lineAre: frame(30), das: frame(16), lock: frame(30), lineClear: frame(41) };
-        if (level < 600) return { are: frame(27), lineAre: frame(27), das: frame(10), lock: frame(30), lineClear: frame(25) };
-        if (level < 700) return { are: frame(27), lineAre: frame(18), das: frame(10), lock: frame(30), lineClear: frame(16) };
-        if (level < 800) return { are: frame(18), lineAre: frame(14), das: frame(10), lock: frame(30), lineClear: frame(12) };
-        if (level < 900) return { are: frame(14), lineAre: frame(8), das: frame(10), lock: frame(30), lineClear: frame(6) };
-        return { are: frame(14), lineAre: frame(8), das: frame(8), lock: frame(17), lineClear: frame(6) };
+        return { are: frame(32), lineAre: frame(32), das: frame(18), lock: frame(30), lineClear: frame(40) };
     }
 
     updateTiming(level) {

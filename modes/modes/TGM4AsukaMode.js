@@ -7,7 +7,13 @@ class TGM4AsukaMode extends BaseMode {
         this.config = this.getModeConfig();
         this.currentTiming = this.getTimingForLevel(0);
         this.kitas = 0;
+        this.totalKitas = 0;
+        this.sectionKitas = 0;
+        this.easySectionBonus = 0;
         this.backsteps = 0;
+        this.sectionsPassed = 0;
+        this.maxLevelReached = 0;
+        this.completed = false;
     }
 
     getModeConfig() {
@@ -21,13 +27,14 @@ class TGM4AsukaMode extends BaseMode {
             lineAre: easy ? 16/60 : 8/60,
             lockDelay: 30/60,
             lineClearDelay: easy ? 12/60 : 6/60,
-            nextPieces: 3,
+            nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
             levelUpType: 'piece',
             lineClearBonus: 1,
             gravityLevelCap: easy ? 1000 : 1300,
             lowestGrade: easy ? 'Ae 1' : hard ? 'Am Grade 0' : '',
+            hasGrading: true,
             specialMechanics: {
                 kitaRequired: true,
                 rewind: true,
@@ -49,8 +56,15 @@ class TGM4AsukaMode extends BaseMode {
     }
 
     onLineClear(gameScene, linesCleared) {
-        if (linesCleared >= 4) this.kitas += 1;
+        const gainedKitas = linesCleared >= 4 ? 1 : gameScene?.lastClearType === 'bravo' ? (this.variant === 'normal' ? 2 : 1) : 0;
+        this.kitas += gainedKitas;
+        this.totalKitas += gainedKitas;
+        this.sectionKitas += gainedKitas;
         if (gameScene) gameScene.kitas = this.kitas;
+    }
+
+    handleLineClear(gameScene, linesCleared) {
+        this.onLineClear(gameScene, linesCleared);
     }
 
     onLevelUpdate(level, oldLevel, updateType = 'piece', amount = 1) {
@@ -60,16 +74,51 @@ class TGM4AsukaMode extends BaseMode {
         const currentSection = Math.floor(level / 100);
 
         if (nextSection > currentSection && this.kitas <= 0) nextLevel = currentSection * 100 + 99;
-        if (nextSection > currentSection && this.kitas > 0 && !this.config.specialMechanics.carriedKitas) this.kitas = 0;
+        if (nextSection > currentSection && this.kitas > 0) {
+            this.sectionsPassed = Math.max(this.sectionsPassed, nextSection);
+            if (this.variant === 'hard') this.kitas = Math.max(0, this.kitas - 1);
+            else this.kitas = 0;
+        }
 
+        this.maxLevelReached = Math.max(this.maxLevelReached, Math.min(nextLevel, max));
+        this.completed = this.maxLevelReached >= max;
         this.currentTiming = this.getTimingForLevel(nextLevel);
         return Math.min(nextLevel, max);
     }
 
+    onSectionComplete(gameScene, sectionIndex) {
+        this.sectionsPassed = Math.max(this.sectionsPassed, sectionIndex + 1);
+        if (this.variant === 'easy') {
+            this.easySectionBonus += 3 * Math.floor(this.sectionKitas / 3);
+        }
+        this.sectionKitas = 0;
+    }
+
+    onGameOver(gameScene) {
+        if (gameScene) {
+            this.maxLevelReached = Math.max(this.maxLevelReached, gameScene.level || 0);
+            this.completed = this.completed || this.maxLevelReached >= this.config.gravityLevelCap;
+        }
+    }
+
+    getAsukaEasyGradeValue() {
+        let grade = Math.floor(this.maxLevelReached / 70) * 6;
+        if (this.maxLevelReached >= 1000) grade += 7;
+        grade += this.easySectionBonus;
+        grade += Math.ceil((this.totalKitas - this.backsteps) / 2.5);
+        return grade;
+    }
+
     getDisplayedGrade() {
-        if (this.variant === 'normal' && this.config.gravityLevelCap <= 1300) return 'Am';
-        if (this.variant === 'hard') return `Am Grade ${Math.floor((this.config.gravityLevelCap || 0) / 100)}`;
-        return `Ae ${Math.max(1, Math.ceil((this.kitas - this.backsteps) / 2.5))}`;
+        if (this.variant === 'normal') return this.completed ? 'Am' : '';
+        if (this.variant === 'hard') return this.completed ? 'ASUKA Gm' : `Am Grade ${this.sectionsPassed}`;
+        const grade = this.getAsukaEasyGradeValue();
+        return grade > 0 ? `Ae ${grade}` : '';
+    }
+
+    getGradePoints() {
+        if (this.variant === 'easy') return this.getAsukaEasyGradeValue();
+        return this.kitas;
     }
 
     getARE() { return this.currentTiming?.are ?? this.config.are; }

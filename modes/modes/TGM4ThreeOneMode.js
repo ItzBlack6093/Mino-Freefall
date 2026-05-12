@@ -9,6 +9,8 @@ class TGM4ThreeOneMode extends TGM3ShiraseMode {
     getModeConfig() {
         return {
             ...super.getModeConfig(),
+            nextPieces: 6,
+            holdEnabled: true,
             das: 4/60,
             gravityLevelCap: 2000,
             specialMechanics: {

@@ -5,6 +5,7 @@ class Mode20G extends BaseMode {
     constructor() {
         super();
         this.modeName = '20G';
+        this.modeId = 'master_20g';
         this.description = 'Maximum gravity from the start! Good luck!';
     }
 

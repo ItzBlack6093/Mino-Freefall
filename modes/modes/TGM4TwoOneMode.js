@@ -9,7 +9,7 @@ class TGM4TwoOneMode extends TADeathMode {
     getModeConfig() {
         return {
             ...super.getModeConfig(),
-            nextPieces: 3,
+            nextPieces: 6,
             holdEnabled: true,
             gravityLevelCap: 999,
             lowestGrade: 'M',

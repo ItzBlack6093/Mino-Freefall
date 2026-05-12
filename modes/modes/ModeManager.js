@@ -24,10 +24,10 @@ class ModeManager {
             'tgm2': 0x888888,      // grey
             'tgm3': 0x888888,      // grey
             'tgm4': 0x888888,      // grey
-            '20g': 0xff0000,       // red
+            'master_20g': 0xff0000,       // red
             'tadeath': 0xff0000,   // red
             'shirase': 0xff0000,   // red
-            'master20g': 0xff0000, // red
+            'tgm4_rounds': 0xff0000, // red
             'marathon': 0x0088ff,  // blue
             'ultra': 0x0088ff,     // blue
             'zen': 0x0088ff,       // blue
@@ -83,10 +83,10 @@ class ModeManager {
             'tgm4_1_1': { modeClass: 'TGM4OneOneMode', name: '1.1', category: 'MASTER', config: { difficulty: 'master', description: 'TGM4 x.1 mode inspired by TGM1 with score-based grading' } },
 
             // 20G modes
-            '20g': { modeClass: 'Mode20G', name: '20G', category: '20G', config: { difficulty: '20g', description: 'Maximum gravity from the start! Good luck!' } },
+            'master_20g': { modeClass: 'Mode20G', name: '20G', category: '20G', config: { difficulty: '20g', description: 'Maximum gravity from the start! Good luck!' } },
             'tadeath': { modeClass: 'TADeathMode', name: 'T.A.Death', category: '20G', config: { difficulty: '20g', description: 'Difficult 20G challenge mode. Speed is key!' } },
             'shirase': { modeClass: 'TGM3ShiraseMode', name: 'Shirase', category: '20G', config: { difficulty: '20g', description: 'Lightning-fast speeds. Do you have what it takes?' } },
-            'master20g': { modeClass: 'TGM4MasterMode', name: 'Master', category: '20G', config: { difficulty: '20g', description: 'TGM4 Master: 2600-level 20G challenge with Pikii, Cyclone, and End Game hooks' } },
+            'tgm4_rounds': { modeClass: 'TGM4MasterMode', name: 'Rounds', category: '20G', config: { difficulty: '20g', description: 'TGM4 Rounds: 2600-level 20G challenge with Pikii, Cyclone, and End Game hooks' } },
             'tgm4_2_1': { modeClass: 'TGM4TwoOneMode', name: '2.1', category: '20G', config: { difficulty: '20g', description: 'TGM4 x.1 mode inspired by T.A. Death with a level 500 torikan' } },
             'tgm4_3_1': { modeClass: 'TGM4ThreeOneMode', name: '3.1', category: '20G', config: { difficulty: '20g', description: 'TGM4 x.1 mode inspired by Shirase, extended to level 2000' } },
             'tgm4_4_1': { modeClass: 'TGM4FourOneMode', name: '4.1', category: '20G', config: { difficulty: '20g', description: 'TGM4 hidden x.1 mode with fixed 20G and invisible rising-garbage roll hooks' } },
@@ -225,7 +225,7 @@ class ModeManager {
 
     // Preload commonly used modes
     preloadCommonModes() {
-        const commonModes = ['tgm1', '20g', 'marathon', 'zen', 'sprint_40'];
+        const commonModes = ['tgm1', 'master_20g', 'marathon', 'zen', 'sprint_40'];
         commonModes.forEach(modeId => {
             if (this.modeDefinitions[modeId]) {
                 this.loadMode(modeId);
