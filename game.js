@@ -12057,21 +12057,32 @@ class GameScene extends Phaser.Scene {
   }
 
   resetLockDelay() {
+    const isActuallyGrounded =
+      this.currentPiece && this.board
+        ? !this.currentPiece.canMoveDown(this.board)
+        : this.isGrounded;
+
+    if (this.isGrounded && !isActuallyGrounded) {
+      this.isGrounded = false;
+      this.lockDelay = 0;
+      this.lastGroundedY = null;
+      this.wasGroundedDuringSoftDrop = false;
+      return;
+    }
+
     // SRS: limit lock delay resets to prevent infinite stalling (unless Zen infinite resets)
-    if (this.rotationSystem === "SRS" && this.isGrounded && !this.isZenInfiniteResets()) {
+    if (this.rotationSystem === "SRS" && isActuallyGrounded && !this.isZenInfiniteResets()) {
       if (this.lockResetCount >= 15) {
-        this.lockPiece();
         return;
       }
       this.lockResetCount++;
     }
 
     // ARS: lock reset rules
-    if (this.rotationSystem === "ARS" && this.isGrounded) {
+    if (this.rotationSystem === "ARS" && isActuallyGrounded) {
       // If move-reset is enabled, behave like SRS (limited by 15 total resets unless Zen infinite)
       if (this.arsMoveResetEnabled) {
         if (!this.isZenInfiniteResets() && this.lockResetCount >= 15) {
-          this.lockPiece();
           return;
         }
         this.lockResetCount++;
