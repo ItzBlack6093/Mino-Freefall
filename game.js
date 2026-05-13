@@ -9316,10 +9316,14 @@ class GameScene extends Phaser.Scene {
     // Check COOL/REGRET banner scheduling after any potential section transition
     this.checkCoolRegretAnnouncements();
 
+    const skipDASMovementThisFrame = !this.gameOver && this.skipDASMovementAfterSpawn;
+    if (!this.gameOver) {
+      this.skipDASMovementAfterSpawn = false;
+    }
+
     if (this.gameOver) {
       // Skip any input-driven movement/rotation/drop.
-    } else
-    if (this.rotationSystem === "ARS") {
+    } else if (this.rotationSystem === "ARS") {
 
       // Hold first (if supported and not in ARE)
       if (!this.areActive && this.holdEnabled && this.holdRequest) {
@@ -9444,7 +9448,11 @@ class GameScene extends Phaser.Scene {
         this.leftTimer = 0;
         this.leftInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, -1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, -1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9457,7 +9465,11 @@ class GameScene extends Phaser.Scene {
         this.rightTimer = 0;
         this.rightInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, 1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, 1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9480,7 +9492,11 @@ class GameScene extends Phaser.Scene {
         this.leftTimer = 0;
         this.leftInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, -1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, -1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9492,7 +9508,11 @@ class GameScene extends Phaser.Scene {
         this.rightTimer = 0;
         this.rightInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, 1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, 1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9590,8 +9610,6 @@ class GameScene extends Phaser.Scene {
     }
 
     // Handle DAS for left key (cursors.left or z key)
-    const skipDASMovementThisFrame = this.skipDASMovementAfterSpawn;
-    this.skipDASMovementAfterSpawn = false;
     if (!skipDASMovementThisFrame && this.leftKeyPressed && leftPressed && !bothPressed) {
       this.leftTimer += this.deltaTime;
       if (!this.leftInRepeat) {
@@ -10119,9 +10137,9 @@ class GameScene extends Phaser.Scene {
       typeof this.isZenSandboxActive === "function" ? this.isZenSandboxActive() : false;
     if (!this.areActive) {
       // Only apply gravity when not in ARE
-      if (this.skipGravityThisFrame) {
+      const skipGravityThisFrame = this.skipGravityThisFrame;
+      if (skipGravityThisFrame) {
         this.skipGravityThisFrame = false;
-        return;
       }
       let zenRowsPerSecond = null;
       // Only apply zen sandbox gravity override if zen mode is actually active
@@ -10143,7 +10161,9 @@ class GameScene extends Phaser.Scene {
       const internalGravity = Math.max(1, this.getTGMGravitySpeed(this.level));
       if (!this.currentPiece) return;
 
-      if (internalGravity >= 5120) {
+      if (skipGravityThisFrame) {
+        this.gravityAccum = 0;
+      } else if (internalGravity >= 5120) {
         this.currentPiece.hardDrop(this.board);
         this.isGrounded = true;
         this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
@@ -10203,19 +10223,18 @@ class GameScene extends Phaser.Scene {
       if (this.lockDelayBufferedStart) {
         this.lockDelayBufferedStart = false;
         this.lockDelay = this.deltaTime;
-        return;
-      }
-
-      // If grounded and lock delay hasn't started, begin it now
-      if (this.lockDelay === 0) {
-        this.lockDelay = this.deltaTime;
       } else {
-        this.lockDelay += this.deltaTime;
-      }
+        // If grounded and lock delay hasn't started, begin it now
+        if (this.lockDelay === 0) {
+          this.lockDelay = this.deltaTime;
+        } else {
+          this.lockDelay += this.deltaTime;
+        }
 
-      if (this.lockDelay >= this.lockDelayMax) {
-        // 30 frames = 0.5 seconds
-        this.lockPiece();
+        if (this.lockDelay >= this.lockDelayMax) {
+          // 30 frames = 0.5 seconds
+          this.lockPiece();
+        }
       }
     }
 
@@ -10891,7 +10910,6 @@ class GameScene extends Phaser.Scene {
       // Prevent gravity and rendering the pre-drop position on the spawn frame
       this.gravityAccum = 0;
       this.skipGravityThisFrame = true;
-      this.suppressPieceRenderThisFrame = true;
     } else {
       // Normal spawning behavior for non-20G levels
       this.resetLockDelay();
