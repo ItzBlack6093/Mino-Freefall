@@ -10908,28 +10908,11 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    // Check for gravity high enough to warrant instant drop-on-spawn behavior
-    const internalGravity = this.getTGMGravitySpeed(this.level);
-    if (internalGravity >= 5120) {
-      // For 20G gravity, immediately hard drop the piece to the ground/stack
-      // but do NOT lock it - let it be placed on top of the stack
-      this.currentPiece.hardDrop(this.board);
-      // Set grounded state since piece is now on the ground/stack
-      this.isGrounded = true;
-      this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
-      // Start lock delay on the next frame to avoid instant lock on spawn
-      this.lockDelayBufferedStart = true;
-      this.lockDelay = 0;
-      // Prevent gravity and rendering the pre-drop position on the spawn frame
-      this.gravityAccum = 0;
-      this.skipGravityThisFrame = true;
-    } else {
-      // Normal spawning behavior for non-20G levels
-      this.resetLockDelay();
-      this.isGrounded = false;
-      // Reset gravity accumulator so falling time is measured from a clean state
-      this.gravityAccum = 0;
-    }
+    const hasInstantSpawnGravity = this.getTGMGravitySpeed(this.level) >= 5120;
+    this.resetLockDelay();
+    this.isGrounded = false;
+    this.gravityAccum = 0;
+    this.skipGravityThisFrame = false;
 
     // Track piece spawn time for scoring
     this.pieceSpawnTime = this.time.now;
@@ -11016,6 +10999,16 @@ class GameScene extends Phaser.Scene {
     // Play IRS sound if piece was pre-rotated
     if (wasPreRotated) {
       this.playSfx("IRS", 0.5);
+    }
+
+    if (hasInstantSpawnGravity) {
+      this.currentPiece.hardDrop(this.board);
+      this.isGrounded = true;
+      this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
+      this.lockDelayBufferedStart = true;
+      this.lockDelay = 0;
+      this.gravityAccum = 0;
+      this.skipGravityThisFrame = true;
     }
 
     // Reset finesse tracking for the freshly active piece
