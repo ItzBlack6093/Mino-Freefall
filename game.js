@@ -183,7 +183,7 @@ const FALLBACK_MODE_TYPE_COLORS = {
   easy: "#00ff00", // green
   standard: "#0088ff", // blue
   master: "#888888", // grey
-  "20g": "#ffff00", // yellow
+  "20g": "#ff0000", // red
   race: "#ff8800", // orange
   "all clear": "#ff69b4", // pink
   puzzle: "#8800ff", // purple
@@ -204,8 +204,13 @@ const MODE_TYPE_BY_ID = {
   tgm4: "MASTER",
   "master_20g": "20G",
   tadeath: "20G",
+  ta_death: "20G",
   shirase: "20G",
+  tgm3_shirase: "20G",
   tgm4_rounds: "20G",
+  tgm4_2_1: "20G",
+  tgm4_3_1: "20G",
+  tgm4_4_1: "20G",
   asuka_easy: "RACE",
   asuka_normal: "RACE",
   asuka_hard: "RACE",
@@ -2806,7 +2811,7 @@ class MenuScene extends Phaser.Scene {
       easy: "#00ff00", // green
       standard: "#0088ff", // blue
       master: "#888888", // grey
-      "20g": "#ffff00", // yellow
+      "20g": "#ff0000", // red
       race: "#ff8800", // orange
       "all clear": "#ff69b4", // pink
       puzzle: "#8800ff", // purple
