@@ -6245,6 +6245,13 @@ class GameScene extends Phaser.Scene {
           : 999;
       return Math.ceil(targetLines / this.getSectionLength());
     }
+    const modeId =
+      this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+    if (modeId === "tgm3_shirase") {
+      return 13;
+    }
     return 10;
   }
 
@@ -7999,9 +8006,15 @@ class GameScene extends Phaser.Scene {
         this.sectionTallyTexts = [];
         const sectionLength = this.getSectionLength();
         const maxSections = this.getMaxSectionsForTracker();
+        const trackerMaxLevel =
+          this.gameMode && typeof this.gameMode.getGravityLevelCap === "function"
+            ? this.gameMode.getGravityLevelCap()
+            : this.gravityLevelCap || 999;
         for (let i = 0; i < maxSections; i++) {
           const sectionStart = i * sectionLength;
-          const sectionEnd = sectionStart + sectionLength - 1;
+          const sectionEnd = i === maxSections - 1
+            ? trackerMaxLevel
+            : sectionStart + sectionLength - 1;
           const y = tableStartY + i * rowHeight;
 
           const label = this.add.text(
@@ -11527,6 +11540,7 @@ class GameScene extends Phaser.Scene {
 
     // Check for spin (T: 3-corner, others: immobile)
     const spinInfo = this.detectSpin(this.currentPiece, this.board);
+    this.lastSpinInfo = spinInfo;
 
     // Detect cleared lines for animation (don't clear them yet)
     const linesToClear = [];
@@ -15287,8 +15301,13 @@ class GameScene extends Phaser.Scene {
         }
 
         if (hasCompletedTime) {
-          runningTotal += splitTime || 0;
-          this.sectionTotalTexts[i].setText(this.formatTimeValue(runningTotal));
+          if (isTgm3Mode) {
+            // TGM3: right column shows per-section *70 split time, resetting each section
+            this.sectionTotalTexts[i].setText(this.formatTimeValue(splitTime));
+          } else {
+            runningTotal += splitTime || 0;
+            this.sectionTotalTexts[i].setText(this.formatTimeValue(runningTotal));
+          }
         }
       }
 

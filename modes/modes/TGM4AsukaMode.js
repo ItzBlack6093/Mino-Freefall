@@ -20,7 +20,7 @@ class TGM4AsukaMode extends BaseMode {
         const easy = this.variant === 'easy';
         const hard = this.variant === 'hard';
         return {
-            gravity: { type: 'static', value: easy ? 2560 : 5120 },
+            gravity: easy ? { type: 'custom', curve: level => this.getAsukaEasyGravity(level) } : { type: 'static', value: 5120 },
             das: easy ? 14/60 : 10/60,
             arr: 1/60,
             are: easy ? 20/60 : 12/60,
@@ -47,6 +47,11 @@ class TGM4AsukaMode extends BaseMode {
         };
     }
 
+    getAsukaEasyGravity(level) {
+        // TGM1 gravity curve offset by +300 levels
+        return this.getTGM1GravitySpeed(Math.max(0, level - 300));
+    }
+
     getTimingForLevel(level) {
         const frame = n => n / 60;
         if (this.variant === 'easy') return { are: frame(20), lineAre: frame(16), das: frame(14), lock: frame(30), lineClear: frame(12) };
@@ -56,7 +61,18 @@ class TGM4AsukaMode extends BaseMode {
     }
 
     onLineClear(gameScene, linesCleared) {
-        const gainedKitas = linesCleared >= 4 ? 1 : gameScene?.lastClearType === 'bravo' ? (this.variant === 'normal' ? 2 : 1) : 0;
+        let gainedKitas = 0;
+        const isTetris = linesCleared >= 4;
+        const isTSpinTriple = linesCleared === 3 && gameScene?.lastSpinInfo?.isTSpin;
+        const isBravo = gameScene?.bravoActive || gameScene?.lastClearType === 'bravo' || (gameScene?.lastClearType && gameScene.lastClearType.includes('all clear'));
+
+        if (isTetris || isTSpinTriple) {
+            gainedKitas += 1;
+        }
+        if (isBravo) {
+            gainedKitas += (this.variant === 'hard' ? 1 : 2);
+        }
+
         this.kitas += gainedKitas;
         this.totalKitas += gainedKitas;
         this.sectionKitas += gainedKitas;

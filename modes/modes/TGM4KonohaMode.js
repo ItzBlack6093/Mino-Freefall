@@ -29,11 +29,19 @@ class TGM4KonohaMode extends BaseMode {
                 allClearChallenge: true,
                 fivePieceSet: !hard,
                 sevenPieceSet: hard,
-                timeLimit: hard ? 250 : 120,
+                timeLimitStandard: 120,
+                timeLimitTGM: 250,
                 maxTime: 300,
                 konohaMasterBravoes: 110
             }
         };
+    }
+
+    getTimeLimit(rotationSystem) {
+        const isTGM = rotationSystem === 'ARS' || rotationSystem === 'TGM' || rotationSystem === 'classic';
+        return isTGM
+            ? this.config.specialMechanics.timeLimitTGM
+            : this.config.specialMechanics.timeLimitStandard;
     }
 
     onAllClear(gameScene) {

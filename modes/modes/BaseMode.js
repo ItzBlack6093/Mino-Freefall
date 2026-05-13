@@ -248,6 +248,7 @@ class BaseMode {
     
     // Get mode ID
     getModeId() {
+        if (this.modeId) return this.modeId;
         return this.modeName.toLowerCase().replace(/\s+/g, '_');
     }
     
