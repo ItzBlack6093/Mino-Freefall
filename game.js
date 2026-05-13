@@ -183,7 +183,7 @@ const FALLBACK_MODE_TYPE_COLORS = {
   easy: "#00ff00", // green
   standard: "#0088ff", // blue
   master: "#888888", // grey
-  "20g": "#ffff00", // yellow
+  "20g": "#ff0000", // red
   race: "#ff8800", // orange
   "all clear": "#ff69b4", // pink
   puzzle: "#8800ff", // purple
@@ -204,8 +204,13 @@ const MODE_TYPE_BY_ID = {
   tgm4: "MASTER",
   "master_20g": "20G",
   tadeath: "20G",
+  ta_death: "20G",
   shirase: "20G",
+  tgm3_shirase: "20G",
   tgm4_rounds: "20G",
+  tgm4_2_1: "20G",
+  tgm4_3_1: "20G",
+  tgm4_4_1: "20G",
   asuka_easy: "RACE",
   asuka_normal: "RACE",
   asuka_hard: "RACE",
@@ -261,6 +266,15 @@ function buildModeInfo(modeId, modeNameHint = "") {
   const modeLabelName = modeNameHint || modeId || "—";
   const modeTypeName = getModeTypeNameFromId(modeId);
   return { modeLabel: modeLabelName, modeTypeName };
+}
+
+function getModeInfoId(gameMode, selectedMode = "") {
+  const gameModeId =
+    gameMode && typeof gameMode.getModeId === "function"
+      ? gameMode.getModeId()
+      : "";
+  const registryHasGameModeId = !!getModeTypeNameFromId(gameModeId);
+  return registryHasGameModeId ? gameModeId : selectedMode || gameModeId;
 }
 
 function getUserAgentText() {
@@ -2806,7 +2820,7 @@ class MenuScene extends Phaser.Scene {
       easy: "#00ff00", // green
       standard: "#0088ff", // blue
       master: "#888888", // grey
-      "20g": "#ffff00", // yellow
+      "20g": "#ff0000", // red
       race: "#ff8800", // orange
       "all clear": "#ff69b4", // pink
       puzzle: "#8800ff", // purple
@@ -5190,9 +5204,10 @@ class AssetLoaderScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     createOrUpdateGlobalOverlay(
       this,
-      buildModeInfo(this.selectedMode, this.gameMode?.getName?.() || this.selectedMode),
+      buildModeInfo(modeId, this.gameMode?.getName?.() || modeId),
     );
 
     const ensureImageTexture = (key, url) => {
@@ -5305,9 +5320,10 @@ class LoadingScreenScene extends Phaser.Scene {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
 
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     createOrUpdateGlobalOverlay(
       this,
-      buildModeInfo(this.selectedMode, this.gameMode?.getName?.() || this.selectedMode),
+      buildModeInfo(modeId, this.gameMode?.getName?.() || modeId),
     );
 
     // Show loading text briefly, then proceed directly to GameScene
@@ -6079,10 +6095,7 @@ class GameScene extends Phaser.Scene {
   }
 
   getOverlayModeInfo() {
-    const modeId =
-      (this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode) || "";
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     const modeNameHint =
       (this.gameMode && typeof this.gameMode.getName === "function"
         ? this.gameMode.getName()
@@ -9316,10 +9329,14 @@ class GameScene extends Phaser.Scene {
     // Check COOL/REGRET banner scheduling after any potential section transition
     this.checkCoolRegretAnnouncements();
 
+    const skipDASMovementThisFrame = !this.gameOver && this.skipDASMovementAfterSpawn;
+    if (!this.gameOver) {
+      this.skipDASMovementAfterSpawn = false;
+    }
+
     if (this.gameOver) {
       // Skip any input-driven movement/rotation/drop.
-    } else
-    if (this.rotationSystem === "ARS") {
+    } else if (this.rotationSystem === "ARS") {
 
       // Hold first (if supported and not in ARE)
       if (!this.areActive && this.holdEnabled && this.holdRequest) {
@@ -9444,7 +9461,11 @@ class GameScene extends Phaser.Scene {
         this.leftTimer = 0;
         this.leftInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, -1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, -1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9457,7 +9478,11 @@ class GameScene extends Phaser.Scene {
         this.rightTimer = 0;
         this.rightInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, 1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, 1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9480,7 +9505,11 @@ class GameScene extends Phaser.Scene {
         this.leftTimer = 0;
         this.leftInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, -1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, -1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9492,7 +9521,11 @@ class GameScene extends Phaser.Scene {
         this.rightTimer = 0;
         this.rightInRepeat = false;
         // Initial movement
-        if (this.currentPiece && this.currentPiece.move(this.board, 1, 0)) {
+        if (
+          !skipDASMovementThisFrame &&
+          this.currentPiece &&
+          this.currentPiece.move(this.board, 1, 0)
+        ) {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
@@ -9590,8 +9623,6 @@ class GameScene extends Phaser.Scene {
     }
 
     // Handle DAS for left key (cursors.left or z key)
-    const skipDASMovementThisFrame = this.skipDASMovementAfterSpawn;
-    this.skipDASMovementAfterSpawn = false;
     if (!skipDASMovementThisFrame && this.leftKeyPressed && leftPressed && !bothPressed) {
       this.leftTimer += this.deltaTime;
       if (!this.leftInRepeat) {
@@ -10119,9 +10150,9 @@ class GameScene extends Phaser.Scene {
       typeof this.isZenSandboxActive === "function" ? this.isZenSandboxActive() : false;
     if (!this.areActive) {
       // Only apply gravity when not in ARE
-      if (this.skipGravityThisFrame) {
+      const skipGravityThisFrame = this.skipGravityThisFrame;
+      if (skipGravityThisFrame) {
         this.skipGravityThisFrame = false;
-        return;
       }
       let zenRowsPerSecond = null;
       // Only apply zen sandbox gravity override if zen mode is actually active
@@ -10143,7 +10174,9 @@ class GameScene extends Phaser.Scene {
       const internalGravity = Math.max(1, this.getTGMGravitySpeed(this.level));
       if (!this.currentPiece) return;
 
-      if (internalGravity >= 5120) {
+      if (skipGravityThisFrame) {
+        this.gravityAccum = 0;
+      } else if (internalGravity >= 5120) {
         this.currentPiece.hardDrop(this.board);
         this.isGrounded = true;
         this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
@@ -10203,19 +10236,18 @@ class GameScene extends Phaser.Scene {
       if (this.lockDelayBufferedStart) {
         this.lockDelayBufferedStart = false;
         this.lockDelay = this.deltaTime;
-        return;
-      }
-
-      // If grounded and lock delay hasn't started, begin it now
-      if (this.lockDelay === 0) {
-        this.lockDelay = this.deltaTime;
       } else {
-        this.lockDelay += this.deltaTime;
-      }
+        // If grounded and lock delay hasn't started, begin it now
+        if (this.lockDelay === 0) {
+          this.lockDelay = this.deltaTime;
+        } else {
+          this.lockDelay += this.deltaTime;
+        }
 
-      if (this.lockDelay >= this.lockDelayMax) {
-        // 30 frames = 0.5 seconds
-        this.lockPiece();
+        if (this.lockDelay >= this.lockDelayMax) {
+          // 30 frames = 0.5 seconds
+          this.lockPiece();
+        }
       }
     }
 
@@ -10891,7 +10923,6 @@ class GameScene extends Phaser.Scene {
       // Prevent gravity and rendering the pre-drop position on the spawn frame
       this.gravityAccum = 0;
       this.skipGravityThisFrame = true;
-      this.suppressPieceRenderThisFrame = true;
     } else {
       // Normal spawning behavior for non-20G levels
       this.resetLockDelay();
