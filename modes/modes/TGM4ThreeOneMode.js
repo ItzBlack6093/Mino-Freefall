@@ -37,8 +37,8 @@ class TGM4ThreeOneMode extends TGM3ShiraseMode {
         if (level < 600) return { are: frame(6),  lineAre: frame(5), das: frame(4),  lock: frame(13), lineClear: frame(3) };
         if (level < 1100) return { are: frame(6), lineAre: frame(5), das: frame(4),  lock: frame(12), lineClear: frame(3) };
         if (level < 1200) return { are: frame(6), lineAre: frame(5), das: frame(4),  lock: frame(10), lineClear: frame(3) };
-        if (level < 1300) return { are: frame(6), lineAre: frame(5), das: frame(4),  lock: frame(8),  lineClear: frame(3) };
-        return { are: frame(6), lineAre: frame(6), das: frame(4), lock: frame(15), lineClear: frame(6) };
+        if (level < 2000) return { are: frame(6), lineAre: frame(5), das: frame(4),  lock: frame(8),  lineClear: frame(3) };
+        return { are: frame(12), lineAre: frame(6), das: frame(6), lock: frame(17), lineClear: frame(4) };
     }
 
     onSectionComplete(gameScene, sectionIndex, sectionTimeSec) {

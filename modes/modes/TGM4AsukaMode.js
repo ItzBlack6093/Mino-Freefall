@@ -21,12 +21,12 @@ class TGM4AsukaMode extends BaseMode {
         const hard = this.variant === 'hard';
         return {
             gravity: easy ? { type: 'custom', curve: level => this.getAsukaEasyGravity(level) } : { type: 'static', value: 5120 },
-            das: easy ? 14/60 : 10/60,
+            das: 12/60,
             arr: 1/60,
-            are: easy ? 20/60 : 12/60,
-            lineAre: easy ? 16/60 : 8/60,
+            are: easy ? 18/60 : 20/60,
+            lineAre: easy ? 27/60 : 16/60,
             lockDelay: 30/60,
-            lineClearDelay: easy ? 12/60 : 6/60,
+            lineClearDelay: easy ? 40/60 : 12/60,
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
@@ -48,16 +48,24 @@ class TGM4AsukaMode extends BaseMode {
     }
 
     getAsukaEasyGravity(level) {
-        // TGM1 gravity curve offset by +300 levels
-        return this.getTGM1GravitySpeed(Math.max(0, level - 300));
+        // TGM1 gravity curve offset by +300 levels, capped at 5376 (21G)
+        const g = this.getTGM1GravitySpeed(Math.max(0, level - 300));
+        return g >= 5120 ? 5376 : g;
     }
 
     getTimingForLevel(level) {
         const frame = n => n / 60;
-        if (this.variant === 'easy') return { are: frame(20), lineAre: frame(16), das: frame(14), lock: frame(30), lineClear: frame(12) };
-        if (level < 500) return { are: frame(12), lineAre: frame(8), das: frame(10), lock: frame(30), lineClear: frame(6) };
-        if (level < 1000) return { are: frame(10), lineAre: frame(7), das: frame(8), lock: frame(25), lineClear: frame(5) };
-        return { are: frame(8), lineAre: frame(6), das: frame(8), lock: frame(20), lineClear: frame(4) };
+        if (this.variant === 'easy') {
+            if (level < 800) return { are: frame(18), lineAre: frame(27), das: frame(12), lock: frame(30), lineClear: frame(40) };
+            if (level < 900) return { are: frame(18), lineAre: frame(18), das: frame(12), lock: frame(30), lineClear: frame(25) };
+            return { are: frame(18), lineAre: frame(18), das: frame(12), lock: frame(30), lineClear: frame(16) };
+        }
+        if (level < 100) return { are: frame(20), lineAre: frame(16), das: frame(12), lock: frame(30), lineClear: frame(12) };
+        if (level < 200) return { are: frame(16), lineAre: frame(10), das: frame(12), lock: frame(26), lineClear: frame(6) };
+        if (level < 300) return { are: frame(16), lineAre: frame(10), das: frame(11), lock: frame(22), lineClear: frame(6) };
+        if (level < 400) return { are: frame(10), lineAre: frame(10), das: frame(10), lock: frame(18), lineClear: frame(6) };
+        if (level < 500) return { are: frame(9),  lineAre: frame(9),  das: frame(8),  lock: frame(15), lineClear: frame(5) };
+        return { are: frame(8), lineAre: frame(8), das: frame(8), lock: frame(15), lineClear: frame(4) };
     }
 
     onLineClear(gameScene, linesCleared) {

@@ -54,6 +54,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         if (level < 99) return { are: frame(12), lineAre: frame(8), das: frame(10), lock: frame(20), lineClear: frame(6) };
         if (level < 100) return { are: frame(12), lineAre: frame(8), das: frame(10), lock: frame(20), lineClear: frame(5) };
         if (level < 199) return { are: frame(12), lineAre: frame(7), das: frame(10), lock: frame(20), lineClear: frame(5) };
+        if (level < 200) return { are: frame(12), lineAre: frame(7), das: frame(10), lock: frame(20), lineClear: frame(4) };
         if (level < 300) return { are: frame(12), lineAre: frame(6), das: frame(10), lock: frame(20), lineClear: frame(4) };
         if (level < 400) return { are: frame(10), lineAre: frame(6), das: frame(8), lock: frame(20), lineClear: frame(4) };
         if (level < 499) return { are: frame(9), lineAre: frame(6), das: frame(8), lock: frame(19), lineClear: frame(4) };

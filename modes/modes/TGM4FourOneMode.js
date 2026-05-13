@@ -12,12 +12,12 @@ class TGM4FourOneMode extends BaseMode {
     getModeConfig() {
         return {
             gravity: { type: 'static', value: 5120 },
-            das: 6/60,
+            das: 4/60,
             arr: 1/60,
             are: 6/60,
-            lineAre: 6/60,
+            lineAre: 5/60,
             lockDelay: 8/60,
-            lineClearDelay: 6/60,
+            lineClearDelay: 3/60,
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,

@@ -11,13 +11,13 @@ class TGM4KonohaMode extends BaseMode {
     getModeConfig() {
         const hard = this.variant === 'hard';
         return {
-            gravity: { type: 'static', value: 256 },
-            das: 12/60,
+            gravity: hard ? { type: 'custom', curve: level => this.getKonohaGravity(level) } : { type: 'static', value: 4 },
+            das: 18/60,
             arr: 1/60,
-            are: 12/60,
-            lineAre: 12/60,
-            lockDelay: 30/60,
-            lineClearDelay: 6/60,
+            are: 27/60,
+            lineAre: 27/60,
+            lockDelay: 60/60,
+            lineClearDelay: 25/60,
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
@@ -35,6 +35,28 @@ class TGM4KonohaMode extends BaseMode {
                 konohaMasterBravoes: 110
             }
         };
+    }
+
+    getKonohaGravity(level) {
+        if (level < 8) return 4;
+        if (level < 19) return 5;
+        if (level < 35) return 6;
+        if (level < 40) return 8;
+        if (level < 50) return 10;
+        if (level < 60) return 12;
+        if (level < 70) return 16;
+        if (level < 80) return 32;
+        if (level < 90) return 48;
+        if (level < 101) return 64;
+        if (level < 112) return 16;
+        if (level < 121) return 48;
+        if (level < 132) return 80;
+        if (level < 144) return 128;
+        if (level < 156) return 112;
+        if (level < 167) return 144;
+        if (level < 177) return 176;
+        if (level < 200) return 192;
+        return 5376;
     }
 
     getTimeLimit(rotationSystem) {

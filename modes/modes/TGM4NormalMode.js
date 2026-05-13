@@ -27,12 +27,12 @@ class TGM4NormalMode extends BaseMode {
     getModeConfig() {
         return {
             gravity: { type: 'custom', curve: level => this.getGravitySpeed(level) },
-            das: 16/60,
+            das: 18/60,
             arr: 1/60,
-            are: 30/60,
-            lineAre: 30/60,
+            are: 32/60,
+            lineAre: 32/60,
             lockDelay: 30/60,
-            lineClearDelay: 41/60,
+            lineClearDelay: 40/60,
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
@@ -50,7 +50,8 @@ class TGM4NormalMode extends BaseMode {
     }
 
     getGravitySpeed(level) {
-        return this.getTGM1GravitySpeed(level);
+        const g = this.getTGM1GravitySpeed(level);
+        return g >= 5120 ? 5376 : g;
     }
 
     getTimingForLevel(level) {
