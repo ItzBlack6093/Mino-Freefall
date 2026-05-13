@@ -5421,6 +5421,7 @@ class GameScene extends Phaser.Scene {
     this.rightInRepeat = false;
     this.softDropPressed = false;
     this.softDropMovedThisPiece = false;
+    this.skipDASMovementAfterSpawn = false;
 
     // Rotation and action key states
     this.kKeyPressed = false;
@@ -5677,6 +5678,7 @@ class GameScene extends Phaser.Scene {
     this.areRightHeld = false;
     this.areLeftDasCharge = 0;
     this.areRightDasCharge = 0;
+    this.skipDASMovementAfterSpawn = false;
     this.areRotationKeys = { k: false, space: false, l: false }; // Track which rotation keys are held during ARE
 
     // Enhanced scoring system
@@ -7095,6 +7097,52 @@ class GameScene extends Phaser.Scene {
     return this.areDelay > 0 || this.pendingLineAREDelay > 0 || lineAre > 0 || lineClearDelay > 0;
   }
 
+  resetActiveDASState() {
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = false;
+    this.leftTimer = 0;
+    this.rightTimer = 0;
+    this.leftInRepeat = false;
+    this.rightInRepeat = false;
+  }
+
+  updateBufferedDASInput(leftPressed, rightPressed, deltaSeconds) {
+    this.areLeftHeld = !!leftPressed;
+    this.areRightHeld = !!rightPressed;
+    this.areLeftDasCharge = this.areLeftHeld
+      ? Math.min(this.dasDelay, (this.areLeftDasCharge || 0) + deltaSeconds)
+      : 0;
+    this.areRightDasCharge = this.areRightHeld
+      ? Math.min(this.dasDelay, (this.areRightDasCharge || 0) + deltaSeconds)
+      : 0;
+  }
+
+  primeDASForSpawn(allowDasInputs) {
+    const leftHeldAtSpawn = allowDasInputs && this.areLeftHeld;
+    const rightHeldAtSpawn = allowDasInputs && this.areRightHeld;
+    const leftChargeAtSpawn = leftHeldAtSpawn ? Math.min(this.dasDelay, this.areLeftDasCharge || 0) : 0;
+    const rightChargeAtSpawn = rightHeldAtSpawn ? Math.min(this.dasDelay, this.areRightDasCharge || 0) : 0;
+
+    this.resetActiveDASState();
+
+    if (leftHeldAtSpawn) {
+      this.leftKeyPressed = true;
+      this.leftTimer = leftChargeAtSpawn;
+    }
+    if (rightHeldAtSpawn) {
+      this.rightKeyPressed = true;
+      this.rightTimer = rightChargeAtSpawn;
+    }
+    if (leftHeldAtSpawn || rightHeldAtSpawn) {
+      this.skipDASMovementAfterSpawn = true;
+    }
+
+    this.areLeftHeld = false;
+    this.areRightHeld = false;
+    this.areLeftDasCharge = 0;
+    this.areRightDasCharge = 0;
+  }
+
   getLeaderboard(modeId) {
     const key = `leaderboard_${modeId}`;
     const stored = localStorage.getItem(key);
@@ -8187,6 +8235,7 @@ class GameScene extends Phaser.Scene {
     this.isGrounded = false;
     this.lockDelay = 0;
     this.lockDelayBufferedStart = false;
+    this.skipDASMovementAfterSpawn = false;
     this.stackAlpha = 0.8;
 
     // Reset randomizer / first-spawn logic so the first spawned piece does not increment level.
@@ -9164,8 +9213,7 @@ class GameScene extends Phaser.Scene {
           !!(this.keys.right && this.keys.right.isDown);
         const zKeyDown = !!(this.keys.left && this.keys.left.isDown);
         const cKeyDown = !!(this.keys.right && this.keys.right.isDown);
-        this.areLeftHeld = leftDown || zKeyDown;
-        this.areRightHeld = rightDown || cKeyDown;
+        this.updateBufferedDASInput(leftDown || zKeyDown, rightDown || cKeyDown, this.deltaTime);
       }
       this.draw();
       return;
@@ -9542,7 +9590,9 @@ class GameScene extends Phaser.Scene {
     }
 
     // Handle DAS for left key (cursors.left or z key)
-    if (this.leftKeyPressed && leftPressed && !bothPressed) {
+    const skipDASMovementThisFrame = this.skipDASMovementAfterSpawn;
+    this.skipDASMovementAfterSpawn = false;
+    if (!skipDASMovementThisFrame && this.leftKeyPressed && leftPressed && !bothPressed) {
       this.leftTimer += this.deltaTime;
       if (!this.leftInRepeat) {
         // Wait for DAS delay
@@ -9592,7 +9642,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Handle DAS for right key (cursors.right or c key)
-    if (this.rightKeyPressed && rightPressed && !bothPressed) {
+    if (!skipDASMovementThisFrame && this.rightKeyPressed && rightPressed && !bothPressed) {
       this.rightTimer += this.deltaTime;
       if (!this.rightInRepeat) {
         // Wait for DAS delay
@@ -9663,14 +9713,7 @@ class GameScene extends Phaser.Scene {
     const allowAreInputs = this.shouldAllowAREInputs();
     if (this.areActive || !this.currentPiece) {
       if (allowAreInputs) {
-        this.areLeftHeld = leftDown || zKeyDown;
-        this.areRightHeld = rightDown || cKeyDown;
-        this.areLeftDasCharge = this.areLeftHeld
-          ? Math.min(this.dasDelay, this.areLeftDasCharge + this.deltaTime)
-          : 0;
-        this.areRightDasCharge = this.areRightHeld
-          ? Math.min(this.dasDelay, this.areRightDasCharge + this.deltaTime)
-          : 0;
+        this.updateBufferedDASInput(leftDown || zKeyDown, rightDown || cKeyDown, this.deltaTime);
         this.areRotationKeys.k = kKeyDown;
         this.areRotationKeys.space = spaceKeyDown;
         this.areRotationKeys.l = lKeyDown;
@@ -9708,8 +9751,10 @@ class GameScene extends Phaser.Scene {
         this.areRotationDirection = 0;
         this.irsActivated = false;
         this.areHoldPressed = false;
-        this.areLeftDasCharge = 0;
-        this.areRightDasCharge = 0;
+        if (!this.isFirstSpawn) {
+          this.areLeftDasCharge = 0;
+          this.areRightDasCharge = 0;
+        }
       }
     } else {
       // Reset ARE rotation tracking when not in ARE and piece exists
@@ -9717,8 +9762,6 @@ class GameScene extends Phaser.Scene {
       this.areRotationDirection = 0;
       this.irsActivated = false;
       this.areHoldPressed = false;
-      this.areLeftDasCharge = 0;
-      this.areRightDasCharge = 0;
     }
 
     // Update mino fading system (runs even when game is over)
@@ -10863,6 +10906,7 @@ class GameScene extends Phaser.Scene {
 
     // Preserve ARE input states so we can apply IRS/IHS correctly after swapping
     const allowAreInputs = this.shouldAllowAREInputs();
+    const allowDasInputs = allowAreInputs || this.isFirstSpawn;
     const rotationDirectionAtSpawn = allowAreInputs ? this.areRotationDirection : 0;
     const rotationKeysAtSpawn = allowAreInputs ? { ...this.areRotationKeys } : {};
     const holdPressedAtSpawn = allowAreInputs ? this.areHoldPressed : false;
@@ -10946,21 +10990,7 @@ class GameScene extends Phaser.Scene {
     // Reset finesse tracking for the freshly active piece
     this.resetFinessePieceInputs(this.currentPiece);
 
-    // Log final piece state after spawn
-    if (this.areLeftHeld) {
-      this.leftKeyPressed = true;
-      this.leftTimer = this.areLeftDasCharge;
-      this.leftInRepeat = false;
-    }
-    if (this.areRightHeld) {
-      this.rightKeyPressed = true;
-      this.rightTimer = this.areRightDasCharge;
-      this.rightInRepeat = false;
-    }
-    this.areLeftHeld = false;
-    this.areRightHeld = false;
-    this.areLeftDasCharge = 0;
-    this.areRightDasCharge = 0;
+    this.primeDASForSpawn(allowDasInputs);
 
     // Update level on piece spawn
     if (this.isFirstSpawn) {
@@ -11675,6 +11705,7 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayActive = true;
       this.lineClearPhase = false;
       this.isClearingLines = true;
+      this.resetActiveDASState();
       // Reset ARE input state when ARE starts
       this.areRotationDirection = 0;
       this.areHoldPressed = false;
@@ -11697,6 +11728,7 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayActive = false;
       this.lineClearDelayDuration = 0;
       this.pendingLineAREDelay = 0;
+      this.resetActiveDASState();
       // Reset ARE input state when ARE starts
       this.areRotationDirection = 0;
       this.areHoldPressed = false;
