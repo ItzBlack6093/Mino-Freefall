@@ -268,6 +268,15 @@ function buildModeInfo(modeId, modeNameHint = "") {
   return { modeLabel: modeLabelName, modeTypeName };
 }
 
+function getModeInfoId(gameMode, selectedMode = "") {
+  const gameModeId =
+    gameMode && typeof gameMode.getModeId === "function"
+      ? gameMode.getModeId()
+      : "";
+  const registryHasGameModeId = !!getModeTypeNameFromId(gameModeId);
+  return registryHasGameModeId ? gameModeId : selectedMode || gameModeId;
+}
+
 function getUserAgentText() {
   const ua = navigator?.userAgent || "";
   const uaData = navigator?.userAgentData;
@@ -5195,9 +5204,10 @@ class AssetLoaderScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     createOrUpdateGlobalOverlay(
       this,
-      buildModeInfo(this.selectedMode, this.gameMode?.getName?.() || this.selectedMode),
+      buildModeInfo(modeId, this.gameMode?.getName?.() || modeId),
     );
 
     const ensureImageTexture = (key, url) => {
@@ -5310,9 +5320,10 @@ class LoadingScreenScene extends Phaser.Scene {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
 
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     createOrUpdateGlobalOverlay(
       this,
-      buildModeInfo(this.selectedMode, this.gameMode?.getName?.() || this.selectedMode),
+      buildModeInfo(modeId, this.gameMode?.getName?.() || modeId),
     );
 
     // Show loading text briefly, then proceed directly to GameScene
@@ -6084,10 +6095,7 @@ class GameScene extends Phaser.Scene {
   }
 
   getOverlayModeInfo() {
-    const modeId =
-      (this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode) || "";
+    const modeId = getModeInfoId(this.gameMode, this.selectedMode);
     const modeNameHint =
       (this.gameMode && typeof this.gameMode.getName === "function"
         ? this.gameMode.getName()
