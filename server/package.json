@@ -1,0 +1,13 @@
+{
+  "name": "mino-freefall-server",
+  "version": "1.0.0",
+  "description": "Online 1v1 matchmaking server for Mino Freefall",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "ws": "^8.18.0"
+  }
+}
