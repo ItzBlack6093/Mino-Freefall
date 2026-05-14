@@ -9018,17 +9018,17 @@ class GameScene extends Phaser.Scene {
       { end: 1300, key: "mf3_4" },
     ];
     const schedules = {
-      normal: { segments: [{ end: 299, key: "mf1_1" }, { end: 999, key: "mf1_2" }], credits: "mf1_endroll" },
-      easy_normal: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
+      normal: { segments: [{ end: 299, key: "mf1_1" }, { end: 999, key: "mf1_2" }], credits: "mf2_endroll" },
+      easy_normal: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf2_endroll" },
       easy_easy: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
-      marathon: { segments: [{ end: 49, key: "mf_std_1" }, { end: 99, key: "mf_std_2" }, { end: 999, key: "mf_std_3" }], credits: "mf1_endroll" },
+      marathon: { segments: [{ end: 49, key: "mf_std_1" }, { end: 99, key: "mf_std_2" }, { end: 999, key: "mf_std_3" }], credits: "mf2_endroll" },
       sprint_40: { segments: [{ end: 999, key: "mf1_1" }] },
       sprint_100: { segments: [{ end: 999, key: "mf1_1" }] },
       ultra: { segments: [{ end: 999, key: "mf1_1" }] },
       zen: { segments: [{ end: 999, key: "mf_zen" }] },
-      tgm1: { segments: sharedTGM1, credits: "mf1_endroll" },
-      tgm_plus: { segments: sharedTGM1, credits: "mf1_endroll" },
-      "master_20g": { segments: sharedTGM1, credits: "mf1_endroll" },
+      tgm1: { segments: sharedTGM1, credits: "mf2_endroll" },
+      tgm_plus: { segments: sharedTGM1, credits: "mf2_endroll" },
+      "master_20g": { segments: sharedTGM1, credits: "mf2_endroll" },
       tgm2: {
         segments: [
           { end: 499, key: "mf1_1" },
@@ -9036,7 +9036,7 @@ class GameScene extends Phaser.Scene {
           { end: 899, key: "mf2_3" },
           { end: 999, key: "mf2_4" },
         ],
-        credits: "mf1_endroll",
+        credits: "mf2_endroll",
       },
       tgm3: {
         segments: [
@@ -9044,7 +9044,7 @@ class GameScene extends Phaser.Scene {
           { end: 799, key: "mf1_2" },
           { end: 1899, key: "mf2_4" },
         ],
-        credits: "mf1_endroll",
+        credits: "mf2_endroll",
       },
       tgm4: {
         segments: [
@@ -9052,10 +9052,10 @@ class GameScene extends Phaser.Scene {
           { end: 499, key: "mf1_2" },
           { end: 999, key: "mf2_3" },
         ],
-        credits: "mf1_endroll",
+        credits: "mf2_endroll",
       },
       tadeath: { segments: sharedTADeath, credits: "mf1_endroll" },
-      shirase: { segments: sharedShirase, credits: "mf1_endroll" },
+      shirase: { segments: sharedShirase, credits: "mf2_endroll" },
       tgm4_rounds: {
         segments: [
           { end: 299, key: "mf1_2" },
@@ -9064,27 +9064,27 @@ class GameScene extends Phaser.Scene {
           { end: 1299, key: "mf2_3" },
           { end: 2600, key: "mf2_4" },
         ],
-        credits: "mf1_endroll",
+        credits: "mf2_endroll",
         endgame: "mf4_endgame",
       },
-      tgm4_1_1: { segments: sharedTGM1, credits: "mf1_endroll" },
-      tgm4_2_1: { segments: sharedTADeath, credits: "mf1_endroll" },
+      tgm4_1_1: { segments: sharedTGM1, credits: "mf2_endroll" },
+      tgm4_2_1: { segments: sharedTADeath, credits: "mf2_endroll" },
       tgm4_3_1: {
         segments: [
           { end: 499, key: "mf2_4" },
-          { end: 699, key: "mf3_4" },
-          { end: 999, key: "mf1_2" },
+          { end: 999, key: "mf3_4" },
+          { end: 1299, key: "mf1_2" },
           { end: 2000, key: "mf3_6" },
         ],
-        credits: "mf1_endroll",
+        credits: "mf2_endroll",
       },
-      tgm4_4_1: { segments: [{ end: 999, key: "mf3_6" }], credits: "mf1_endroll" },
+      tgm4_4_1: { segments: [{ end: 999, key: "mf3_6" }], credits: "mf2_endroll" },
       asuka_easy: { segments: sharedAsuka },
       asuka_normal: { segments: sharedAsuka },
       asuka_hard: { segments: sharedAsuka },
       tgm3_sakura: { segments: [{ end: 999, key: "mf1_1" }] },
     };
-    return schedules[modeId] || { segments: sharedTGM1, credits: "mf1_endroll" };
+    return schedules[modeId] || { segments: sharedTGM1, credits: "mf2_endroll" };
   }
 
   playBgmByKey(key) {
@@ -14215,9 +14215,10 @@ class GameScene extends Phaser.Scene {
 
     // Load credits BGM if available
     try {
-      // Use mf1_2.mp3 for TGM2 Normal mode credits, otherwise use mf1_endroll.mp3
-      const creditsBGMKey =
-        this.selectedMode === "tgm2_normal" ? "mf1_2" : "mf1_endroll";
+      // Credits BGM: mf1_endroll for TGM3 Easy and T.A.Death, mf1_2 for TGM2 Normal, mf2_endroll for all others
+      let creditsBGMKey = "mf2_endroll";
+      if (this.selectedMode === "tgm2_normal") creditsBGMKey = "mf1_2";
+      else if (this.selectedMode === "tgm3_easy" || this.selectedMode === "tadeath") creditsBGMKey = "mf1_endroll";
       this.creditsBGM = this.sound.add(creditsBGMKey, {
         loop: true,
         volume: 0.3,
