@@ -12506,6 +12506,18 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    // Skip default scoring for modes with custom scoring (e.g., TGM2 Normal x6 multiplier)
+    const modeConfig = this.gameMode && typeof this.gameMode.getConfig === "function"
+      ? this.gameMode.getConfig()
+      : {};
+    if (modeConfig.customScoring) {
+      this.totalLines += lines;
+      this.softDropRows = 0;
+      this.hardDropRows = 0;
+      this.lastPieceType = pieceType;
+      return;
+    }
+
     // Determine scoring system based on mode
     const guidelineModes = new Set([
       "marathon",
@@ -15392,8 +15404,8 @@ class GameScene extends Phaser.Scene {
       !this.fadingComplete &&
       !suppressRender
     ) {
-      // Ghost piece only visible from levels 0-100 in TGM1
-      if (this.level <= 100) {
+      // Ghost piece: always visible in Easy/Normal modes, only 0-100 in other modes
+      if (this.isNormalOrEasyMode() || this.level <= 100) {
         const ghost = this.currentPiece.getGhostPosition(this.board);
         ghost.draw(
           this,
