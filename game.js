@@ -2437,6 +2437,131 @@ class MenuScene extends Phaser.Scene {
     this.updateLeaderboardDisplay();
   }
 
+  /**
+   * Compute MR (Mino Rating) from Glicko rating.
+   * Asymptotically clamps from 0 to 40 using: MR = 40 * (1 - e^(-r / 1500))
+   * where r is clamped to >= 0. Returns a value with 2 decimal places.
+   */
+  computeMR(glickoRating) {
+    const r = Math.max(0, glickoRating);
+    const mr = 40 * (1 - Math.exp(-r / 1500));
+    return Math.round(mr * 100) / 100;
+  }
+
+  /**
+   * Display the player's Rating, Glicko, RD, and MR in the right-side panel
+   * (replaces leaderboard for versus modes).
+   */
+  updateVersusRatingDisplay() {
+    // Clear existing leaderboard entries
+    if (this.leaderboardEntries && this.leaderboardEntries.length > 0) {
+      this.leaderboardEntries.forEach((entry) => {
+        Object.values(entry).forEach((t) => t && t.destroy && t.destroy());
+      });
+    }
+    this.leaderboardEntries = [];
+
+    // Read player stats from localStorage / NetworkManager
+    const nm = window.__minoNetworkManager;
+    const rating = nm ? nm.rating : (parseInt(localStorage.getItem("mino_rating"), 10) || 1500);
+    const rd = nm ? nm.rd : (parseFloat(localStorage.getItem("mino_rd")) || 350);
+    const gamesPlayed = nm ? nm.gamesPlayed : (parseInt(localStorage.getItem("mino_games_played"), 10) || 0);
+    const provisional = nm ? nm.provisional : (gamesPlayed < 10);
+    const mr = this.computeMR(rating);
+
+    const baseX = this.leaderboardContainer.x;
+    const baseY = this.leaderboardContainer.y;
+
+    // MR (prominent)
+    const mrLabel = this.add
+      .text(baseX, baseY - 40, "MR", {
+        fontSize: "16px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5, 0.5);
+
+    const mrValue = this.add
+      .text(baseX, baseY - 15, provisional ? "?.??" : mr.toFixed(2), {
+        fontSize: "36px",
+        fill: "#ffcc00",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5, 0.5);
+
+    // Rating
+    const ratingLabel = this.add
+      .text(baseX - 60, baseY + 30, "Rating", {
+        fontSize: "14px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0, 0.5);
+
+    const ratingValue = this.add
+      .text(baseX + 70, baseY + 30, provisional ? "?" : String(rating), {
+        fontSize: "18px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(1, 0.5);
+
+    // Glicko (same as rating value but labeled explicitly)
+    const glickoLabel = this.add
+      .text(baseX - 60, baseY + 60, "Glicko", {
+        fontSize: "14px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0, 0.5);
+
+    const glickoValue = this.add
+      .text(baseX + 70, baseY + 60, provisional ? "?" : String(rating), {
+        fontSize: "18px",
+        fill: "#00ffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(1, 0.5);
+
+    // RD (Rating Deviation)
+    const rdLabel = this.add
+      .text(baseX - 60, baseY + 90, "RD", {
+        fontSize: "14px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0, 0.5);
+
+    const rdValue = this.add
+      .text(baseX + 70, baseY + 90, provisional ? "?" : rd.toFixed(1), {
+        fontSize: "18px",
+        fill: "#aaaaaa",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(1, 0.5);
+
+    // Provisional badge
+    if (provisional) {
+      const provText = this.add
+        .text(baseX, baseY + 125, `Provisional (${gamesPlayed}/10 games)`, {
+          fontSize: "12px",
+          fill: "#ff8800",
+          fontFamily: "Courier New",
+        })
+        .setOrigin(0.5, 0.5);
+      this.leaderboardEntries.push({ provText });
+    }
+
+    this.leaderboardEntries.push({
+      mrLabel, mrValue, ratingLabel, ratingValue,
+      glickoLabel, glickoValue, rdLabel, rdValue,
+    });
+  }
+
   updateMenuDisplay() {
     const currentModeType = this.modeTypes[this.currentModeTypeIndex];
     const currentSubmode = currentModeType.modes[this.currentSubmodeIndex];
@@ -2458,7 +2583,8 @@ class MenuScene extends Phaser.Scene {
     // Recreate mode type list with updated selection highlighting
     this.createModeTypeListDisplay();
 
-    // Update leaderboard (hide for Zen)
+    // Update leaderboard / rating panel
+    const isVersusMode = modeId === "versus_guideline" || modeId === "versus_tgm";
     if (modeId === "zen") {
       if (this.leaderboardEntries && this.leaderboardEntries.length > 0) {
         this.leaderboardEntries.forEach((entry) => {
@@ -2470,9 +2596,22 @@ class MenuScene extends Phaser.Scene {
       if (this.leaderboardTitle) this.leaderboardTitle.setVisible(false);
       if (this.leaderboardPlaceholder)
         this.leaderboardPlaceholder.setVisible(true);
+    } else if (isVersusMode) {
+      // Show rating panel instead of leaderboard for versus modes
+      if (this.leaderboardPlaceholder)
+        this.leaderboardPlaceholder.setVisible(false);
+      if (this.leaderboardContainer) this.leaderboardContainer.setVisible(true);
+      if (this.leaderboardTitle) {
+        this.leaderboardTitle.setText("PLAYER RATING");
+        this.leaderboardTitle.setVisible(true);
+      }
+      this.updateVersusRatingDisplay();
     } else {
       if (this.leaderboardContainer) this.leaderboardContainer.setVisible(true);
-      if (this.leaderboardTitle) this.leaderboardTitle.setVisible(true);
+      if (this.leaderboardTitle) {
+        this.leaderboardTitle.setText("BEST SCORES");
+        this.leaderboardTitle.setVisible(true);
+      }
       if (this.leaderboardPlaceholder)
         this.leaderboardPlaceholder.setVisible(false);
       this.updateLeaderboard(currentSubmode.id);
@@ -15944,6 +16083,16 @@ class GameScene extends Phaser.Scene {
 }
 
 // ---------------------------------------------------------------------------
+// MR (Mino Rating) — global helper for client-side computation
+// Asymptotically clamps from 0 to 40: MR = 40 * (1 - e^(-r / 1500))
+// ---------------------------------------------------------------------------
+function computeMRClient(glickoRating) {
+  const r = Math.max(0, glickoRating);
+  const mr = 40 * (1 - Math.exp(-r / 1500));
+  return Math.round(mr * 100) / 100;
+}
+
+// ---------------------------------------------------------------------------
 // MatchmakingScene — Queue UI, rating display, opponent info
 // ---------------------------------------------------------------------------
 class MatchmakingScene extends Phaser.Scene {
@@ -16062,12 +16211,28 @@ class MatchmakingScene extends Phaser.Scene {
       this.scene.start("MenuScene");
     });
 
+    // MR display
+    this.mrText = this.add
+      .text(centerX, 90, "", {
+        fontSize: "28px",
+        fill: "#ffcc00",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
     // Network event handlers
     this.networkManager.on("identified", (data) => {
+      const mr = computeMRClient(data.rating);
       this.ratingText.setText(
         data.provisional
           ? "Rating: ? (provisional)"
-          : `Rating: ${data.rating}`
+          : `Rating: ${data.rating}  |  Glicko: ${data.rating}  |  RD: ${data.rd}`
+      );
+      this.mrText.setText(
+        data.provisional
+          ? "MR: ?.??"
+          : `MR: ${(data.mr != null ? data.mr : mr).toFixed(2)}`
       );
       this.statsText.setText(`W: ${data.wins}  L: ${data.losses}  Games: ${data.gamesPlayed}`);
       // Join queue after identification
@@ -16467,13 +16632,31 @@ function showVersusResult(gameScene, data) {
     .setDepth(2001);
 
   const deltaStr = data.ratingDelta >= 0 ? `+${data.ratingDelta}` : `${data.ratingDelta}`;
-  const ratingLine = data.provisional
-    ? `Rating: ? (provisional) (${deltaStr})`
-    : `Rating: ${data.newRating} (${deltaStr})`;
+
+  // MR display (prominent)
+  const newMR = data.newMR != null ? data.newMR : computeMRClient(data.newRating || 1500);
+  const mrLine = data.provisional
+    ? "MR: ?.??"
+    : `MR: ${newMR.toFixed(2)}`;
 
   gameScene.add
-    .text(centerX, centerY, ratingLine, {
-      fontSize: "20px",
+    .text(centerX, centerY - 10, mrLine, {
+      fontSize: "28px",
+      fill: "#ffcc00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    })
+    .setOrigin(0.5)
+    .setDepth(2001);
+
+  // Rating / Glicko / RD line
+  const ratingLine = data.provisional
+    ? `Rating: ? (provisional) (${deltaStr})`
+    : `Rating: ${data.newRating} (${deltaStr})  |  RD: ${data.newRd}`;
+
+  gameScene.add
+    .text(centerX, centerY + 20, ratingLine, {
+      fontSize: "16px",
       fill: "#ffffff",
       fontFamily: "Courier New",
     })
@@ -16482,8 +16665,8 @@ function showVersusResult(gameScene, data) {
 
   const reasonMap = { topout: "Top Out", disconnect: "Disconnect", time_expired: "Time Up" };
   gameScene.add
-    .text(centerX, centerY + 35, `Reason: ${reasonMap[data.reason] || data.reason}`, {
-      fontSize: "16px",
+    .text(centerX, centerY + 50, `Reason: ${reasonMap[data.reason] || data.reason}`, {
+      fontSize: "14px",
       fill: "#888888",
       fontFamily: "Courier New",
     })
@@ -16492,7 +16675,7 @@ function showVersusResult(gameScene, data) {
 
   // Return to menu button
   const menuBtn = gameScene.add
-    .text(centerX, centerY + 90, "[ RETURN TO MENU ]", {
+    .text(centerX, centerY + 100, "[ RETURN TO MENU ]", {
       fontSize: "20px",
       fill: "#00ffff",
       fontFamily: "Courier New",
