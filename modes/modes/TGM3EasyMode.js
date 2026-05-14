@@ -42,7 +42,6 @@ class TGM3EasyMode extends BaseMode {
             specialMechanics: {
                 hanabi: true,
                 sectionStops: [99, 199],
-                easyCompletionLevel: 200,
                 creditsDuration: 55,
                 creditsHanabi: true
             }

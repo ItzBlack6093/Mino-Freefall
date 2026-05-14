@@ -12856,31 +12856,8 @@ class GameScene extends Phaser.Scene {
       this.levelStopActive = false;
     }
 
-    // Easy mode completion handling (TGM2-style finish -> credits)
-    const easyCompletionLevel =
-      specialMechanics && typeof specialMechanics.easyCompletionLevel === "number"
-        ? specialMechanics.easyCompletionLevel
-        : null;
-    if (
-      easyCompletionLevel !== null &&
-      !this.creditsActive &&
-      this.level >= easyCompletionLevel
-    ) {
-      this.level = easyCompletionLevel;
-      // Clear stack with fading animation, then start credits roll
-      this.startMinoFading();
-      const creditsDuration =
-        typeof specialMechanics.creditsDuration === "number"
-          ? specialMechanics.creditsDuration
-          : 55;
-      if (this.gameMode && typeof this.gameMode.onCreditsStart === "function") {
-        this.gameMode.onCreditsStart(this);
-      }
-      this.startCredits(creditsDuration);
-    }
-
-    // Play complete when reaching max level once (non-easy completion)
-    if (this.level >= maxLevel && !this.levelMaxSoundPlayed && easyCompletionLevel === null) {
+    // Play complete when reaching max level once
+    if (this.level >= maxLevel && !this.levelMaxSoundPlayed) {
       this.levelMaxSoundPlayed = true;
       try {
         const complete = this.sound?.add("complete", { volume: 0.8 });
@@ -13055,7 +13032,10 @@ class GameScene extends Phaser.Scene {
           if (this.gameMode && typeof this.gameMode.onCreditsStart === "function") {
             this.gameMode.onCreditsStart(this);
           }
-          this.startCredits();
+          const modeCredits = (this.gameMode && typeof this.gameMode.getConfig === "function")
+            ? this.gameMode.getConfig()?.specialMechanics?.creditsDuration
+            : undefined;
+          this.startCredits(modeCredits != null ? modeCredits : undefined);
         }
       }
     }

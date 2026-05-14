@@ -58,7 +58,6 @@ class TGM2NormalMode extends BaseMode {
             customScoring: true,
             specialMechanics: {
                 sectionStops: [99, 199, 299], // Level stops, but 99/199 are bypassed by items
-                easyCompletionLevel: 300,
                 creditsDuration: 30
             }
         };
@@ -246,7 +245,7 @@ class TGM2NormalMode extends BaseMode {
     
 
     
-    // Called by the engine when credits roll starts (via easyCompletionLevel)
+    // Called by the engine when credits roll starts (via maxLevel path)
     onCreditsStart(gameScene) {
         this.applyFinishTimeBonus(gameScene);
         gameScene.score = this.tgm2Score;
