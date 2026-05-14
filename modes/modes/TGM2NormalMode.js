@@ -55,8 +55,11 @@ class TGM2NormalMode extends BaseMode {
             lineClearBonus: 1,
             gravityLevelCap: 300,          // TGM2 Normal caps at 300
             hasGrading: false,
+            customScoring: true,
             specialMechanics: {
-                sectionStops: [99, 199, 299] // Level stops, but 99/199 are bypassed by items
+                sectionStops: [99, 199, 299], // Level stops, but 99/199 are bypassed by items
+                easyCompletionLevel: 300,
+                creditsDuration: 30
             }
         };
     }
@@ -169,6 +172,21 @@ class TGM2NormalMode extends BaseMode {
         return newLevel;
     }
     
+    // Handle line clears with TGM2 Normal scoring (x6 multiplier)
+    handleLineClear(gameScene, linesCleared, pieceType) {
+        this.updateTGM2Score(gameScene, linesCleared, pieceType);
+
+        // Update combo count for next clear
+        if (linesCleared > 0) {
+            gameScene.comboCount = gameScene.comboCount <= 0 ? 0 : gameScene.comboCount;
+            gameScene.comboCount += (2 * linesCleared) - 2;
+        } else {
+            gameScene.comboCount = -1;
+        }
+
+        gameScene.score = this.tgm2Score;
+    }
+
     // Update TGM2 score using official TGM2 (TAP) scoring formula
     updateTGM2Score(gameScene, linesCleared, pieceType) {
         if (linesCleared === 0) return;
@@ -228,32 +246,14 @@ class TGM2NormalMode extends BaseMode {
     
 
     
-    // Check for credit roll start
-    checkCreditRoll(gameScene) {
-        if (gameScene.level >= 300 && !this.creditsStarted) {
-            this.creditsStarted = true;
-            // Apply finish time bonus at roll start (once)
-            this.applyFinishTimeBonus(gameScene);
-            
-            // Start slow 20G credit roll
-            gameScene.startCredits(30);
-            
-            console.log('TGM2 Normal: Started slow 20G credit roll');
-        }
+    // Called by the engine when credits roll starts (via easyCompletionLevel)
+    onCreditsStart(gameScene) {
+        this.applyFinishTimeBonus(gameScene);
+        gameScene.score = this.tgm2Score;
     }
     
     
-    // Update method (called every frame)
     update(gameScene, deltaTime) {
-        // Handle credit roll
-        if (this.creditsStarted) {
-            this.creditsTimer += deltaTime;
-
-            if (this.creditsTimer >= this.creditsDuration) {
-                this.creditsStarted = false;
-                gameScene.showGameOverScreen();
-            }
-        }
     }
     
     
@@ -261,6 +261,7 @@ class TGM2NormalMode extends BaseMode {
     onGameOver(gameScene) {
         // Apply Normal mode finish time bonus before recording score
         this.applyFinishTimeBonus(gameScene);
+        gameScene.score = this.tgm2Score;
 
         // Check for final rankings
         this.checkFinalRankings(gameScene);
