@@ -15,7 +15,8 @@ class ModeManager {
             '20g': '#ff0000',       // red
             'race': '#ff8800',      // orange
             'all clear': '#ff69b4', // pink
-            'puzzle': '#8800ff'     // purple
+            'puzzle': '#8800ff',     // purple
+            'versus': '#ffcc00'    // gold
         };
 
         // Specific colors for individual modes (hex numbers for Phaser)
@@ -44,7 +45,9 @@ class ModeManager {
             'easy_easy': 0x00ff00, // green
             'tgm2_master': 0x888888, // grey
             'tgm2_normal': 0x00ff00, // green
-            'tgm_plus': 0x888888   // grey
+            'tgm_plus': 0x888888,   // grey
+            'versus_guideline': 0xffcc00, // gold
+            'versus_tgm': 0xffcc00  // gold
         };
         
         this.initializeModes();
@@ -100,7 +103,11 @@ class ModeManager {
             'konoha_easy': { modeClass: 'TGM4KonohaEasyMode', name: 'Konoha Easy', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Easy: Big-mode all-clear challenge with five pieces' } },
             'konoha_hard': { modeClass: 'TGM4KonohaHardMode', name: 'Konoha Hard', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Hard: Big-mode all-clear challenge with all seven pieces' } },
             'tgm3_sakura': { modeClass: 'TGM3SakuraMode', name: 'TGM3-Sakura', category: 'PUZZLE', config: { difficulty: 'puzzle', description: 'Puzzle mode from TGM3' } },
-            'flashpoint': { modeClass: 'ZenMode', name: 'Flashpoint', category: 'PUZZLE', config: { difficulty: 'puzzle', description: 'From Flashpoint.' } }
+            'flashpoint': { modeClass: 'ZenMode', name: 'Flashpoint', category: 'PUZZLE', config: { difficulty: 'puzzle', description: 'From Flashpoint.' } },
+
+            // VERSUS modes (online 1v1)
+            'versus_guideline': { modeClass: 'VersusGuidelineMode', name: 'Guideline', category: 'VERSUS', config: { difficulty: 'versus', description: 'Online 1v1 — SRS rotation, garbage sends, last player standing wins.' } },
+            'versus_tgm': { modeClass: 'VersusTGMMode', name: 'TGM', category: 'VERSUS', config: { difficulty: 'versus', description: 'Online 1v1 — TGM rules, 3-min timer, level tiebreaker.' } }
         };
     }
 
