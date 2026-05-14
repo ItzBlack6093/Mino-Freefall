@@ -5376,17 +5376,19 @@ class AssetLoaderScene extends Phaser.Scene {
     try {
       // Load MP3 files from bgm directory (Phaser compatible)
       const bgmLoads = [
-        ["tm1_1", "bgm/tm1_1.mp3"],
-        ["tm1_2", "bgm/tm1_2.mp3"],
-        ["tm1_endroll", "bgm/tm1_endroll.mp3"],
-        ["tm2_3", "bgm/tm2_3.mp3"],
-        ["tm2_4", "bgm/tm2_4.mp3"],
-        ["tm3_4", "bgm/tm3_4.mp3"],
-        ["tm3_6", "bgm/tm3_6.mp3"],
-        ["zen_custom", "bgm/sounds/422_m1.mp3"],
-        ["marathon_1", "bgm/sounds/422_m1.mp3"],
-        ["marathon_2", "bgm/sounds/423_m2.mp3"],
-        ["marathon_3", "bgm/sounds/424_m3.mp3"],
+        ["mf1_1", "bgm/mf1_1.mp3"],
+        ["mf1_2", "bgm/mf1_2.mp3"],
+        ["mf1_endroll", "bgm/mf1_endroll.mp3"],
+        ["mf2_3", "bgm/mf2_3.mp3"],
+        ["mf2_4", "bgm/mf2_4.mp3"],
+        ["mf2_endroll", "bgm/mf2_endroll.mp3"],
+        ["mf3_4", "bgm/mf3_4.mp3"],
+        ["mf3_6", "bgm/mf3_6.mp3"],
+        ["mf4_endgame", "bgm/mf4_endgame.mp3"],
+        ["mf_zen", "bgm/standard/mf_zen.mp3"],
+        ["mf_std_1", "bgm/standard/mf_std_1.mp3"],
+        ["mf_std_2", "bgm/standard/mf_std_2.mp3"],
+        ["mf_std_3", "bgm/standard/mf_std_3.mp3"],
       ];
       bgmLoads.forEach(([key, path]) => {
         if (!this.cache.audio.exists(key)) {
@@ -8708,20 +8710,22 @@ class GameScene extends Phaser.Scene {
         return this.sound.add(key, { loop: false, volume: vol, ...opts });
       };
       this.bgmTracks = {
-        tm1_1: addTrack("tm1_1", { loop: true }),
-        tm1_2: addTrack("tm1_2", { loop: true }),
-        tm1_endroll: addTrack("tm1_endroll", { loop: true }),
-        tm2_3: addTrack("tm2_3", { loop: true }),
-        tm2_4: addTrack("tm2_4", { loop: true }),
-        tm3_4: addTrack("tm3_4", { loop: true }),
-        tm3_6: addTrack("tm3_6", { loop: true }),
-        zen_custom: addTrack("zen_custom", { loop: true }),
-        marathon_1: addTrack("marathon_1", { loop: true }),
-        marathon_2: addTrack("marathon_2", { loop: true }),
-        marathon_3: addTrack("marathon_3", { loop: true }),
+        mf1_1: addTrack("mf1_1", { loop: true }),
+        mf1_2: addTrack("mf1_2", { loop: true }),
+        mf1_endroll: addTrack("mf1_endroll", { loop: true }),
+        mf2_3: addTrack("mf2_3", { loop: true }),
+        mf2_4: addTrack("mf2_4", { loop: true }),
+        mf2_endroll: addTrack("mf2_endroll", { loop: true }),
+        mf3_4: addTrack("mf3_4", { loop: true }),
+        mf3_6: addTrack("mf3_6", { loop: true }),
+        mf4_endgame: addTrack("mf4_endgame", { loop: true }),
+        mf_zen: addTrack("mf_zen", { loop: true }),
+        mf_std_1: addTrack("mf_std_1", { loop: true }),
+        mf_std_2: addTrack("mf_std_2", { loop: true }),
+        mf_std_3: addTrack("mf_std_3", { loop: true }),
       };
-      this.stage1BGM = this.bgmTracks.tm1_1;
-      this.stage2BGM = this.bgmTracks.tm1_2;
+      this.stage1BGM = this.bgmTracks.mf1_1;
+      this.stage2BGM = this.bgmTracks.mf1_2;
       this.currentBgmKey = null;
       this.bgmStarted = false;
     } catch (error) {
@@ -8995,58 +8999,92 @@ class GameScene extends Phaser.Scene {
 
   getBgmSchedule(modeId) {
     const sharedTGM1 = [
-      { end: 499, key: "tm1_1" },
-      { end: 999, key: "tm1_2" },
+      { end: 499, key: "mf1_1" },
+      { end: 999, key: "mf1_2" },
+    ];
+    const sharedTADeath = [
+      { end: 299, key: "mf1_2" },
+      { end: 499, key: "mf2_3" },
+      { end: 999, key: "mf2_4" },
+    ];
+    const sharedShirase = [
+      { end: 499, key: "mf2_4" },
+      { end: 699, key: "mf3_4" },
+      { end: 999, key: "mf1_2" },
+      { end: 1299, key: "mf3_6" },
+    ];
+    const sharedAsuka = [
+      { end: 999, key: "mf2_4" },
+      { end: 1300, key: "mf3_4" },
     ];
     const schedules = {
-      normal: { segments: [{ end: 299, key: "tm1_1" }, { end: 999, key: "tm1_2" }], credits: "tm1_endroll" },
-      easy_normal: { segments: [{ end: 199, key: "tm1_1" }, { end: 999, key: "tm1_endroll" }], credits: "tm1_endroll" },
-      easy_easy: { segments: [{ end: 199, key: "tm1_1" }, { end: 999, key: "tm1_endroll" }], credits: "tm1_endroll" },
-      marathon: { segments: [{ end: 49, key: "tm1_1" }, { end: 99, key: "tm1_2" }, { end: 999, key: "tm2_3" }], credits: "tm1_endroll" },
-      sprint_40: { segments: [{ end: 999, key: "tm1_1" }] },
-      sprint_100: { segments: [{ end: 999, key: "tm1_1" }] },
-      ultra: { segments: [{ end: 999, key: "tm1_1" }] },
-      zen: { segments: [{ end: 999, key: "zen_custom" }] },
-      tgm1: { segments: sharedTGM1, credits: "tm1_endroll" },
-      tgm_plus: { segments: sharedTGM1, credits: "tm1_endroll" },
-      "master_20g": { segments: sharedTGM1, credits: "tm1_endroll" },
+      normal: { segments: [{ end: 299, key: "mf1_1" }, { end: 999, key: "mf1_2" }], credits: "mf1_endroll" },
+      easy_normal: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
+      easy_easy: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
+      marathon: { segments: [{ end: 49, key: "mf_std_1" }, { end: 99, key: "mf_std_2" }, { end: 999, key: "mf_std_3" }], credits: "mf1_endroll" },
+      sprint_40: { segments: [{ end: 999, key: "mf1_1" }] },
+      sprint_100: { segments: [{ end: 999, key: "mf1_1" }] },
+      ultra: { segments: [{ end: 999, key: "mf1_1" }] },
+      zen: { segments: [{ end: 999, key: "mf_zen" }] },
+      tgm1: { segments: sharedTGM1, credits: "mf1_endroll" },
+      tgm_plus: { segments: sharedTGM1, credits: "mf1_endroll" },
+      "master_20g": { segments: sharedTGM1, credits: "mf1_endroll" },
       tgm2: {
         segments: [
-          { end: 499, key: "tm1_1" },
-          { end: 699, key: "tm1_2" },
-          { end: 899, key: "tm2_3" },
-          { end: 999, key: "tm2_4" },
+          { end: 499, key: "mf1_1" },
+          { end: 699, key: "mf1_2" },
+          { end: 899, key: "mf2_3" },
+          { end: 999, key: "mf2_4" },
         ],
-        credits: "tm1_endroll",
+        credits: "mf1_endroll",
       },
       tgm3: {
         segments: [
-          { end: 499, key: "tm1_1" },
-          { end: 799, key: "tm1_2" },
-          { end: 1899, key: "tm2_4" },
+          { end: 499, key: "mf1_1" },
+          { end: 799, key: "mf1_2" },
+          { end: 1899, key: "mf2_4" },
         ],
-        credits: "tm1_endroll",
+        credits: "mf1_endroll",
       },
-      tadeath: {
+      tgm4: {
         segments: [
-          { end: 299, key: "tm1_2" },
-          { end: 499, key: "tm2_3" },
-          { end: 999, key: "tm2_4" },
+          { end: 299, key: "mf1_1" },
+          { end: 499, key: "mf1_2" },
+          { end: 999, key: "mf2_3" },
         ],
-        credits: "tm1_endroll",
+        credits: "mf1_endroll",
       },
-      shirase: {
+      tadeath: { segments: sharedTADeath, credits: "mf1_endroll" },
+      shirase: { segments: sharedShirase, credits: "mf1_endroll" },
+      tgm4_rounds: {
         segments: [
-          { end: 499, key: "tm2_4" },
-          { end: 699, key: "tm3_4" },
-          { end: 999, key: "tm1_2" },
-          { end: 1299, key: "tm3_6" },
+          { end: 299, key: "mf1_2" },
+          { end: 699, key: "mf3_4" },
+          { end: 999, key: "mf3_6" },
+          { end: 1299, key: "mf2_3" },
+          { end: 2600, key: "mf2_4" },
         ],
-        credits: "tm1_endroll",
+        credits: "mf1_endroll",
+        endgame: "mf4_endgame",
       },
-      tgm3_sakura: { segments: [{ end: 999, key: "tm1_1" }] },
+      tgm4_1_1: { segments: sharedTGM1, credits: "mf1_endroll" },
+      tgm4_2_1: { segments: sharedTADeath, credits: "mf1_endroll" },
+      tgm4_3_1: {
+        segments: [
+          { end: 499, key: "mf2_4" },
+          { end: 699, key: "mf3_4" },
+          { end: 999, key: "mf1_2" },
+          { end: 2000, key: "mf3_6" },
+        ],
+        credits: "mf1_endroll",
+      },
+      tgm4_4_1: { segments: [{ end: 999, key: "mf3_6" }], credits: "mf1_endroll" },
+      asuka_easy: { segments: sharedAsuka },
+      asuka_normal: { segments: sharedAsuka },
+      asuka_hard: { segments: sharedAsuka },
+      tgm3_sakura: { segments: [{ end: 999, key: "mf1_1" }] },
     };
-    return schedules[modeId] || { segments: sharedTGM1, credits: "tm1_endroll" };
+    return schedules[modeId] || { segments: sharedTGM1, credits: "mf1_endroll" };
   }
 
   playBgmByKey(key) {
@@ -9091,19 +9129,19 @@ class GameScene extends Phaser.Scene {
       // Determine which track should be active, with intentional silent gaps
       let desiredKey = null;
       if (lines < 55) {
-        desiredKey = "marathon_1"; // lines 0-54
+        desiredKey = "mf_std_1"; // lines 0-54
       } else if (lines < 60) {
         // Silent gap between 55-59
         this.stopCurrentBGM();
         return;
       } else if (lines < 115) {
-        desiredKey = "marathon_2"; // lines 60-114
+        desiredKey = "mf_std_2"; // lines 60-114
       } else if (lines < 120) {
         // Silent gap between 115-119
         this.stopCurrentBGM();
         return;
       } else {
-        desiredKey = "marathon_3"; // lines 120-149
+        desiredKey = "mf_std_3"; // lines 120-149
       }
 
       if (desiredKey && this.currentBgmKey !== desiredKey) {
@@ -14177,9 +14215,9 @@ class GameScene extends Phaser.Scene {
 
     // Load credits BGM if available
     try {
-      // Use tm1_2.mp3 for TGM2 Normal mode credits, otherwise use tm1_endroll.mp3
+      // Use mf1_2.mp3 for TGM2 Normal mode credits, otherwise use mf1_endroll.mp3
       const creditsBGMKey =
-        this.selectedMode === "tgm2_normal" ? "tm1_2" : "tm1_endroll";
+        this.selectedMode === "tgm2_normal" ? "mf1_2" : "mf1_endroll";
       this.creditsBGM = this.sound.add(creditsBGMKey, {
         loop: true,
         volume: 0.3,
