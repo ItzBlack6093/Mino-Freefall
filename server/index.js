@@ -107,6 +107,16 @@ function dbPlayerToGlicko(row) {
   };
 }
 
+/**
+ * Compute MR (Mino Rating) from Glicko rating.
+ * Asymptotically clamps from 0 to 40: MR = 40 * (1 - e^(-r / 1500))
+ */
+function computeMR(glickoRating) {
+  const r = Math.max(0, glickoRating);
+  const mr = 40 * (1 - Math.exp(-r / 1500));
+  return Math.round(mr * 100) / 100;
+}
+
 // ---------------------------------------------------------------------------
 // In-memory state
 // ---------------------------------------------------------------------------
@@ -276,6 +286,7 @@ class Room {
       ratingDelta: newWin.rating - winRow.rating,
       newRating: newWin.rating,
       newRd: newWin.rd,
+      newMR: computeMR(newWin.rating),
       provisional: isProvisional(newWin),
     });
 
@@ -284,6 +295,7 @@ class Room {
       ratingDelta: newLose.rating - loseRow.rating,
       newRating: newLose.rating,
       newRd: newLose.rd,
+      newMR: computeMR(newLose.rating),
       provisional: isProvisional(newLose),
     });
 
@@ -421,6 +433,7 @@ wss.on("connection", (ws) => {
           name: row.name,
           rating: row.rating,
           rd: row.rd,
+          mr: computeMR(row.rating),
           gamesPlayed: row.games_played,
           provisional: isProvisional(dbPlayerToGlicko(row)),
           wins: row.wins,
