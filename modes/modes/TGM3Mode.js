@@ -18,7 +18,9 @@ class TGM3Mode extends BaseMode {
         // Internal timing phase pointer
         this.currentTimingPhase = 1;
         this.coolBonus = 0; // +100 per section COOL
+        this.displayLevel = 0;
         this.internalLevel = 0;
+        this.bgmStopLevel = 0;
         this.sectionTimes = [];
         this.sectionPerformance = [];
         this.fadingRollActive = false;
@@ -66,6 +68,10 @@ class TGM3Mode extends BaseMode {
                 }
             }
         };
+    }
+
+    getDisplayLevelCap() {
+        return 999;
     }
 
     getConfig() {
@@ -161,22 +167,37 @@ class TGM3Mode extends BaseMode {
 
     onLevelUpdate(level, oldLevel, updateType, amount) {
         let nextLevel = level;
+        const gravityCap = this.config.gravityLevelCap;
+        const displayCap = this.getDisplayLevelCap();
+        const currentDisplayLevel = Math.min(level, displayCap);
+        // Ti stop rule at 998 applies to displayed/base level only:
+        // internal progression remains (display/base + COOL bonuses).
+        if (updateType === 'piece' && currentDisplayLevel >= 998) {
+            nextLevel = 998;
+        } else
         if (updateType === 'piece') {
-            nextLevel = Math.min(level + 1, this.config.gravityLevelCap);
+            nextLevel = Math.min(level + 1, gravityCap);
         } else if (updateType === 'lines') {
             const inc = Math.min(Math.max(amount || 0, 0), 4);
             const bonus = inc === 3 ? 1 : inc === 4 ? 2 : 0;
-            nextLevel = Math.min(level + inc + bonus, this.config.gravityLevelCap);
+            nextLevel = Math.min(level + inc + bonus, gravityCap);
         }
-        // Internal level accounts for COOL bonus
-        this.internalLevel = nextLevel + this.coolBonus;
+        this.displayLevel = Math.min(nextLevel, displayCap);
+        // Internal level drives gravity/BGM segment progression.
+        // Keep it anchored to displayed/base level plus COOL bonus only.
+        this.internalLevel = this.displayLevel + this.coolBonus;
+        // BGM stop level can jump immediately on COOL
+        this.bgmStopLevel = this.internalLevel;
         this.updateTimingPhase(this.internalLevel);
-        return nextLevel;
+        return this.displayLevel;
     }
 
     // Section COOL/REGRET hooks (timing thresholds to be provided by game scene)
     onSectionCool() {
         this.coolBonus += 100;
+        // Apply COOL bonus immediately for BGM stop-window decisions.
+        this.internalLevel += 100;
+        this.bgmStopLevel = this.internalLevel;
         if (this.tgm3Grading) {
             this.tgm3Grading.applySectionCool();
         }
@@ -219,6 +240,8 @@ class TGM3Mode extends BaseMode {
 
     handleLineClear(gameScene, linesCleared, pieceType = null) {
         if (!this.tgm3Grading || !gameScene) return;
+        // During Ti staff roll, internal grade points are frozen; only roll bonus applies.
+        if (gameScene.creditsActive) return;
         // Debug: confirm handleLineClear fired and grading exists
         const comboSize = Math.max(1, (gameScene.comboCount ?? -1) + 1);
         const isTetris = linesCleared === 4;
@@ -244,7 +267,14 @@ class TGM3Mode extends BaseMode {
         const allCool = this.sectionPerformance.slice(0, 9).every(v => v === 'COOL');
         const internalGrade = this.getInternalGrade();
         // Ti requirement: all COOLs + internal grade >= m9 (~27 in TAP terms)
-        const mRollEligible = allCool && internalGrade >= 27;
+        const forceMRoll = (() => {
+            try {
+                return (localStorage.getItem('forceMRoll') || 'false') === 'true';
+            } catch (_e) {
+                return false;
+            }
+        })();
+        const mRollEligible = forceMRoll || (allCool && internalGrade >= 27);
         if (mRollEligible) {
             this.mRollStarted = true;
             this.fadingRollActive = false;
@@ -255,6 +285,7 @@ class TGM3Mode extends BaseMode {
         if (gameScene) {
             gameScene.mRollStarted = this.mRollStarted;
             gameScene.fadingRollActive = this.fadingRollActive;
+            gameScene.invisibleStackActive = this.mRollStarted;
         }
     }
 

@@ -375,7 +375,6 @@ class TGM2MasterMode extends BaseMode {
     // Check for credit roll start
     checkCreditRoll(gameScene) {
         if (gameScene.level >= 999 && !this.creditsStarted) {
-            this.creditsStarted = true;
             console.log('TGM2 Master: Credits pending (stack fade then roll)');
         }
     }
@@ -385,6 +384,18 @@ class TGM2MasterMode extends BaseMode {
         this.creditsStarted = true;
         this.creditsTimer = 0;
         this.creditsDuration = gameScene.creditsDuration || this.creditsDuration || 61.6;
+        const forceMRoll = (() => {
+            try {
+                return (localStorage.getItem('forceMRoll') || 'false') === 'true';
+            } catch (_e) {
+                return false;
+            }
+        })();
+        // Re-check right at roll start so unlock state reflects final run stats.
+        this.checkMRollConditions(gameScene);
+        if (forceMRoll) {
+            this.mRollUnlocked = true;
+        }
 
         // Decide roll type based on unlock
         if (this.mRollUnlocked) {
@@ -451,14 +462,9 @@ class TGM2MasterMode extends BaseMode {
             section900Ok;
         const sectionTetrisOk = tetrises0to4Ok && tetris500Ok && chainTetrisesOk;
 
-        if (globalTimeOk && gradeOk && sectionTimeOk && sectionTetrisOk) {
-            this.mRollUnlocked = true;
+        this.mRollUnlocked = globalTimeOk && gradeOk && sectionTimeOk && sectionTetrisOk;
+        if (this.mRollUnlocked) {
             console.log('TGM2 Master: M-Roll unlocked!');
-
-            // Start M-Roll after a brief delay
-            gameScene.time.delayedCall(3000, () => {
-                this.startMRoll(gameScene);
-            });
         }
     }
     
@@ -514,7 +520,7 @@ class TGM2MasterMode extends BaseMode {
         }
         
         // Handle credit roll
-        if (this.creditsStarted) {
+        if (this.creditsStarted && gameScene && gameScene.creditsActive) {
             this.creditsTimer += deltaTime;
             
             if (this.creditsTimer >= this.creditsDuration) {

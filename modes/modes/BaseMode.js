@@ -181,6 +181,11 @@ class BaseMode {
         return this.getConfig().gravityLevelCap;
     }
 
+    // Display/UI level cap (can differ from gravity/internal cap in some modes)
+    getDisplayLevelCap() {
+        return this.getGravityLevelCap();
+    }
+
     // Mode-specific hook for level updates
     onLevelUpdate(level, oldLevel, updateType, amount) {
         // Default implementation - can be overridden by modes
