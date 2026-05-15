@@ -1956,6 +1956,9 @@ class MenuScene extends Phaser.Scene {
       }
     });
 
+    // First-visit name prompt
+    this.showNamePromptIfNeeded();
+
     // Title
     this.add
       .text(centerX, centerY - 220, "MINO FREEFALL", {
@@ -1987,6 +1990,298 @@ class MenuScene extends Phaser.Scene {
     }
     if (this.modeTypes.length > 0) {
       this.updateMenuDisplay();
+    }
+    this.updateProfileBadge();
+  }
+
+  showNamePromptIfNeeded() {
+    if (typeof window.achievementSystem === "undefined") return;
+
+    const playerName = window.achievementSystem.getPlayerName();
+    if (!playerName) {
+      this.showNamePrompt();
+    }
+  }
+
+  showNamePrompt() {
+    const centerX = this.cameras.main.width / 2;
+    const centerY = this.cameras.main.height / 2;
+
+    // Dark overlay background
+    this.namePromptOverlay = this.add.graphics();
+    this.namePromptOverlay.fillStyle(0x000000, 0.85);
+    this.namePromptOverlay.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
+    this.namePromptOverlay.setDepth(10000);
+
+    // Prompt container
+    this.namePromptContainer = this.add.container(centerX, centerY);
+    this.namePromptContainer.setDepth(10001);
+
+    // Prompt text
+    this.namePromptText = this.add.text(0, -60, "Enter your player name", {
+      fontSize: "24px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+      align: "center",
+    }).setOrigin(0.5);
+    this.namePromptContainer.add(this.namePromptText);
+
+    // Create HTML input for name entry
+    const inputElement = document.createElement("input");
+    inputElement.type = "text";
+    inputElement.placeholder = "Player";
+    inputElement.maxLength = 16;
+    inputElement.style.cssText = `
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Courier New', monospace;
+      font-size: 20px;
+      padding: 10px;
+      text-align: center;
+      background: #222;
+      color: #fff;
+      border: 2px solid #fff;
+      border-radius: 4px;
+      z-index: 10002;
+    `;
+    document.body.appendChild(inputElement);
+    inputElement.focus();
+
+    this.nameInputElement = inputElement;
+
+    // Handle Enter key on the HTML input directly
+    inputElement.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.submitName();
+      }
+    });
+
+    // Confirm button
+    this.namePromptButton = this.add.text(0, 40, "Confirm", {
+      fontSize: "18px",
+      fill: "#00ff00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.namePromptButton.on("pointerdown", () => this.submitName());
+    this.namePromptButton.on("pointerover", () => this.namePromptButton.setStyle({ fill: "#ffff00" }));
+    this.namePromptButton.on("pointerout", () => this.namePromptButton.setStyle({ fill: "#00ff00" }));
+    this.namePromptContainer.add(this.namePromptButton);
+
+    // Handle Enter key
+    this.nameEnterKey = this.input.keyboard.on("keydown-ENTER", () => this.submitName());
+
+    // Store reference for cleanup
+    this.namePromptActive = true;
+  }
+
+  submitName() {
+    if (!this.namePromptActive) return;
+
+    const name = this.nameInputElement.value.trim();
+
+    // Validation: name cannot be empty
+    if (!name) {
+      this.nameInputElement.style.borderColor = "#ff0000";
+      this.nameInputElement.focus();
+      return;
+    }
+
+    if (typeof window.achievementSystem !== "undefined") {
+      window.achievementSystem.setPlayerName(name);
+    }
+
+    // Cleanup
+    this.namePromptActive = false;
+    this.input.keyboard.off("keydown-ENTER");
+    if (this.nameInputElement && this.nameInputElement.parentNode) {
+      this.nameInputElement.parentNode.removeChild(this.nameInputElement);
+    }
+    if (this.namePromptOverlay) {
+      this.namePromptOverlay.destroy();
+    }
+    if (this.namePromptContainer) {
+      this.namePromptContainer.destroy();
+    }
+
+    // Update profile badge if it exists
+    this.updateProfileBadge();
+  }
+
+  createProfileBadge() {
+    const badgeWidth = 160;
+    const badgeHeight = 60;
+    const padding = 20;
+    const x = this.cameras.main.width - padding - 100;
+    const y = padding + 50;
+
+    this.profileBadgeGroup = this.add.container(x, y);
+
+    // Border rectangle
+    this.profileBadgeBorder = this.add.graphics();
+    this.profileBadgeBorder.lineStyle(1, 0xffffff);
+    this.profileBadgeBorder.strokeRect(
+      -badgeWidth / 2,
+      -badgeHeight / 2,
+      badgeWidth,
+      badgeHeight
+    );
+    this.profileBadgeGroup.add(this.profileBadgeBorder);
+
+    // Player name
+    this.profileBadgeName = this.add.text(0, -12, "Player", {
+      fontSize: "14px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "normal",
+    }).setOrigin(0.5);
+    this.profileBadgeGroup.add(this.profileBadgeName);
+
+    // Achievement rating
+    this.profileBadgeRating = this.add.text(0, 12, "AR 0", {
+      fontSize: "18px",
+      fill: "#ffcc00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5);
+    this.profileBadgeGroup.add(this.profileBadgeRating);
+
+    // Make interactive
+    this.profileBadgeGroup.setInteractive(
+      new Phaser.Geom.Rectangle(-badgeWidth / 2, -badgeHeight / 2, badgeWidth, badgeHeight),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.profileBadgeGroup.on("pointerdown", () => this.showAchievementOverlay());
+    this.profileBadgeGroup.on("pointerover", () => this.profileBadgeBorder.lineStyle(2, 0xffff00));
+    this.profileBadgeGroup.on("pointerout", () => this.profileBadgeBorder.lineStyle(1, 0xffffff));
+
+    this.updateProfileBadge();
+  }
+
+  updateProfileBadge() {
+    if (!this.profileBadgeGroup) return;
+
+    const playerName = typeof window.achievementSystem !== "undefined"
+      ? (window.achievementSystem.getPlayerName() || "Player")
+      : "Player";
+    const rating = typeof window.achievementSystem !== "undefined"
+      ? window.achievementSystem.getScore()
+      : 0;
+
+    this.profileBadgeName.setText(playerName);
+    this.profileBadgeRating.setText(`AR ${rating}`);
+  }
+
+  showAchievementOverlay() {
+    if (typeof window.achievementSystem === "undefined") return;
+
+    const centerX = this.cameras.main.centerX;
+    const centerY = this.cameras.main.centerY;
+
+    // Dark overlay background
+    this.achievementOverlayBg = this.add.graphics();
+    this.achievementOverlayBg.fillStyle(0x000000, 0.85);
+    this.achievementOverlayBg.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
+    this.achievementOverlayBg.setDepth(10000);
+
+    // Overlay container
+    this.achievementOverlayContainer = this.add.container(centerX, centerY);
+    this.achievementOverlayContainer.setDepth(10001);
+
+    // Title
+    this.achievementOverlayTitle = this.add.text(0, -280, "ACHIEVEMENTS", {
+      fontSize: "32px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5);
+    this.achievementOverlayContainer.add(this.achievementOverlayTitle);
+
+    // Close button (X)
+    this.achievementCloseButton = this.add.text(280, -280, "X", {
+      fontSize: "24px",
+      fill: "#ff0000",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.achievementCloseButton.on("pointerdown", () => this.hideAchievementOverlay());
+    this.achievementCloseButton.on("pointerover", () => this.achievementCloseButton.setStyle({ fill: "#ffff00" }));
+    this.achievementCloseButton.on("pointerout", () => this.achievementCloseButton.setStyle({ fill: "#ff0000" }));
+    this.achievementOverlayContainer.add(this.achievementCloseButton);
+
+    // Scrollable achievement list
+    this.achievementScrollContainer = this.add.container(0, 0);
+    this.achievementOverlayContainer.add(this.achievementScrollContainer);
+
+    const groupedAchievements = window.achievementSystem.getAllByGroup();
+    let yOffset = -240;
+
+    for (const [game, achievements] of Object.entries(groupedAchievements)) {
+      // Group header
+      const header = this.add.text(0, yOffset, game, {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      }).setOrigin(0.5);
+      this.achievementScrollContainer.add(header);
+      yOffset += 30;
+
+      // Achievement rows
+      achievements.forEach((achievement) => {
+        const isCompleted = window.achievementSystem.isCompleted(achievement.id);
+
+        // Checkmark
+        const checkmark = this.add.text(-180, yOffset, isCompleted ? "✓" : " ", {
+          fontSize: "16px",
+          fill: isCompleted ? "#55ff55" : "#666666",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        }).setOrigin(0, 0.5);
+        this.achievementScrollContainer.add(checkmark);
+
+        // Description
+        const desc = this.add.text(0, yOffset, achievement.description, {
+          fontSize: "14px",
+          fill: isCompleted ? "#ffffff" : "#aaaaaa",
+          fontFamily: "Courier New",
+          wordWrap: { width: 300 },
+        }).setOrigin(0, 0.5);
+        this.achievementScrollContainer.add(desc);
+
+        // Points
+        const points = this.add.text(180, yOffset, achievement.points.toString(), {
+          fontSize: "14px",
+          fill: "#ffcc00",
+          fontFamily: "Courier New",
+        }).setOrigin(1, 0.5);
+        this.achievementScrollContainer.add(points);
+
+        yOffset += 22;
+      });
+
+      yOffset += 15; // Extra spacing between groups
+    }
+
+    // Escape key to close
+    this.achievementEscapeKey = this.input.keyboard.on("keydown-ESC", () => this.hideAchievementOverlay());
+  }
+
+  hideAchievementOverlay() {
+    if (this.achievementOverlayBg) {
+      this.achievementOverlayBg.destroy();
+      this.achievementOverlayBg = null;
+    }
+    if (this.achievementEscapeKey) {
+      this.input.keyboard.off("keydown-ESC");
+      this.achievementEscapeKey = null;
+    }
+    if (this.achievementOverlayContainer) {
+      this.achievementOverlayContainer.destroy();
     }
   }
 
@@ -2157,6 +2452,9 @@ class MenuScene extends Phaser.Scene {
 
     // Create initial mode type list display
     this.createModeTypeListDisplay();
+
+    // Create profile badge
+    this.createProfileBadge();
   }
 
   updateMenuLayout() {
@@ -2227,6 +2525,12 @@ class MenuScene extends Phaser.Scene {
         buttonWidth,
         buttonHeight,
       );
+    }
+
+    // Update profile badge position
+    if (this.profileBadgeGroup) {
+      const padding = 20;
+      this.profileBadgeGroup.setPosition(this.cameras.main.width - padding - 100, padding + 50);
     }
 
     createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
@@ -3177,10 +3481,11 @@ class SettingsScene extends Phaser.Scene {
 
     const tabY = centerY - 145;
     this.settingsTabs = [
-      { key: "controls", label: "Controls", x: centerX - 330 },
-      { key: "handling", label: "Handling", x: centerX - 110 },
-      { key: "rotation", label: "Rotation System", x: centerX + 130 },
-      { key: "audio", label: "Audio", x: centerX + 350 },
+      { key: "controls", label: "Controls", x: centerX - 410 },
+      { key: "handling", label: "Handling", x: centerX - 190 },
+      { key: "rotation", label: "Rotation System", x: centerX + 50 },
+      { key: "audio", label: "Audio", x: centerX + 270 },
+      { key: "profile", label: "Profile", x: centerX + 490 },
     ].map((tab) => {
       const text = this.add
         .text(tab.x, tabY, tab.label, {
@@ -4019,6 +4324,34 @@ class SettingsScene extends Phaser.Scene {
       this.updateForceMRollDisplay(next);
     });
 
+    // Profile tab UI elements
+    const profileLabelY = centerY - 60;
+    this.profileNameLabel = this.add.text(centerX, profileLabelY, "Profile Name", {
+      fontSize: "20px",
+      fill: "#ffff00",
+      fontFamily: "Courier New",
+    }).setOrigin(0.5);
+
+    const playerName = typeof window.achievementSystem !== "undefined"
+      ? (window.achievementSystem.getPlayerName() || "Player")
+      : "Player";
+
+    this.profileNameText = this.add.text(centerX, profileLabelY + 35, playerName, {
+      fontSize: "24px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5);
+
+    this.profileEditButton = this.add.text(centerX, profileLabelY + 75, "Edit Name", {
+      fontSize: "18px",
+      fill: "#00ff00",
+      fontFamily: "Courier New",
+    }).setOrigin(0.5).setInteractive();
+    this.profileEditButton.on("pointerdown", () => this.editProfileName());
+    this.profileEditButton.on("pointerover", () => this.profileEditButton.setStyle({ fill: "#ffff00" }));
+    this.profileEditButton.on("pointerout", () => this.profileEditButton.setStyle({ fill: "#00ff00" }));
+
     // Reset to defaults button - moved down 70px
     this.resetButton = this.add
       .text(centerX, centerY + 210, "Reset to Defaults", {
@@ -4108,6 +4441,11 @@ class SettingsScene extends Phaser.Scene {
         this.sfxVolumeSliderFill,
         this.sfxVolumeKnob,
         this.sfxVolumeText,
+      ],
+      profile: [
+        this.profileNameLabel,
+        this.profileNameText,
+        this.profileEditButton,
       ],
     };
     this.setSettingsTab(this.activeSettingsTab);
@@ -5476,6 +5814,119 @@ class SettingsScene extends Phaser.Scene {
     if (this.arsResetLabel) this.arsResetLabel.setVisible(visible);
     if (this.arsResetModeText?.input) this.arsResetModeText.input.enabled = visible;
   }
+
+  editProfileName() {
+    const centerX = this.cameras.main.centerX;
+    const centerY = this.cameras.main.centerY;
+
+    // Dark overlay background
+    this.editNameOverlay = this.add.graphics();
+    this.editNameOverlay.fillStyle(0x000000, 0.85);
+    this.editNameOverlay.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
+    this.editNameOverlay.setDepth(10000);
+
+    // Prompt container
+    this.editNameContainer = this.add.container(centerX, centerY);
+    this.editNameContainer.setDepth(10001);
+
+    // Prompt text
+    this.editNameText = this.add.text(0, -60, "Edit Profile Name", {
+      fontSize: "24px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+      align: "center",
+    }).setOrigin(0.5);
+    this.editNameContainer.add(this.editNameText);
+
+    // Create HTML input for name entry
+    const inputElement = document.createElement("input");
+    inputElement.type = "text";
+    inputElement.placeholder = "Player";
+    inputElement.maxLength = 16;
+    inputElement.value = typeof window.achievementSystem !== "undefined"
+      ? (window.achievementSystem.getPlayerName() || "Player")
+      : "Player";
+    inputElement.style.cssText = `
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Courier New', monospace;
+      font-size: 20px;
+      padding: 10px;
+      text-align: center;
+      background: #222;
+      color: #fff;
+      border: 2px solid #fff;
+      border-radius: 4px;
+      z-index: 10002;
+    `;
+    document.body.appendChild(inputElement);
+    inputElement.focus();
+    inputElement.select();
+
+    this.editNameInputElement = inputElement;
+
+    // Handle Enter key on the HTML input directly
+    inputElement.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.submitProfileNameEdit();
+      }
+    });
+
+    // Confirm button
+    this.editNameButton = this.add.text(0, 40, "Confirm", {
+      fontSize: "18px",
+      fill: "#00ff00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.editNameButton.on("pointerdown", () => this.submitProfileNameEdit());
+    this.editNameButton.on("pointerover", () => this.editNameButton.setStyle({ fill: "#ffff00" }));
+    this.editNameButton.on("pointerout", () => this.editNameButton.setStyle({ fill: "#00ff00" }));
+    this.editNameContainer.add(this.editNameButton);
+
+    // Handle Enter key
+    this.editNameEnterKey = this.input.keyboard.on("keydown-ENTER", () => this.submitProfileNameEdit());
+
+    // Store reference for cleanup
+    this.editNameActive = true;
+  }
+
+  submitProfileNameEdit() {
+    if (!this.editNameActive) return;
+
+    const name = this.editNameInputElement.value.trim();
+
+    // Validation: name cannot be empty
+    if (!name) {
+      this.editNameInputElement.style.borderColor = "#ff0000";
+      this.editNameInputElement.focus();
+      return;
+    }
+
+    if (typeof window.achievementSystem !== "undefined") {
+      window.achievementSystem.setPlayerName(name);
+    }
+
+    // Update display
+    this.profileNameText.setText(name);
+
+    // Cleanup
+    this.editNameActive = false;
+    this.input.keyboard.off("keydown-ENTER");
+    if (this.editNameInputElement && this.editNameInputElement.parentNode) {
+      this.editNameInputElement.parentNode.removeChild(this.editNameInputElement);
+    }
+    if (this.editNameOverlay) {
+      this.editNameOverlay.destroy();
+    }
+    if (this.editNameContainer) {
+      this.editNameContainer.destroy();
+    }
+  }
 }
 
 class AssetLoaderScene extends Phaser.Scene {
@@ -6248,13 +6699,9 @@ class GameScene extends Phaser.Scene {
     this.validatePieceHistory();
     // Reset spin/hanabi for new run
     this.spinRotatedWhileGrounded = false;
-    this.hanabiCounter = 0;
-    // Ensure particle arrays exist before clearing
-    this.hanabiParticles = [];
-    this.hanabiPool = [];
-    this.clearHanabiParticles();
     this.levelMaxSoundPlayed = false;
     this.lastBellLevel = -1;
+    this.pendingCompleteSequence = false;
 
     // Pause functionality
     this.isPaused = false;
@@ -6851,91 +7298,6 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  spawnHanabiBurst(count = 1) {
-    // Disable hanabi for TGM2 Normal mode
-    if (this.gameMode && this.gameMode.modeId === "tgm2_normal") {
-      return;
-    }
-    // Play firework SFX in Easy modes
-    const modeId =
-      this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode;
-    if (modeId === "easy_easy" || modeId === "easy_normal") {
-      try {
-        this.playSfx("firework", 0.6);
-      } catch {}
-    }
-    if (!this.hanabiContainer) return;
-    const particlesToSpawn = Math.min(
-      this.hanabiMaxActive - this.hanabiParticles.length,
-      Math.max(2, Math.min(12, count * 3)),
-    );
-    const originX = this.matrixOffsetX + (this.cellSize * this.board.cols) / 2;
-    const originY = this.matrixOffsetY + (this.cellSize * this.visibleRows) / 3;
-    for (let i = 0; i < particlesToSpawn; i++) {
-      let g = this.hanabiPool.pop();
-      if (!g) {
-        g = this.add.graphics();
-      } else {
-        g.clear();
-      }
-      const angle = Math.random() * Math.PI * 2;
-      const speed = 40 + Math.random() * 60;
-      const life = 0.35 + Math.random() * 0.2;
-      const radius = 2 + Math.random() * 2;
-      const color = Phaser.Display.Color.GetColor(
-        200 + Math.floor(Math.random() * 55),
-        200 + Math.floor(Math.random() * 55),
-        120 + Math.floor(Math.random() * 135),
-      );
-      g.fillStyle(color, 1);
-      g.fillCircle(0, 0, radius);
-      g.x = originX;
-      g.y = originY;
-      g.setDepth(1000);
-      this.hanabiContainer.add(g);
-      this.hanabiParticles.push({
-        g,
-        vx: Math.cos(angle) * speed,
-        vy: Math.sin(angle) * speed - 30,
-        life,
-      });
-    }
-    this.hanabiCounter += count;
-  }
-
-  updateHanabiParticles(deltaTime) {
-    if (!this.hanabiParticles.length) return;
-    const remaining = [];
-    for (const p of this.hanabiParticles) {
-      p.life -= deltaTime;
-      if (p.life <= 0) {
-        p.g.clear();
-        p.g.setVisible(false);
-        this.hanabiPool.push(p.g);
-        continue;
-      }
-      p.vy += 120 * deltaTime;
-      p.g.x += p.vx * deltaTime;
-      p.g.y += p.vy * deltaTime;
-      p.g.setAlpha(Math.max(0, p.life / 0.5));
-      remaining.push(p);
-    }
-    this.hanabiParticles = remaining;
-  }
-
-  clearHanabiParticles() {
-    this.hanabiParticles.forEach((p) => {
-      if (p.g) {
-        p.g.clear();
-        p.g.destroy();
-      }
-    });
-    this.hanabiParticles = [];
-    this.hanabiPool = [];
-  }
-
   updatePlacementHint() {
     if (!this.hintGraphics) return;
     this.hintGraphics.clear();
@@ -7321,15 +7683,9 @@ class GameScene extends Phaser.Scene {
     if (this.isNormalOrEasyMode()) {
       this.ghostEnabled = true;
     }
-    this.hanabiParticles = [];
-    this.hanabiPool = [];
-    this.hanabiContainer = null;
     this.hintGraphics = null;
     this.hintPlacement = null;
-    this.lowEndFireworks = true;
-    this.hanabiMaxActive = 80;
     this.spinRotatedWhileGrounded = false;
-    this.hanabiCounter = 0;
     this.levelUpType = config.levelUpType || "piece";
     this.lineClearBonus = config.lineClearBonus || 1;
     this.gravityLevelCap = config.gravityLevelCap || 999;
@@ -8535,7 +8891,6 @@ class GameScene extends Phaser.Scene {
     ensureMonochromeMinoTextures(this);
     // Overlay group for transient UI (e.g., READY/GO) that must survive draw() clears
     this.overlayGroup = this.add.group();
-    this.hanabiContainer = this.add.group();
     this.hintGraphics = this.add.graphics({
       lineStyle: { width: 2, color: 0x00e0ff, alpha: 0.5 },
     });
@@ -9738,8 +10093,6 @@ class GameScene extends Phaser.Scene {
       // Let game-over logic (fade/timers/UI) run below, but skip movement/rotation.
     }
 
-    // Update lightweight fireworks particles
-    this.updateHanabiParticles(this.deltaTime);
     // Update BGM scheduling
     this.updateBGM();
     // Fallback: ensure section transition/evaluation fires when basis passes threshold
@@ -10351,7 +10704,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Fail-safe: if pending credits somehow outlives fade completion, force transition.
-    if (this.creditsPending && !this.minoFadeActive && !this.creditsActive) {
+    if (this.creditsPending && !this.minoFadeActive && !this.creditsActive && !this.lineClearDelayActive && !this.lineClearPhase) {
       this.beginPendingCreditsTransition();
     }
 
@@ -10789,10 +11142,32 @@ class GameScene extends Phaser.Scene {
           this.lineClearDelayDuration = 0;
           this.pendingLineAREDelay = 0;
         } else if (this.lineClearPhase) {
-          // Line ARE completed, spawn next piece
+          // Line ARE completed
           this.lineClearPhase = false;
-          this.areActive = false;
-          this.spawnPiece();
+
+          // Trigger deferred complete sequence if pending (after both line clear delay and line ARE finish)
+          if (this.pendingCompleteSequence) {
+            this.pendingCompleteSequence = false;
+            try {
+              this.playSfx("complete", 0.8);
+            } catch {}
+            // Trigger special stack fade schedule for TGM3 Easy mode
+            const isTgm3EasyMode = this.selectedMode === "tgm3_easy";
+            if (isTgm3EasyMode) {
+              this.startMinoFading();
+            }
+            // If credits are pending (TGM2/TGM3 Master/TGM3 Easy), don't spawn next piece;
+            // the fade completion will trigger credits transition.
+            if (this.creditsPending) {
+              this.areActive = false;
+            } else {
+              this.areActive = false;
+              this.spawnPiece();
+            }
+          } else {
+            this.areActive = false;
+            this.spawnPiece();
+          }
         } else {
           // Normal ARE completed, spawn next piece
           this.areActive = false;
@@ -13125,9 +13500,14 @@ class GameScene extends Phaser.Scene {
     // Play complete when reaching max level once
     if (this.level >= maxLevel && !this.levelMaxSoundPlayed) {
       this.levelMaxSoundPlayed = true;
-      try {
-        this.playSfx("complete", 0.8);
-      } catch {}
+      // Defer complete SFX if line clear delay is active (or about to be, since updateLevel runs before ARE setup in handlePieceLock)
+      if (this.lineClearDelayActive || type === "lines") {
+        this.pendingCompleteSequence = true;
+      } else {
+        try {
+          this.playSfx("complete", 0.8);
+        } catch {}
+      }
     }
 
     // Shirase monochrome activation 1000-1299
@@ -13278,21 +13658,21 @@ class GameScene extends Phaser.Scene {
         // Start credits when reaching max level
         this.level999Reached = true;
 
-        const isTGM2Mode =
-          this.selectedMode && this.selectedMode.startsWith("tgm2") && maxLevel === 999;
-        const isTGM3MasterMode =
-          (this.selectedMode === "tgm3" || this.selectedMode === "tgm3_master") &&
-          maxLevel === 999;
-        const isShiraseMode =
-          this.selectedMode === "tgm3_shirase" || this.selectedMode === "shirase";
 
-        // TGM2/TGM3 Master: run stack fade before credits; credits start once fade completes.
-        if (isTGM2Mode || isTGM3MasterMode) {
+        const isTgm3EasyMode = this.selectedMode === "tgm3_easy";
+
+        // TGM2/TGM3 Master/TGM3 Easy: run stack fade before credits; credits start once fade completes.
+        if (isTgm3EasyMode) {
           this.creditsPending = true;
           this.creditsTransitionStartTime = this.time?.now ?? Date.now();
           this.invisibleStackActive = false;
           this.fadingRollActive = false;
-          this.startMinoFading();
+          // Defer stack fade if line clear delay is active (or about to be, since updateLevel runs before ARE setup in handlePieceLock)
+          if (this.lineClearDelayActive || type === "lines") {
+            this.pendingCompleteSequence = true;
+          } else {
+            this.startMinoFading();
+          }
         } else {
           if (this.gameMode && typeof this.gameMode.onCreditsStart === "function") {
             this.gameMode.onCreditsStart(this);
@@ -14932,6 +15312,32 @@ class GameScene extends Phaser.Scene {
     return { score: 0, level: 0, grade: "9", time: "--:--.--" };
   }
 
+  checkAchievements() {
+    if (typeof window.achievementSystem === "undefined") return;
+
+    const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
+      ? this.gameMode.getModeId()
+      : this.selectedMode;
+
+    const gameState = {
+      grade: this.grade,
+      level: this.level,
+      time: this.currentTime,
+      score: this.score,
+      linesClearedInMRoll: this.linesClearedInMRoll || 0,
+      creditsSurvived: this.creditsSurvived || false,
+      mRollCleared: this.mRollCleared || false,
+      hanabi: this.gameMode?.hanabi || 0,
+      stagesCleared: this.stagesCleared || 0,
+      modeCleared: this.modeCleared || false,
+    };
+
+    const newlyUnlocked = window.achievementSystem.checkAndUnlock(modeId, gameState);
+    if (newlyUnlocked.length > 0) {
+      console.log("Achievements unlocked:", newlyUnlocked);
+    }
+  }
+
   showGameOverScreen() {
     // Zen: use custom recover-only flow (no GAME OVER text) and keep matrix visible
     if (this.isZenSandboxActive && this.isZenSandboxActive()) {
@@ -15204,6 +15610,9 @@ class GameScene extends Phaser.Scene {
       this.gameOverMessage = this.sprintCompleted ? "CONGRATULATIONS" : "GAME OVER";
     }
     this.finesseActiveForPiece = false;
+
+    // Check for achievements
+    this.checkAchievements();
 
     // Show Hanabi summary if available
     if (this.gameMode && this.gameMode.hanabi !== undefined) {
@@ -15953,7 +16362,7 @@ class GameScene extends Phaser.Scene {
         this.gameMode && typeof this.gameMode.getModeId === "function"
           ? this.gameMode.getModeId()
           : this.selectedMode;
-      const isTgm3Mode = typeof modeId === "string" && modeId.startsWith("tgm3");
+      const isTgm3Mode = typeof modeId === "string" && modeId.startsWith("tgm3") && modeId !== "tgm3_easy";
       const isTgm2Normal = modeId === "tgm2_normal";
       const isMarathonMode = this.selectedMode === "marathon";
       const maxLevel =
@@ -16990,15 +17399,11 @@ window.__minoResizeHandler = () => {
 
   activeGame.scale.resize(window.innerWidth, window.innerHeight);
   if (activeGame.scene.scenes.length > 0) {
-    const scene = activeGame.scene.scenes[0];
-    if (scene && scene.calculateLayout) {
-      scene.calculateLayout();
-      if (scene.setupUI) {
-        scene.setupUI();
+    activeGame.scene.scenes.forEach(scene => {
+      if (scene && scene.calculateLayout) {
+        scene.calculateLayout();
       }
-    }
+    });
   }
-  // Ensure the game is resized correctly on window resize
-  window.addEventListener("resize", resizeGame);
 };
 window.addEventListener("resize", window.__minoResizeHandler);

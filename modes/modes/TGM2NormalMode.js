@@ -43,11 +43,12 @@ class TGM2NormalMode extends BaseMode {
     getModeConfig() {
         return {
             gravity: { type: 'tgm2_normal' },
-            das: 14/60,                    // TGM2 Normal DAS (14 frames)
+            das: 16/60,                    // TGM2 Normal DAS (14 frames)
             arr: 1/60,                     // ARR is always 1/60
-            are: 25/60,                    // TGM2 Normal ARE (25 frames)
-            lineAre: 25/60,                // Mirror ARE (table lacks line ARE column)
+            are: 27/60,                    // TGM2 Normal ARE (25 frames)
+            lineAre: 27/60,                // Mirror ARE (table lacks line ARE column)
             lockDelay: 30/60,              // Lock delay (30 frames)
+            lineClearDelay: 40/60,         // Line clear delay (40 frames)
             nextPieces: 1,                 // Standard next queue
             holdEnabled: false,            // TGM2 supports hold
             ghostEnabled: true,            // Ghost piece enabled
