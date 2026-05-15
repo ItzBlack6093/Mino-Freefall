@@ -2449,6 +2449,27 @@ class MenuScene extends Phaser.Scene {
   }
 
   /**
+   * Convert HSV to a 6-digit hex color string.
+   * h: 0-360, s: 0-1, v: 0-1
+   */
+  hsvToHex(h, s, v) {
+    const c = v * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = v - c;
+    let r, g, b;
+    if (h < 0) h = 360 + (h % 360);
+    if (h >= 360) h = h % 360;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    const toHex = (n) => Math.round((n + m) * 255).toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  /**
    * Display the player's Rating, Glicko, RD, and MR in the right-side panel
    * (replaces leaderboard for versus modes).
    */
@@ -2481,36 +2502,22 @@ class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0.5);
 
+    const mrColor = provisional
+      ? "#ff0000"
+      : this.hsvToHex(Math.max(95 - (mr / 40) * 150, -50), 0.9, 0.9);
+
     const mrValue = this.add
       .text(baseX, baseY - 15, provisional ? "?.??" : mr.toFixed(2), {
         fontSize: "36px",
-        fill: "#ffcc00",
+        fill: mrColor,
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0.5, 0.5);
 
-    // Rating
-    const ratingLabel = this.add
-      .text(baseX - 60, baseY + 30, "Rating", {
-        fontSize: "14px",
-        fill: "#888888",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0, 0.5);
-
-    const ratingValue = this.add
-      .text(baseX + 70, baseY + 30, provisional ? "?" : String(rating), {
-        fontSize: "18px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-        fontStyle: "bold",
-      })
-      .setOrigin(1, 0.5);
-
     // Glicko (same as rating value but labeled explicitly)
     const glickoLabel = this.add
-      .text(baseX - 60, baseY + 60, "Glicko", {
+      .text(baseX - 60, baseY + 30, "Glicko", {
         fontSize: "14px",
         fill: "#888888",
         fontFamily: "Courier New",
@@ -2518,7 +2525,7 @@ class MenuScene extends Phaser.Scene {
       .setOrigin(0, 0.5);
 
     const glickoValue = this.add
-      .text(baseX + 70, baseY + 60, provisional ? "?" : String(rating), {
+      .text(baseX + 70, baseY + 30, provisional ? "?" : String(rating), {
         fontSize: "18px",
         fill: "#00ffff",
         fontFamily: "Courier New",
@@ -2528,7 +2535,7 @@ class MenuScene extends Phaser.Scene {
 
     // RD (Rating Deviation)
     const rdLabel = this.add
-      .text(baseX - 60, baseY + 90, "RD", {
+      .text(baseX - 60, baseY + 60, "RD", {
         fontSize: "14px",
         fill: "#888888",
         fontFamily: "Courier New",
@@ -2536,7 +2543,7 @@ class MenuScene extends Phaser.Scene {
       .setOrigin(0, 0.5);
 
     const rdValue = this.add
-      .text(baseX + 70, baseY + 90, provisional ? "?" : rd.toFixed(1), {
+      .text(baseX + 70, baseY + 60, provisional ? "?" : rd.toFixed(1), {
         fontSize: "18px",
         fill: "#aaaaaa",
         fontFamily: "Courier New",
@@ -2547,7 +2554,7 @@ class MenuScene extends Phaser.Scene {
     // Provisional badge
     if (provisional) {
       const provText = this.add
-        .text(baseX, baseY + 125, `Provisional (${gamesPlayed}/10 games)`, {
+        .text(baseX, baseY + 95, `Provisional (${gamesPlayed}/10 games)`, {
           fontSize: "12px",
           fill: "#ff8800",
           fontFamily: "Courier New",
@@ -2557,7 +2564,7 @@ class MenuScene extends Phaser.Scene {
     }
 
     this.leaderboardEntries.push({
-      mrLabel, mrValue, ratingLabel, ratingValue,
+      mrLabel, mrValue,
       glickoLabel, glickoValue, rdLabel, rdValue,
     });
   }
@@ -6293,10 +6300,14 @@ class GameScene extends Phaser.Scene {
     this.creditsFinalized = false;
     this.creditsBgmStarted = false;
     this.rollFailedDuringRoll = false;
+    this.creditsFinishPending = false;
+    this.creditsFadeInDone = false;
+    this.gameOverStatePrepared = false;
 
     this.invisibleStackActive = false;
     this.fadingRollActive = false;
     this.minoFadeActive = false;
+    this.minoFadeReversed = false;
     this.minoFadeProgress = 0;
     this.minoFadeDelay = 30 / 60; // seconds between each row fade (will be calculated dynamically)
     this.minoFadeTimer = 0;
@@ -6852,7 +6863,7 @@ class GameScene extends Phaser.Scene {
         : this.selectedMode;
     if (modeId === "easy_easy" || modeId === "easy_normal") {
       try {
-        this.sound?.add("firework", { volume: 0.6 })?.play();
+        this.playSfx("firework", 0.6);
       } catch {}
     }
     if (!this.hanabiContainer) return;
@@ -8629,6 +8640,7 @@ class GameScene extends Phaser.Scene {
     this.invisibleStackActive = false;
     this.fadingRollActive = false;
     this.minoFadeActive = false;
+    this.minoFadeReversed = false;
     this.minoFadeProgress = 0;
     this.minoFadeTimer = 0;
     this.minoFadePerRowDuration = 0;
@@ -8637,9 +8649,12 @@ class GameScene extends Phaser.Scene {
     this.fadingComplete = false;
     this.minoRowFadeAlpha = {};
     this.gameOverFadeDoneTime = null;
+    this.creditsFinishPending = false;
+    this.creditsFadeInDone = false;
+    this.gameOverStatePrepared = false;
     this.showGameOverText = false;
     this.gameOverTextTimer = 0;
-    this.gameOverSfxPlayed = false;
+    this.gameOverSfxPlayed = true;
     this.creditsPending = false;
     this.creditsActive = false;
     this.creditsTimer = 0;
@@ -9060,7 +9075,7 @@ class GameScene extends Phaser.Scene {
     this.children.bringToTop(this.bravoText);
 
     try {
-      this.sound?.add("firework", { volume: 0.85 })?.play();
+      this.playSfx("firework", 0.85);
     } catch {}
 
     // Timeline: grow + spin in 1s, then fade and slightly shrink over 3s
@@ -9405,8 +9420,7 @@ class GameScene extends Phaser.Scene {
     this.overlayGroup.add(readyText);
     readyText.setDepth(9999);
 
-    const sfxReadyVol = 0.7 * this.getMasterVolumeSetting() * this.getSFXVolumeSetting();
-    this.sound?.add("ready", { volume: sfxReadyVol })?.play();
+    this.playSfx("ready", 0.7);
 
     // Ensure Zen config is loaded before applying cheese
     if (!this.zenSandboxConfig && typeof ZenSandboxHelper !== "undefined" && ZenSandboxHelper.loadConfig) {
@@ -9449,8 +9463,7 @@ class GameScene extends Phaser.Scene {
       this.overlayGroup.add(goText);
       goText.setDepth(9999);
 
-      const sfxGoVol = 0.7 * this.getMasterVolumeSetting() * this.getSFXVolumeSetting();
-      this.sound?.add("go", { volume: sfxGoVol })?.play();
+      this.playSfx("go", 0.7);
 
       this.time.delayedCall(500, () => {
         goText.destroy();
@@ -10233,7 +10246,36 @@ class GameScene extends Phaser.Scene {
       if (totalRows === 0 || this.minoFadePerRowDuration <= 0) {
         this.minoFadeActive = false;
         this.fadingComplete = true;
-        if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
+        this.minoFadeReversed = false;
+        if (this.creditsFinishPending) {
+          this.creditsFinishPending = false;
+          this.creditsFadeInDone = true;
+          // Directly set up game over state without calling showGameOverScreen to avoid
+          // triggering another fade animation that could hide the stack.
+          this.gameOver = true;
+          this.gameOverTimer = 0;
+          this.fadingComplete = true;
+          this.gameOverFadeDoneTime = this.time.now;
+          this.invisibleStackActive = false;
+          this.fadingRollActive = false;
+          this.gameOverStatePrepared = true;
+          // Clear fadeGrid to ensure cells are not skipped during rendering after fade-in
+          if (this.board && this.board.fadeGrid) {
+            for (let r = 0; r < this.board.rows; r++) {
+              this.board.fadeGrid[r] = Array(this.board.cols).fill(0);
+            }
+          }
+          // Clear minoRowFadeAlpha to ensure rendering defaults to full opacity
+          this.minoRowFadeAlpha = {};
+          // Call mode-specific game over handler if available
+          if (this.gameMode && this.gameMode.onGameOver) {
+            this.gameMode.onGameOver(this);
+          }
+          // Call mode-specific finishCreditRoll if available (for rankings, etc.)
+          if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
+            this.gameMode.finishCreditRoll(this);
+          }
+        } else if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
           this.gameOverFadeDoneTime = this.time.now;
         }
         if (this.creditsPending) {
@@ -10243,17 +10285,51 @@ class GameScene extends Phaser.Scene {
         const rowIndex = this.minoFadeProgress;
         const rowToFade = this.placedMinoRows[rowIndex];
         const perRow = this.minoFadePerRowDuration;
-        const alpha = Math.max(0, 1 - this.minoFadeTimer / perRow);
+        let alpha;
+        if (this.minoFadeReversed) {
+          alpha = Math.min(1, this.minoFadeTimer / perRow);
+        } else {
+          alpha = Math.max(0, 1 - this.minoFadeTimer / perRow);
+        }
         this.minoRowFadeAlpha[rowToFade] = alpha;
 
         if (this.minoFadeTimer >= perRow) {
           this.minoFadeTimer = 0;
           this.minoFadeProgress++;
-          this.minoRowFadeAlpha[rowToFade] = 0;
+          this.minoRowFadeAlpha[rowToFade] = this.minoFadeReversed ? 1 : 0;
           if (this.minoFadeProgress >= totalRows) {
             this.minoFadeActive = false;
             this.fadingComplete = true;
-            if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
+            this.minoFadeReversed = false;
+            if (this.creditsFinishPending) {
+              this.creditsFinishPending = false;
+              this.creditsFadeInDone = true;
+              // Directly set up game over state without calling showGameOverScreen to avoid
+              // triggering another fade animation that could hide the stack.
+              this.gameOver = true;
+              this.gameOverTimer = 0;
+              this.fadingComplete = true;
+              this.gameOverFadeDoneTime = this.time.now;
+              this.invisibleStackActive = false;
+              this.fadingRollActive = false;
+              this.gameOverStatePrepared = true;
+              // Clear fadeGrid to ensure cells are not skipped during rendering after fade-in
+              if (this.board && this.board.fadeGrid) {
+                for (let r = 0; r < this.board.rows; r++) {
+                  this.board.fadeGrid[r] = Array(this.board.cols).fill(0);
+                }
+              }
+              // Clear minoRowFadeAlpha to ensure rendering defaults to full opacity
+              this.minoRowFadeAlpha = {};
+              // Call mode-specific game over handler if available
+              if (this.gameMode && this.gameMode.onGameOver) {
+                this.gameMode.onGameOver(this);
+              }
+              // Call mode-specific finishCreditRoll if available (for rankings, etc.)
+              if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
+                this.gameMode.finishCreditRoll(this);
+              }
+            } else if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
               this.gameOverFadeDoneTime = this.time.now;
             }
             if (this.creditsPending) {
@@ -10261,6 +10337,16 @@ class GameScene extends Phaser.Scene {
             }
           }
         }
+      }
+
+      // Restore roll visibility masks once a reversed fade completes.
+      if (!this.minoFadeActive && this._fadingRollActiveBeforeTopout !== undefined) {
+        this.fadingRollActive = this._fadingRollActiveBeforeTopout;
+        this._fadingRollActiveBeforeTopout = undefined;
+      }
+      if (!this.minoFadeActive && this._invisibleStackActiveBeforeTopout !== undefined) {
+        this.invisibleStackActive = this._invisibleStackActiveBeforeTopout;
+        this._invisibleStackActiveBeforeTopout = undefined;
       }
     }
 
@@ -10309,14 +10395,16 @@ class GameScene extends Phaser.Scene {
       this.gameOverTextTimer = 0;
       this.gameOverSfxPlayed = true;
       this.gameOverFadeDoneTime = null;
-    } else if (!this.creditsActive && !this.creditsPending && this.fadingComplete && this.gameOverFadeDoneTime !== null) {
-      const elapsedSinceFade = this.time.now - this.gameOverFadeDoneTime;
-      if (elapsedSinceFade >= 3000) {
-        this.showGameOverText = true;
-        this.metricsPauseActive = false; // resume metrics after topout animation finishes
-        if (!this.gameOverSfxPlayed) {
-          this.gameOverSfxPlayed = true;
-          this.playSfx?.("gameover", 0.8);
+    } else if (!this.creditsPending && this.fadingComplete && this.gameOverFadeDoneTime !== null) {
+      if (!this.creditsActive || this.rollFailedDuringRoll) {
+        const elapsedSinceFade = this.time.now - this.gameOverFadeDoneTime;
+        if (elapsedSinceFade >= 3000) {
+          this.showGameOverText = true;
+          this.metricsPauseActive = false; // resume metrics after topout animation finishes
+          if (!this.gameOverSfxPlayed) {
+            this.gameOverSfxPlayed = true;
+            this.playSfx?.("gameover", 0.8);
+          }
         }
       }
     }
@@ -10696,8 +10784,7 @@ class GameScene extends Phaser.Scene {
             this.board.deleteBottomRow();
             this.deleteBottomRowRequested = false;
           }
-          const fallSound = this.sound.add("fall", { volume: 0.7 });
-          fallSound.play();
+          this.playSfx("fall", 0.7);
           this.isClearingLines = false;
           this.lineClearDelayDuration = 0;
           this.pendingLineAREDelay = 0;
@@ -10902,13 +10989,7 @@ class GameScene extends Phaser.Scene {
         GameScene.prototype.playGarbageSfx.call(this, 1);
       } else if (this.sound) {
         console.log("[SFX][Shirase] direct play fallback", { hasSound: !!this.sound });
-        const sfx = this.sound.add("garbage", { volume: 1, detune: 0, rate: 1 });
-        sfx?.once?.("complete", () => {
-          try {
-            sfx.destroy();
-          } catch {}
-        });
-        sfx?.play();
+        this.playSfx("garbage");
       }
     } catch (err) {
       console.warn("[Shirase] playGarbageSfx fallback error", err);
@@ -12133,10 +12214,10 @@ class GameScene extends Phaser.Scene {
     if (linesToClear.length > 0) {
       try {
         if (playApplause) {
-          this.sound?.add("applause", { volume: 0.8 })?.play();
+          this.playSfx("applause", 0.8);
         }
         if (playComboChime) {
-          this.sound?.add("combo", { volume: 0.7 })?.play();
+          this.playSfx("combo", 0.7);
         }
       } catch {}
     }
@@ -12312,8 +12393,7 @@ class GameScene extends Phaser.Scene {
     // Play hold/IHS sound if available
     try {
       const soundKey = isIHS ? "IHS" : "lock";
-      const snd = this.sound?.add(soundKey, { volume: isIHS ? 0.6 : 0.4 });
-      snd?.play();
+      this.playSfx(soundKey, isIHS ? 0.6 : 0.4);
     } catch {}
 
     return true;
@@ -12662,6 +12742,32 @@ class GameScene extends Phaser.Scene {
         this.rollLinesCleared += lines;
         if (lines > 0) {
           this.lastClearDuringRoll = { lines, time: this.currentTime };
+
+          // For TGM3 modes: incrementally add staff roll bonus per clear
+          const modeId =
+            this.gameMode && typeof this.gameMode.getModeId === "function"
+              ? this.gameMode.getModeId()
+              : this.selectedMode;
+          if (
+            (modeId === "tgm3_master" || modeId === "tgm3") &&
+            this.gameMode &&
+            typeof this.gameMode.addStaffRollLines === "function"
+          ) {
+            this.gameMode.addStaffRollLines(lines, this.rollType === "mroll" ? "mroll" : "fading");
+          }
+
+          // Update roll bonus display
+          if (this.staffRollBonusText) {
+            let bonusText = String(this.rollLinesCleared);
+            if (
+              (modeId === "tgm3_master" || modeId === "tgm3") &&
+              this.gameMode &&
+              typeof this.gameMode.getStaffRollBonus === "function"
+            ) {
+              bonusText = this.gameMode.getStaffRollBonus().toFixed(2);
+            }
+            this.staffRollBonusText.setText(`ROLL BONUS: ${bonusText}`);
+          }
         }
       }
       return;
@@ -13003,8 +13109,7 @@ class GameScene extends Phaser.Scene {
     if (this.level % 100 === 99 && this.level !== this.lastBellLevel && !isNormalMode) {
       this.lastBellLevel = this.level;
       try {
-        const bell = this.sound?.add("bell", { volume: 0.6 });
-        bell?.play();
+        this.playSfx("bell", 0.6);
       } catch {}
     }
 
@@ -13021,8 +13126,7 @@ class GameScene extends Phaser.Scene {
     if (this.level >= maxLevel && !this.levelMaxSoundPlayed) {
       this.levelMaxSoundPlayed = true;
       try {
-        const complete = this.sound?.add("complete", { volume: 0.8 });
-        complete?.play();
+        this.playSfx("complete", 0.8);
       } catch {}
     }
 
@@ -13273,6 +13377,22 @@ class GameScene extends Phaser.Scene {
           const targetLevel = baseLevel + 80 + Math.floor(Math.random() * 11); // 80-90 inclusive
           this.coolAnnouncementsTargets[currentSectionIndex] = targetLevel;
           this.coolAnnouncementsShown.delete(currentSectionIndex);
+          // Update BGM internal level buffer to COOL animation target level
+          // so BGM stops when COOL animation appears, not at *70
+          // Only do this if the next section changes BGM track
+          const nextSection = completedSection + 1;
+          const schedule = this.getBgmSchedule(modeId);
+          if (schedule && schedule.segments) {
+            const currentSectionLevel = currentSectionIndex * sectionLength;
+            const nextSectionLevel = nextSection * sectionLength;
+            const currentSegment = schedule.segments.find((s) => currentSectionLevel <= s.end);
+            const nextSegment = schedule.segments.find((s) => nextSectionLevel <= s.end);
+            if (currentSegment && nextSegment && currentSegment.key !== nextSegment.key) {
+              if (this.gameMode && typeof this.gameMode.bgmStopLevel === "number") {
+                this.bgmInternalLevelBuffer = Math.max(this.bgmInternalLevelBuffer || 0, targetLevel);
+              }
+            }
+          }
         } else if (result === "regret") {
           this.gameMode.onSectionRegret();
           this.sectionPerformance[completedSection] = "REGRET";
@@ -14416,11 +14536,14 @@ class GameScene extends Phaser.Scene {
     this.placedMinoRows = [];
     this.minoRowFadeAlpha = {};
     // Credits flow should not inherit topout GAME OVER timers.
+    this.minoFadeReversed = false;
     this.fadingComplete = false;
     this.gameOverFadeDoneTime = null;
     this.showGameOverText = false;
     this.gameOverTextTimer = 0;
     this.gameOverSfxPlayed = true;
+    this.creditsFinishPending = false;
+    this.creditsFadeInDone = false;
     // Ensure we are not stuck in an old ARE state after fade completion.
     this.areActive = false;
     this.areTimer = 0;
@@ -14459,6 +14582,10 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  setGradeLineColor(color) {
+    this.gradeLineColor = color;
+  }
+
   finalizeCreditsRoll() {
     if (this.creditsFinalized) return;
     this.creditsFinalized = true;
@@ -14491,7 +14618,7 @@ class GameScene extends Phaser.Scene {
         typeof this.gameMode.addStaffRollBonus === "function" &&
         typeof this.gameMode.addStaffRollLines === "function"
       ) {
-        this.gameMode.addStaffRollLines(this.rollLinesCleared || 0, this.rollType === "mroll" ? "mroll" : "fading");
+        // Already processed incrementally during the roll; no need to batch here
       }
     }
 
@@ -14505,16 +14632,22 @@ class GameScene extends Phaser.Scene {
       this.showHanabiSummary(this.gameMode.hanabi);
     }
 
-    // If invisible stack was active for fading roll, restore visibility
-    if (this.invisibleStackActive) {
-      this.invisibleStackActive = false;
-    }
-
     // Grade line color: orange on successful roll clear, green on fail/topout
     if (this.rollFailedDuringRoll) {
       this.setGradeLineColor("green");
     } else {
       this.setGradeLineColor("orange");
+    }
+
+    // If invisible stack was active (M-roll) or fading roll was active, reveal the stack
+    // with a row-by-row fade-in instead of showing it instantly.
+    if (this.invisibleStackActive || this.fadingRollActive) {
+      this.startMinoFadeIn();
+      // Keep the stack visible after the fade-in completes by clearing the saved restoration values.
+      this._fadingRollActiveBeforeTopout = undefined;
+      this._invisibleStackActiveBeforeTopout = undefined;
+      this.creditsFinishPending = true;
+      return;
     }
 
     // Delegate to mode-specific finish if available
@@ -14577,6 +14710,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.minoFadeActive = true;
+    this.minoFadeReversed = false;
     this.minoFadeProgress = 0;
     this.minoFadeTimer = 0;
     this.gameOverTextTimer = 0;
@@ -14599,6 +14733,75 @@ class GameScene extends Phaser.Scene {
     } else {
       this.minoFadePerRowDuration = 2;
     }
+  }
+
+  startMinoFadeIn() {
+    // Rebuild placed mino tracking from current board state.
+    this.placedMinos = [];
+    this.placedMinoRows = [];
+    for (let y = 0; y < this.board.rows; y++) {
+      for (let x = 0; x < this.board.cols; x++) {
+        const cell = this.board.grid[y][x];
+        if (cell) {
+          this.placedMinos.push({ x, y, color: cell, faded: false });
+          if (!this.placedMinoRows.includes(y)) {
+            this.placedMinoRows.push(y);
+          }
+        }
+      }
+    }
+    // Include the active piece, if present.
+    if (this.currentPiece && this.currentPiece.shape) {
+      for (let r = 0; r < this.currentPiece.shape.length; r++) {
+        for (let c = 0; c < this.currentPiece.shape[r].length; c++) {
+          if (this.currentPiece.shape[r][c]) {
+            const x = this.currentPiece.x + c;
+            const y = this.currentPiece.y + r;
+            if (
+              y >= 0 &&
+              y < this.board.rows &&
+              x >= 0 &&
+              x < this.board.cols
+            ) {
+              this.board.grid[y][x] = this.currentPiece.color;
+              this.placedMinos.push({ x, y, color: this.currentPiece.color, faded: false });
+              if (!this.placedMinoRows.includes(y)) {
+                this.placedMinoRows.push(y);
+              }
+            }
+          }
+        }
+      }
+    }
+
+    this.minoFadeActive = true;
+    this.minoFadeReversed = true;
+    this.minoFadeProgress = 0;
+    this.minoFadeTimer = 0;
+    this.gameOverTextTimer = 0;
+    this.showGameOverText = false;
+    this.minoRowFadeAlpha = {};
+
+    // Start all tracked rows at alpha 0 so they are invisible initially.
+    for (const row of this.placedMinoRows) {
+      this.minoRowFadeAlpha[row] = 0;
+    }
+
+    // Sort rows from bottom to top for proper reveal order.
+    this.placedMinoRows.sort((a, b) => b - a);
+
+    const rowCount = this.placedMinoRows.length;
+    if (rowCount > 0) {
+      this.minoFadePerRowDuration = 2 / rowCount;
+    } else {
+      this.minoFadePerRowDuration = 2;
+    }
+
+    // Temporarily disable roll visibility masks so the fade-in is visible.
+    this._fadingRollActiveBeforeTopout = this.fadingRollActive;
+    this.fadingRollActive = false;
+    this._invisibleStackActiveBeforeTopout = this.invisibleStackActive;
+    this.invisibleStackActive = false;
   }
 
   startLockFlash() {
@@ -14977,10 +15180,23 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.creditsActive) {
+    const wasCreditsActive = this.creditsActive;
+    if (wasCreditsActive) {
       this.rollFailedDuringRoll = true;
       // Topping out during credits is a fail: set to at least green line
       this.rollHighestLine = Math.max(this.rollHighestLine, 18);
+      this.creditsActive = false;
+      this.creditsFinalized = true;
+      this.creditsBgmStarted = false;
+      if (this.creditsBGM) {
+        this.creditsBGM.stop();
+        this.creditsBGM = null;
+      }
+      if (this.rollFailedDuringRoll) {
+        this.setGradeLineColor("green");
+      } else {
+        this.setGradeLineColor("orange");
+      }
     }
     this.gameOver = true;
     this.gameOverTimer = 0; // Start timer for 10 seconds
@@ -15067,8 +15283,19 @@ class GameScene extends Phaser.Scene {
     this.tgm2_stage3 = null;
     this.tgm2_stage4 = null;
 
-    // Start mino fading immediately
-    this.startMinoFading();
+    // Start mino fading immediately (fade-in when topping out during credits)
+    if (this.creditsFadeInDone) {
+      // Stack was already revealed via credits fade-in; keep it visible.
+      this.fadingComplete = true;
+      this.gameOverFadeDoneTime = this.time.now;
+      // Ensure stack stays visible by explicitly disabling invisibility
+      this.invisibleStackActive = false;
+      this.fadingRollActive = false;
+    } else if (wasCreditsActive) {
+      this.startMinoFadeIn();
+    } else {
+      this.startMinoFading();
+    }
 
     // Handle game over in game mode (for TGM2, powerup minos, etc.)
     if (this.gameMode && this.gameMode.onGameOver) {
@@ -15378,10 +15605,10 @@ class GameScene extends Phaser.Scene {
       const internalGravity = this.getTGMGravitySpeed(this.level);
       // Green bar: percentage of sub-1G gravity (0–256)
       const greenRatio = Math.min(internalGravity / 256, 1);
-      // Red overlay: gravity beyond 1G, scaled up to 20G (5120)
+      // Red overlay: gravity beyond 1G, scaled up to 10G (2560)
       const redRatio =
         internalGravity > 256
-          ? Math.min((internalGravity - 256) / (5120 - 256), 1)
+          ? Math.min((internalGravity - 256) / (2560 - 256), 1)
           : 0;
 
       if (!this.levelBar) {
@@ -15477,10 +15704,11 @@ class GameScene extends Phaser.Scene {
 
       // Draw game elements using matrix offset (skip during game over after fading)
       // During game over fading, keep drawing the stack so row-by-row alpha can be applied.
+      // Also keep drawing after a credits fade-in so the revealed stack stays visible.
       if (
         this.gameStarted &&
-        (!this.gameOver || this.minoFadeActive) &&
-        !this.fadingComplete
+        (!this.gameOver || this.minoFadeActive || this.creditsFadeInDone) &&
+        (!this.fadingComplete || this.creditsFadeInDone)
       ) {
         this.board.draw(
           this,
@@ -15609,8 +15837,8 @@ class GameScene extends Phaser.Scene {
       this.scorePerPieceText.setText(scorePerPiece.toFixed(2));
     }
 
-    // Update grade display only for modes that use grading
-    if (hasGrading) {
+    // Update grade display only for modes that use grading (freeze during credits)
+    if (hasGrading && !this.creditsActive) {
       const fetchedGrade =
         this.gameMode && typeof this.gameMode.getDisplayedGrade === "function"
           ? this.gameMode.getDisplayedGrade()

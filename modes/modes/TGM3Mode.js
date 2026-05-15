@@ -104,6 +104,11 @@ class TGM3Mode extends BaseMode {
         return 0;
     }
 
+    getStaffRollBonus() {
+        if (this.tgm3Grading) return this.tgm3Grading.staffRollBonus || 0;
+        return 0;
+    }
+
     // Gravity curve derived from Ti table (values divided by 256 to map to existing engine units)
     getGravitySpeed(level) {
         let internal;
@@ -174,9 +179,9 @@ class TGM3Mode extends BaseMode {
         // internal progression remains (display/base + COOL bonuses).
         if (updateType === 'piece' && currentDisplayLevel >= 998) {
             nextLevel = 998;
-        } else
-        if (updateType === 'piece') {
-            nextLevel = Math.min(level + 1, gravityCap);
+        } else if (updateType === 'piece') {
+            const atStopLevel = level % 100 === 99;
+            nextLevel = atStopLevel ? level : Math.min(level + 1, gravityCap);
         } else if (updateType === 'lines') {
             const inc = Math.min(Math.max(amount || 0, 0), 4);
             const bonus = inc === 3 ? 1 : inc === 4 ? 2 : 0;
@@ -257,7 +262,7 @@ class TGM3Mode extends BaseMode {
 
     update(gameScene, deltaTime) {
         if (super.update) super.update(gameScene, deltaTime);
-        if (this.tgm3Grading && typeof this.tgm3Grading.update === 'function') {
+        if (this.tgm3Grading && typeof this.tgm3Grading.update === 'function' && !gameScene.creditsActive) {
             this.tgm3Grading.update(deltaTime);
         }
     }

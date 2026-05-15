@@ -17,7 +17,7 @@ class TGM2MasterMode extends BaseMode {
             lockDelay: 30/60,              // TGM2 Master lock delay (changes with timing phases)
             lineClearDelay: 40/60,         // Base line clear delay (changes with timing phases)
             nextPieces: 1,                 // Standard next queue
-            holdEnabled: false,            // TGM2 supports hold
+            holdEnabled: false,            
             ghostEnabled: true,            // Ghost piece enabled
             levelUpType: 'piece',          // Level up per piece
             lineClearBonus: 1,
@@ -491,8 +491,7 @@ class TGM2MasterMode extends BaseMode {
     // Trigger grade up animation
     triggerGradeUpAnimation(gameScene) {
         if (gameScene.sound) {
-            const gradeUpSound = gameScene.sound.add('gradeup', { volume: 0.6 });
-            gradeUpSound.play();
+            gameScene.playSfx('gradeup', 0.6);
         }
         
         // Flash grade text
@@ -506,15 +505,15 @@ class TGM2MasterMode extends BaseMode {
     
     // Update TGM2 grading system decay (called every frame)
     update(gameScene, deltaTime) {
-        if (this.config.specialMechanics.tgm2Grading) {
+        if (this.config.specialMechanics.tgm2Grading && !gameScene.creditsActive) {
             // Update TGM2 grading system decay
             this.tgm2Grading.update(deltaTime);
-            
+
             // Update game state for decay control
             const hasControl = !gameScene.areActive;
             const hasActiveCombo = gameScene.comboCount >= 1 && gameScene.lastClearType !== 'single';
             this.tgm2Grading.setGameState(hasControl, hasActiveCombo);
-            
+
             // Update level in grading system
             this.tgm2Grading.setLevel(gameScene.level);
         }
@@ -583,8 +582,11 @@ class TGM2MasterMode extends BaseMode {
         // Show final ranking
         this.showFinalRanking(gameScene, finalGrade, rankingType, lineColor);
 
-        // Proceed to game over
-        gameScene.showGameOverScreen();
+        // Only call showGameOverScreen if game over state hasn't already been prepared
+        // (e.g., from credits fade-in completion)
+        if (!gameScene.gameOverStatePrepared) {
+            gameScene.showGameOverScreen();
+        }
     }
     
     // Show final ranking

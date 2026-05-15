@@ -399,21 +399,25 @@ class PowerupEffectHandler {
         let sound;
         
         try {
+            const baseVol = 0.8;
+            const vol = (typeof this.gameScene.getSfxVolumeFactor === 'function')
+                ? this.gameScene.getSfxVolumeFactor(baseVol)
+                : baseVol;
             // Try to load custom powerup sound, fallback to existing sounds
             if (this.gameScene.sound.get(soundKey)) {
-                sound = this.gameScene.sound.add(soundKey, { volume: 0.8 });
+                sound = this.gameScene.sound.add(soundKey, { volume: vol });
             } else {
                 // Fallback to existing sounds
                 switch (powerupType) {
                     case 'del_even':
-                        sound = this.gameScene.sound.add('clear', { volume: 0.8 });
+                        sound = this.gameScene.sound.add('clear', { volume: vol });
                         break;
                     case 'free_fall':
-                        sound = this.gameScene.sound.add('fall', { volume: 0.8 });
+                        sound = this.gameScene.sound.add('fall', { volume: vol });
                         break;
                 }
             }
-            
+
             if (sound) {
                 sound.play();
             }

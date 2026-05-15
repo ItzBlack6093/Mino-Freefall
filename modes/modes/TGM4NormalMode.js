@@ -91,7 +91,7 @@ class TGM4NormalMode extends BaseMode {
         if (level <= 554) return 4;
         if (level <= 665) return 5;
         if (level <= 776) return 6;
-        if (level <= 876) return 7;
+        if (level <= 887) return 7;
         if (level <= 998) return 8;
         // Reaching 999 starts credits; B=9/10 depends on roll result.
         return 8;

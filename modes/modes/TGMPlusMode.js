@@ -338,8 +338,7 @@ class TGMPlusMode extends BaseMode {
         if (typeof gameScene.playGarbageSfx === 'function') {
             gameScene.playGarbageSfx(1);
         } else if (gameScene.sound) {
-            const garbageSound = gameScene.sound.add('garbage', { volume: 0.5 });
-            garbageSound.play();
+            gameScene.playSfx('garbage', 0.5);
         }
         
         // Show garbage raise message occasionally

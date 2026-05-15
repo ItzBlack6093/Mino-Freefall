@@ -212,7 +212,7 @@ class TGM3SakuraMode extends BaseMode {
             const bonus = clearedJewels.length;
             this.mainTimer += bonus;
             try {
-                gameScene.sound?.add('jewelclear', { volume: 0.7 })?.play();
+                gameScene.playSfx('jewelclear', 0.7);
             } catch {}
         }
     }
@@ -337,11 +337,9 @@ class TGM3SakuraMode extends BaseMode {
         // Play READY/GO SFX if available
         try {
             if (gameScene.sound) {
-                const ready = gameScene.sound.add('ready', { volume: 0.7 });
-                ready.play();
+                gameScene.playSfx('ready', 0.7);
                 gameScene.time.delayedCall(800, () => {
-                    const go = gameScene.sound.add('go', { volume: 0.8 });
-                    go.play();
+                    gameScene.playSfx('go', 0.8);
                 });
             }
         } catch (e) {
