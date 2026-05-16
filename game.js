@@ -1456,7 +1456,6 @@ class Board {
   }
 
   draw(scene, offsetX, offsetY, cellSize) {
-    // Only draw the visible rows (rows 2-21 of the 22-row matrix)
     const startRow = 2;
     const endRow = Math.min(this.rows, startRow + scene.visibleRows);
 
@@ -1801,9 +1800,9 @@ class Piece {
     while (this.move(board, 0, 1)) {}
   }
 
-  draw(scene, offsetX, offsetY, cellSize, ghost = false, alpha = 1) {
+  draw(scene, offsetX, offsetY, cellSize, ghost = false, alpha = 1, useBigBlocks = true) {
     const finalAlpha = ghost ? 0.3 : alpha;
-    const bigBlocks = !!(scene && scene.bigBlocksActive);
+    const bigBlocks = useBigBlocks && !!(scene && scene.bigBlocksActive);
     const drawCellSize = bigBlocks ? cellSize * 2 : cellSize;
     for (let r = 0; r < this.shape.length; r++) {
       for (let c = 0; c < this.shape[r].length; c++) {
@@ -1859,6 +1858,7 @@ class Piece {
 
   getGhostPosition(board) {
     const ghost = new Piece(this.type, this.rotationSystem, this.rotation, this.textureKey);
+    ghost.shape = this.shape.map((row) => [...row]);
     ghost.x = this.x;
     ghost.y = this.y;
     ghost.hardDrop(board);
@@ -6106,6 +6106,10 @@ class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
     this.board = new Board();
     this.board.scene = this;
+    this.visibleRows = 20;
+    this.bigModeActive = false;
+    this.bigBlocksActive = false;
+    this.bigModeBoardActive = false;
     this.currentPiece = null;
     this.holdPiece = null;
     this.canHold = true;
@@ -6167,7 +6171,6 @@ class GameScene extends Phaser.Scene {
     this.monochromeApplied = false;
     this.monochromeActive = false;
     this.monochromeTextureKey = null;
-    this.bigBlocksActive = false;
     this.xrayActive = false;
     this.xrayColumn = 0;
     this.strobeActive = false;
@@ -6176,7 +6179,6 @@ class GameScene extends Phaser.Scene {
     this.regretMessageText = null;
     this.playfieldBorder = null;
     this.gameOver = false;
-    this.visibleRows = 20; // Only show bottom 20 rows of the 22-row matrix
     // Calculate cell size and positioning for full screen
     this.calculateLayout();
 
@@ -7941,39 +7943,90 @@ class GameScene extends Phaser.Scene {
   }
 
   calculateLayout() {
-    // Calculate layout based on current window size
     const windowWidth = window.innerWidth;
     const windowHeight = window.innerHeight;
 
-    // Calculate optimal cell size to utilize more of the screen space
-    // Use more aggressive sizing to fill the screen better
-    const maxCellWidth = Math.floor((windowWidth * 0.8) / this.board.cols); // Use 80% of width for playfield
-    const maxCellHeight = Math.floor((windowHeight * 0.9) / this.visibleRows); // Use 90% of height for playfield
-    this.cellSize = Math.min(maxCellWidth, maxCellHeight, 40); // Cap at 40 for better utilization
+    const maxCellWidth = Math.floor((windowWidth * 0.8) / this.board.cols);
+    const maxCellHeight = Math.floor((windowHeight * 0.9) / this.visibleRows);
+    const maxCellSize = this.bigModeBoardActive ? 80 : 40;
+    this.cellSize = Math.min(maxCellWidth, maxCellHeight, maxCellSize);
 
     // Ensure minimum cell size for readability
     this.cellSize = Math.max(this.cellSize, 20);
 
-    // Calculate playfield dimensions and store as instance properties
     this.playfieldWidth = this.cellSize * this.board.cols;
     this.playfieldHeight = this.cellSize * this.visibleRows;
 
-    // Center the border with better screen utilization
     this.borderOffsetX = Math.floor((windowWidth - this.playfieldWidth) / 2);
     this.borderOffsetY =
       Math.floor((windowHeight - this.playfieldHeight) / 2) - 30; // Adjusted for better centering
 
-    // Move the matrix to the right within the border
-    this.matrixOffsetX = this.borderOffsetX + 17; // Shifted 2px left to align with border
+    this.matrixOffsetX = this.borderOffsetX + 17;
     this.matrixOffsetY = this.borderOffsetY + 20;
 
-    // Store window dimensions for UI positioning
     this.windowWidth = windowWidth;
     this.windowHeight = windowHeight;
 
     if (this.globalOverlayTexts) {
       createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
     }
+  }
+
+  applyBigModeBoardDimensions(dimensions = {}) {
+    const rows = Number.isInteger(dimensions.rows) ? dimensions.rows : 12;
+    const cols = Number.isInteger(dimensions.cols) ? dimensions.cols : 5;
+    const visibleRows = Number.isInteger(dimensions.visibleRows) ? dimensions.visibleRows : 10;
+    const previousBoard = this.board;
+    if (previousBoard && previousBoard.rows === rows && previousBoard.cols === cols) {
+      this.board = previousBoard;
+      this.board.scene = this;
+      this.visibleRows = visibleRows;
+      this.bigModeBoardActive = true;
+      this.calculateLayout();
+      return;
+    }
+    const board = new Board(rows, cols);
+    if (previousBoard && previousBoard.grid && (previousBoard.rows !== rows || previousBoard.cols !== cols)) {
+      for (let r = 0; r < visibleRows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const sourceRows = [2 + r * 2, 2 + r * 2 + 1];
+          const sourceCols = [c * 2, c * 2 + 1];
+          let sourceCell = 0;
+          let sourceFade = 0;
+          let sourceFrozen = false;
+          for (const sourceRow of sourceRows) {
+            for (const sourceCol of sourceCols) {
+              const cell = previousBoard.grid[sourceRow]?.[sourceCol];
+              if (!sourceCell && cell) sourceCell = cell;
+              sourceFade = Math.max(sourceFade, previousBoard.fadeGrid?.[sourceRow]?.[sourceCol] || 0);
+              sourceFrozen = sourceFrozen || !!previousBoard.frozenGrid?.[sourceRow]?.[sourceCol];
+            }
+          }
+          const targetRow = 2 + r;
+          board.grid[targetRow][c] = sourceCell && typeof sourceCell === "object" ? { ...sourceCell } : sourceCell;
+          board.fadeGrid[targetRow][c] = sourceFade;
+          board.frozenGrid[targetRow][c] = sourceFrozen;
+        }
+      }
+    }
+    this.board = board;
+    this.board.scene = this;
+    this.visibleRows = visibleRows;
+    this.bigModeBoardActive = true;
+    this.calculateLayout();
+  }
+
+  positionPieceAtSpawn(piece) {
+    if (!piece || !this.board || !Array.isArray(piece.shape)) return;
+    const pieceWidth = piece.shape.reduce((maxWidth, row) => {
+      let rightmost = -1;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c]) rightmost = c;
+      }
+      return Math.max(maxWidth, rightmost + 1);
+    }, 0);
+    piece.x = Math.max(0, Math.floor((this.board.cols - pieceWidth) / 2));
+    piece.y = 1;
   }
 
   setupUI() {
@@ -8919,6 +8972,10 @@ class GameScene extends Phaser.Scene {
     // Scene instances can be reused across restarts; reset runtime flags/timers.
     this.board = new Board();
     this.board.scene = this;
+    this.visibleRows = 20;
+    this.bigModeActive = false;
+    this.bigBlocksActive = false;
+    this.bigModeBoardActive = false;
     this.currentPiece = null;
     this.holdPiece = null;
     this.canHold = true;
@@ -9193,7 +9250,7 @@ class GameScene extends Phaser.Scene {
     this.pauseStartTime = null;
 
     // Initialize game mode first so grading/config is ready
-    if (this.gameMode && this.gameMode.initializeGameState) {
+    if (this.gameMode && typeof this.gameMode.initializeForGameScene === "function") {
       this.gameMode.initializeForGameScene(this);
     }
     // Ensure grade is initialized at mode start (before UI and first piece)
@@ -11508,6 +11565,8 @@ class GameScene extends Phaser.Scene {
       }
     }
 
+    this.positionPieceAtSpawn(this.currentPiece);
+
     // Shirase garbage counter increment per piece spawn (500-999)
     if (isShiraseMode && this.level >= 500 && this.level < 1000) {
       this.shiraseGarbageCounter += 1;
@@ -12761,9 +12820,8 @@ class GameScene extends Phaser.Scene {
     }
 
     // Reset position/rotation on the new current piece
-    this.currentPiece.x = 3;
-    this.currentPiece.y = 1;
     this.resetPieceToDefaultRotation(this.currentPiece);
+    this.positionPieceAtSpawn(this.currentPiece);
 
     this.canHold = false;
     this.resetLockDelay();
@@ -13522,9 +13580,12 @@ class GameScene extends Phaser.Scene {
         }
         this.board?.applyMonochromeTextures(this);
         this.shiraseGarbageCounter = 0; // Disable garbage after 1000
-        // Big roll: pieces become double-size cells (2x2 per mino) for 1300 roll
         if (this.level >= 1300) {
-          this.bigBlocksActive = true;
+          if (this.gameMode && typeof this.gameMode.initializeBigRoll === "function") {
+            this.gameMode.initializeBigRoll(this);
+          } else {
+            this.bigBlocksActive = true;
+          }
         } else {
           this.bigBlocksActive = false;
         }
@@ -14536,6 +14597,13 @@ class GameScene extends Phaser.Scene {
     // Reset all game variables
     this.board = new Board();
     this.board.scene = this;
+    this.visibleRows = 20;
+    this.bigModeActive = false;
+    this.bigBlocksActive = false;
+    this.bigModeBoardActive = false;
+    if (this.gameMode && typeof this.gameMode.initializeForGameScene === "function") {
+      this.gameMode.initializeForGameScene(this);
+    }
     this.currentPiece = null;
     this.holdPiece = null;
     this.canHold = true;
@@ -16598,7 +16666,7 @@ class GameScene extends Phaser.Scene {
         this.borderOffsetX + this.cellSize * this.board.cols + 20;
       const nextAreaOffsetY =
         this.borderOffsetY + 30 + i * (previewCellSize * 3 + 4); // Closer spacing
-      nextPiece.draw(this, nextAreaOffsetX, nextAreaOffsetY, previewCellSize);
+      nextPiece.draw(this, nextAreaOffsetX, nextAreaOffsetY, previewCellSize, false, 1, false);
     }
 
     // Update powerup status text based on next queue if not already showing active
@@ -16642,7 +16710,7 @@ class GameScene extends Phaser.Scene {
         const displayPiece = new Piece(holdType, this.holdPiece.rotationSystem, 0, this.holdPiece.textureKey || null);
         displayPiece.x = 0;
         displayPiece.y = 2; // Start from the top visible row
-        displayPiece.draw(this, holdX, holdY + 30, previewCellSize);
+        displayPiece.draw(this, holdX, holdY + 30, previewCellSize, false, 1, false);
       }
     }
 

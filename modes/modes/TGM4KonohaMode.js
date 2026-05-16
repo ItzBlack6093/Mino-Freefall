@@ -75,11 +75,16 @@ class TGM4KonohaMode extends BaseMode {
         }
 
         if (this.bigMode) {
-            this.bigMode.initializeBigMode(gameScene);
+            this.bigMode.initializeBigMode(gameScene, {
+                boardDimensions: true,
+                visualScale: false
+            });
         } else {
-            // Fallback if BigMode script is unavailable.
             gameScene.bigModeActive = true;
-            gameScene.bigBlocksActive = true;
+            gameScene.bigBlocksActive = false;
+            if (typeof gameScene.applyBigModeBoardDimensions === 'function') {
+                gameScene.applyBigModeBoardDimensions({ cols: 5, rows: 12, visibleRows: 10 });
+            }
         }
     }
 
