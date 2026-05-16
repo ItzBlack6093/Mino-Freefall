@@ -129,7 +129,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
 
     getMasterPikiiFreezeTime() {
         const frames = 2 +
-            (this.medals.bravo || 0) * 2.5 +
+            Math.floor((this.medals.bravo || 0) * 2.5) +
             (this.medals.tetris || 0) +
             (this.medals.tspin || 0) +
             (this.medals.pikii || 0) * 3;
