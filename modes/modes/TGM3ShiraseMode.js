@@ -25,6 +25,7 @@ class TGM3ShiraseMode extends BaseMode {
         ];
         this.currentTimingPhase = 1;
         this.currentTiming = this.getTimingForLevel(0);
+        this.bigMode = null;
     }
 
     getModeConfig() {
@@ -141,14 +142,26 @@ class TGM3ShiraseMode extends BaseMode {
 
     onCreditsStart(gameScene) {
         // Enable 5x10 field (double-sized pieces) for the entire credits roll
-        if (gameScene) {
-            gameScene.bigBlocksActive = true;
-            // Use BigMode module if available
-            if (typeof BigMode !== 'undefined') {
-                this.bigMode = new BigMode();
-                this.bigMode.initializeBigMode(gameScene);
-            }
+        if (!gameScene) return;
+
+        // Use shared BigMode module instance when available.
+        if (typeof getBigModeInstance === 'function') {
+            this.bigMode = getBigModeInstance();
+            this.bigMode.initializeBigMode(gameScene);
+            return;
         }
+
+        if (typeof BigMode !== 'undefined') {
+            this.bigMode = BigMode.getSharedInstance
+                ? BigMode.getSharedInstance()
+                : new BigMode();
+            this.bigMode.initializeBigMode(gameScene);
+            return;
+        }
+
+        // Last-resort fallback if module failed to load for any reason.
+        gameScene.bigModeActive = true;
+        gameScene.bigBlocksActive = true;
     }
 }
 

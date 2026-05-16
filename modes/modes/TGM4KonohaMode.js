@@ -6,10 +6,7 @@ class TGM4KonohaMode extends BaseMode {
         this.modeId = `tgm4_konoha_${variant}`;
         this.bravoCount = 0;
         this.config = this.getModeConfig();
-        // Initialize BigMode module
-        if (typeof BigMode !== 'undefined') {
-            this.bigMode = new BigMode();
-        }
+        this.bigMode = null;
     }
 
     getModeConfig() {
@@ -65,9 +62,24 @@ class TGM4KonohaMode extends BaseMode {
 
     initializeForGameScene(gameScene) {
         if (super.initializeForGameScene) super.initializeForGameScene(gameScene);
-        // Initialize big mode for Konoha
-        if (this.bigMode && gameScene) {
+
+        if (!gameScene) return;
+
+        // Initialize big mode for Konoha with shared module instance.
+        if (!this.bigMode && typeof getBigModeInstance === 'function') {
+            this.bigMode = getBigModeInstance();
+        } else if (!this.bigMode && typeof BigMode !== 'undefined') {
+            this.bigMode = BigMode.getSharedInstance
+                ? BigMode.getSharedInstance()
+                : new BigMode();
+        }
+
+        if (this.bigMode) {
             this.bigMode.initializeBigMode(gameScene);
+        } else {
+            // Fallback if BigMode script is unavailable.
+            gameScene.bigModeActive = true;
+            gameScene.bigBlocksActive = true;
         }
     }
 
