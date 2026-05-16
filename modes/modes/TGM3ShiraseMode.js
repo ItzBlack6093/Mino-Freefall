@@ -140,14 +140,15 @@ class TGM3ShiraseMode extends BaseMode {
         return '';
     }
 
-    onCreditsStart(gameScene) {
-        // Enable 5x10 field (double-sized pieces) for the entire credits roll
+    initializeBigRoll(gameScene) {
         if (!gameScene) return;
 
-        // Use shared BigMode module instance when available.
         if (typeof getBigModeInstance === 'function') {
             this.bigMode = getBigModeInstance();
-            this.bigMode.initializeBigMode(gameScene);
+            this.bigMode.initializeBigMode(gameScene, {
+                boardDimensions: true,
+                visualScale: false
+            });
             return;
         }
 
@@ -155,13 +156,22 @@ class TGM3ShiraseMode extends BaseMode {
             this.bigMode = BigMode.getSharedInstance
                 ? BigMode.getSharedInstance()
                 : new BigMode();
-            this.bigMode.initializeBigMode(gameScene);
+            this.bigMode.initializeBigMode(gameScene, {
+                boardDimensions: true,
+                visualScale: false
+            });
             return;
         }
 
-        // Last-resort fallback if module failed to load for any reason.
         gameScene.bigModeActive = true;
-        gameScene.bigBlocksActive = true;
+        gameScene.bigBlocksActive = false;
+        if (typeof gameScene.applyBigModeBoardDimensions === 'function') {
+            gameScene.applyBigModeBoardDimensions({ cols: 5, rows: 12, visibleRows: 10 });
+        }
+    }
+
+    onCreditsStart(gameScene) {
+        this.initializeBigRoll(gameScene);
     }
 }
 

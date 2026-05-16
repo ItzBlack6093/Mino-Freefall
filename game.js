@@ -7976,7 +7976,40 @@ class GameScene extends Phaser.Scene {
     const rows = Number.isInteger(dimensions.rows) ? dimensions.rows : 12;
     const cols = Number.isInteger(dimensions.cols) ? dimensions.cols : 5;
     const visibleRows = Number.isInteger(dimensions.visibleRows) ? dimensions.visibleRows : 10;
-    this.board = new Board(rows, cols);
+    const previousBoard = this.board;
+    if (previousBoard && previousBoard.rows === rows && previousBoard.cols === cols) {
+      this.board = previousBoard;
+      this.board.scene = this;
+      this.visibleRows = visibleRows;
+      this.bigModeBoardActive = true;
+      this.calculateLayout();
+      return;
+    }
+    const board = new Board(rows, cols);
+    if (previousBoard && previousBoard.grid && (previousBoard.rows !== rows || previousBoard.cols !== cols)) {
+      for (let r = 0; r < visibleRows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const sourceRows = [2 + r * 2, 2 + r * 2 + 1];
+          const sourceCols = [c * 2, c * 2 + 1];
+          let sourceCell = 0;
+          let sourceFade = 0;
+          let sourceFrozen = false;
+          for (const sourceRow of sourceRows) {
+            for (const sourceCol of sourceCols) {
+              const cell = previousBoard.grid[sourceRow]?.[sourceCol];
+              if (!sourceCell && cell) sourceCell = cell;
+              sourceFade = Math.max(sourceFade, previousBoard.fadeGrid?.[sourceRow]?.[sourceCol] || 0);
+              sourceFrozen = sourceFrozen || !!previousBoard.frozenGrid?.[sourceRow]?.[sourceCol];
+            }
+          }
+          const targetRow = 2 + r;
+          board.grid[targetRow][c] = sourceCell && typeof sourceCell === "object" ? { ...sourceCell } : sourceCell;
+          board.fadeGrid[targetRow][c] = sourceFade;
+          board.frozenGrid[targetRow][c] = sourceFrozen;
+        }
+      }
+    }
+    this.board = board;
     this.board.scene = this;
     this.visibleRows = visibleRows;
     this.bigModeBoardActive = true;
@@ -13547,9 +13580,12 @@ class GameScene extends Phaser.Scene {
         }
         this.board?.applyMonochromeTextures(this);
         this.shiraseGarbageCounter = 0; // Disable garbage after 1000
-        // Big roll uses visually double-sized minos while keeping normal collision.
         if (this.level >= 1300) {
-          this.bigBlocksActive = true;
+          if (this.gameMode && typeof this.gameMode.initializeBigRoll === "function") {
+            this.gameMode.initializeBigRoll(this);
+          } else {
+            this.bigBlocksActive = true;
+          }
         } else {
           this.bigBlocksActive = false;
         }

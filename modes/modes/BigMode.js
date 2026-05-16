@@ -17,7 +17,6 @@ class BigMode {
         this.lastInitializedScene = gameScene;
         gameScene.bigModeActive = true;
         gameScene.bigBlocksActive = visualScale;
-        gameScene.bigModeBoardActive = false;
         gameScene.bigModeController = this;
 
         if (useBoardDimensions) {
@@ -25,9 +24,20 @@ class BigMode {
                 ...this.getBoardDimensions(),
                 ...(options.dimensions || {})
             };
+            const alreadyUsingDimensions = gameScene.bigModeBoardActive
+                && gameScene.board?.cols === dimensions.cols
+                && gameScene.board?.rows === dimensions.rows
+                && gameScene.visibleRows === dimensions.visibleRows;
             if (typeof gameScene.applyBigModeBoardDimensions === 'function') {
                 gameScene.applyBigModeBoardDimensions(dimensions);
+            } else {
+                gameScene.bigModeBoardActive = true;
             }
+            if (!alreadyUsingDimensions && typeof gameScene.positionPieceAtSpawn === 'function') {
+                gameScene.positionPieceAtSpawn(gameScene.currentPiece);
+            }
+        } else {
+            gameScene.bigModeBoardActive = false;
         }
 
         return true;
