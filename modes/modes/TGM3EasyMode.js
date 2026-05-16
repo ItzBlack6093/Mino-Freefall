@@ -21,6 +21,11 @@ class TGM3EasyMode extends BaseMode {
         this.creditsHanabiTimer = 0;
         this.comboStreamTimer = 0;
         this.lastClearWasLine = false;
+        this.hanabiParticles = [];
+        this.graphicsPool = [];
+        this.hanabiContainer = null;
+        this.burstQueue = [];
+        this.burstCooldown = 0;
     }
 
     getModeConfig() {
@@ -28,7 +33,7 @@ class TGM3EasyMode extends BaseMode {
             gravity: { type: 'custom', curve: level => this.getGravitySpeed(level) },
             das: 16/60,
             arr: 1/60,
-            are: 48/60,
+            are: 8/60,
             lineAre: 25/60,
             lockDelay: 30/60,
             lineClearDelay: 40/60,
@@ -89,6 +94,12 @@ class TGM3EasyMode extends BaseMode {
         this.nextThirtyTrigger = 30;
         this.spinDuringGround = false;
         this.lastClearWasLine = false;
+        this.clearParticles();
+        this.burstQueue = [];
+        this.burstCooldown = 0;
+        if (gameScene) {
+            this.hanabiContainer = gameScene.add.group();
+        }
     }
 
     update(gameScene, deltaTime) {
@@ -98,14 +109,19 @@ class TGM3EasyMode extends BaseMode {
         this.pieceActiveFrames += frames;
         this.comboStreamTimer = Math.max(0, this.comboStreamTimer - frames);
 
+        // Update own fireworks system
+        this.updateBurstQueue(gameScene, deltaTime);
+        this.updateParticles(deltaTime);
+
         // Credits free hanabi stream
         if (gameScene && gameScene.creditsActive && this.creditsHanabiInterval) {
             this.creditsHanabiTimer += frames;
             while (this.creditsHanabiTimer >= this.creditsHanabiInterval) {
                 this.creditsHanabiTimer -= this.creditsHanabiInterval;
                 this.hanabi += 1;
-                if (typeof gameScene.spawnHanabiBurst === "function") {
-                    gameScene.spawnHanabiBurst(1);
+                this.queueBurst(1, 0);
+                if (gameScene.hanabiTextInGame) {
+                    gameScene.hanabiTextInGame.setText(this.hanabi.toString());
                 }
             }
         }
@@ -192,14 +208,22 @@ class TGM3EasyMode extends BaseMode {
         const thirtyMult = this.thirtySecondBonus ? 1.4 : 1.0;
         this.thirtySecondBonus = false;
 
-        // Variable speed combo bonus
+        // Variable speed combo bonus: (level - frames) x 1/100
+        // Level is after line clear (tetris at 199 = 203), fixed at 200 during credits
+        // Frames is frames since previous line clear (min 2: 1 spawn + 1 lock)
+        // Bonus fades in from level 100 to 200, multiplier 1.0 to 2.0
         const levelAfterCredits = gameScene && gameScene.creditsActive ? 200 : levelAfterRaw;
-        const varSpeedDelta = levelAfterCredits - this.framesSinceLastClear;
-        const varSpeedMult = varSpeedDelta > 100 ? varSpeedDelta / 100 : 1.0;
+        const speedFrames = Math.max(2, this.framesSinceLastClear);
+        const varSpeedDelta = levelAfterCredits - speedFrames;
+        const varSpeedMult = varSpeedDelta > 100 ? varSpeedDelta * 0.01 : 1.0;
 
-        // Variable finesse bonus
-        const varFinDelta = levelAfterCredits - this.pieceActiveFrames;
-        const varFinMult = varFinDelta > 120 ? varFinDelta / 120 : 1.0;
+        // Variable finesse bonus: (level - frames) x 1/120
+        // Level is after line clear, fixed at 200 during credits
+        // Frames is frames piece was active (min 1: 1 frame to lock, spawn not counted)
+        // Bonus fades in from level 120 to 200, multiplier 1.0 to 1.6666...
+        const finesseFrames = Math.max(1, this.pieceActiveFrames);
+        const varFinDelta = levelAfterCredits - finesseFrames;
+        const varFinMult = varFinDelta > 120 ? varFinDelta * (1/120) : 1.0;
 
         // Spin bonus
         let spinMult = 1.0;
@@ -236,8 +260,11 @@ class TGM3EasyMode extends BaseMode {
         }
 
         this.hanabi += awarded;
-        if (gameScene && typeof gameScene.spawnHanabiBurst === "function" && awarded > 0) {
-            gameScene.spawnHanabiBurst(awarded);
+        if (awarded > 0) {
+            this.queueBurst(awarded, 0.14);
+        }
+        if (gameScene && gameScene.hanabiTextInGame) {
+            gameScene.hanabiTextInGame.setText(this.hanabi.toString());
         }
 
         // Reset timers for next piece/clear context
@@ -259,8 +286,148 @@ class TGM3EasyMode extends BaseMode {
     onCreditsEnd(gameScene) {
         // Completion hanabi: +24 after credits roll
         this.hanabi += 24;
-        if (gameScene && typeof gameScene.spawnHanabiBurst === 'function') {
-            gameScene.spawnHanabiBurst(24);
+        this.queueBurst(24, 0.22);
+        if (gameScene && gameScene.hanabiTextInGame) {
+            gameScene.hanabiTextInGame.setText(this.hanabi.toString());
+        }
+    }
+
+    queueBurst(count, delayBetween = 0.18) {
+        for (let i = 0; i < count; i++) {
+            const jitter = Math.random() * 0.08;
+            this.burstQueue.push({ count: 1, delay: delayBetween + jitter });
+        }
+    }
+
+    updateBurstQueue(gameScene, deltaTime) {
+        if (this.burstCooldown > 0) {
+            this.burstCooldown -= deltaTime;
+        }
+        while (this.burstQueue.length > 0 && this.burstCooldown <= 0) {
+            const burst = this.burstQueue.shift();
+            this.spawnBurst(gameScene, burst.count || 1);
+            this.burstCooldown = burst.delay || 0.18;
+        }
+    }
+
+    spawnBurst(gameScene, count = 1) {
+        if (!gameScene) return;
+        try {
+            gameScene.playSfx("firework", 0.6);
+        } catch {}
+
+        if (!this.hanabiContainer) {
+            this.hanabiContainer = gameScene.add.group();
+        }
+
+        const centerX = gameScene.matrixOffsetX + (gameScene.cellSize * gameScene.board.cols) / 2;
+        const centerY = gameScene.matrixOffsetY + (gameScene.cellSize * gameScene.visibleRows) / 3;
+        const spreadX = (gameScene.cellSize * gameScene.board.cols) * 0.65;
+        const spreadY = (gameScene.cellSize * gameScene.visibleRows) * 0.4;
+        const burstX = centerX + (Math.random() - 0.5) * spreadX;
+        const burstY = centerY + (Math.random() - 0.5) * spreadY;
+
+        const particlesPerBurst = 14 + Math.floor(Math.random() * 12);
+        const maxActive = 140;
+        const particlesToSpawn = Math.min(
+            maxActive - this.hanabiParticles.length,
+            Math.max(6, Math.min(28, count * particlesPerBurst))
+        );
+
+        const themes = [
+            { r: 255, g: 60, b: 60 },
+            { r: 60, g: 255, b: 60 },
+            { r: 60, g: 120, b: 255 },
+            { r: 255, g: 220, b: 60 },
+            { r: 255, g: 60, b: 180 },
+            { r: 60, g: 255, b: 255 },
+            { r: 255, g: 255, b: 240 },
+            { r: 255, g: 150, b: 40 },
+            { r: 200, g: 60, b: 255 },
+        ];
+        const theme = themes[Math.floor(Math.random() * themes.length)];
+
+        for (let i = 0; i < particlesToSpawn; i++) {
+            let g = this.graphicsPool.pop();
+            if (!g) {
+                g = gameScene.add.graphics();
+            } else {
+                g.clear();
+                g.setVisible(true);
+            }
+
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 45 + Math.random() * 85;
+            const life = 0.5 + Math.random() * 0.35;
+            const maxLife = life;
+            const radius = 1.5 + Math.random() * 2.5;
+
+            const color = Phaser.Display.Color.GetColor(
+                Math.min(255, Math.max(0, theme.r + Math.floor((Math.random() - 0.5) * 70))),
+                Math.min(255, Math.max(0, theme.g + Math.floor((Math.random() - 0.5) * 70))),
+                Math.min(255, Math.max(0, theme.b + Math.floor((Math.random() - 0.5) * 70))),
+            );
+
+            g.fillStyle(color, 1);
+            g.fillCircle(0, 0, radius);
+            g.x = burstX;
+            g.y = burstY;
+            g.setDepth(1000);
+            this.hanabiContainer.add(g);
+
+            this.hanabiParticles.push({
+                g,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed - 28,
+                life,
+                maxLife,
+                drag: 0.94 + Math.random() * 0.04,
+                twinklePhase: Math.random() * Math.PI * 2,
+                twinkleSpeed: 5 + Math.random() * 10,
+            });
+        }
+    }
+
+    updateParticles(deltaTime) {
+        if (!this.hanabiParticles.length) return;
+        const remaining = [];
+        for (const p of this.hanabiParticles) {
+            p.life -= deltaTime;
+            if (p.life <= 0) {
+                p.g.clear();
+                p.g.setVisible(false);
+                this.graphicsPool.push(p.g);
+                continue;
+            }
+            p.vy += 120 * deltaTime;
+            const dragFactor = Math.pow(p.drag, deltaTime * 60);
+            p.vx *= dragFactor;
+            p.vy *= dragFactor;
+            p.g.x += p.vx * deltaTime;
+            p.g.y += p.vy * deltaTime;
+            const lifeRatio = p.life / p.maxLife;
+            const twinkle = 0.6 + 0.4 * Math.sin(p.twinklePhase + (p.maxLife - p.life) * p.twinkleSpeed * 15);
+            p.g.setAlpha(Math.max(0, lifeRatio * twinkle));
+            remaining.push(p);
+        }
+        this.hanabiParticles = remaining;
+    }
+
+    clearParticles() {
+        for (const p of this.hanabiParticles) {
+            if (p.g) {
+                p.g.clear();
+                p.g.destroy();
+            }
+        }
+        this.hanabiParticles = [];
+        for (const g of this.graphicsPool) {
+            if (g) g.destroy();
+        }
+        this.graphicsPool = [];
+        if (this.hanabiContainer) {
+            this.hanabiContainer.destroy(true);
+            this.hanabiContainer = null;
         }
     }
 
