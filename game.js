@@ -11151,9 +11151,14 @@ class GameScene extends Phaser.Scene {
             try {
               this.playSfx("complete", 0.8);
             } catch {}
-            // Trigger special stack fade schedule for TGM3 Easy mode
-            const isTgm3EasyMode = this.selectedMode === "tgm3_easy";
-            if (isTgm3EasyMode) {
+            // Trigger special stack fade schedule for TGM2/TGM3 Master/TGM3 Easy
+            const usesStackFadeToCredits =
+              this.selectedMode === "tgm2" ||
+              this.selectedMode === "tgm2_master" ||
+              this.selectedMode === "tgm3" ||
+              this.selectedMode === "tgm3_master" ||
+              this.selectedMode === "tgm3_easy";
+            if (usesStackFadeToCredits) {
               this.startMinoFading();
             }
             // If credits are pending (TGM2/TGM3 Master/TGM3 Easy), don't spawn next piece;
@@ -13659,10 +13664,15 @@ class GameScene extends Phaser.Scene {
         this.level999Reached = true;
 
 
-        const isTgm3EasyMode = this.selectedMode === "tgm3_easy";
+        const usesStackFadeToCredits =
+          this.selectedMode === "tgm2" ||
+          this.selectedMode === "tgm2_master" ||
+          this.selectedMode === "tgm3" ||
+          this.selectedMode === "tgm3_master" ||
+          this.selectedMode === "tgm3_easy";
 
         // TGM2/TGM3 Master/TGM3 Easy: run stack fade before credits; credits start once fade completes.
-        if (isTgm3EasyMode) {
+        if (usesStackFadeToCredits) {
           this.creditsPending = true;
           this.creditsTransitionStartTime = this.time?.now ?? Date.now();
           this.invisibleStackActive = false;
