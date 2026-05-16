@@ -192,6 +192,14 @@ class BaseMode {
         return level;
     }
 
+    shouldBypassLevelStop(gameScene) {
+        return false;
+    }
+
+    onReachedMaxLevel(gameScene, context = {}) {
+        return false;
+    }
+
     // Mode-specific hook for piece spawning
     onPieceSpawn(piece, game) {
         // Default implementation - can be overridden by modes

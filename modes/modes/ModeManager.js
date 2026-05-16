@@ -100,13 +100,13 @@ class ModeManager {
             'tgm4_4_1': { modeClass: 'TGM4FourOneMode', name: '4.1', category: '20G', config: { difficulty: '20g', description: 'TGM4 hidden x.1 mode with fixed 20G and invisible rising-garbage roll hooks' } },
 
             // RACE modes
-            'asuka_easy': { modeClass: 'TGM4AsukaEasyMode', name: 'Asuka Easy', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka Easy: slower Kita, rewind, and infinity challenge to level 1000' } },
-            'asuka_normal': { modeClass: 'TGM4AsukaNormalMode', name: 'Asuka', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka: 20G Kita race to level 1300 with Vanish phases' } },
-            'asuka_hard': { modeClass: 'TGM4AsukaHardMode', name: 'Asuka Hard', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka Hard: 4:30 Kita-management challenge' } },
+            'asuka_easy': { modeClass: 'TGM4AsukaEasyMode', name: 'Asuka Easy', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka Easy: 30-minute introduction to Asuka with rewinds, infinity, and Ae grading' } },
+            'asuka_normal': { modeClass: 'TGM4AsukaNormalMode', name: 'Asuka', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka: 20G Kita race to level 1300 with vanish and invisible phases' } },
+            'asuka_hard': { modeClass: 'TGM4AsukaHardMode', name: 'Asuka Hard', category: 'RACE', config: { difficulty: 'race', description: 'TGM4 Asuka Hard: 4:30 carry-over Kita challenge with per-section requirements' } },
 
             // ALL CLEAR / PUZZLE modes
-            'konoha_easy': { modeClass: 'TGM4KonohaEasyMode', name: 'Konoha Easy', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Easy: Big-mode all-clear challenge with five pieces' } },
-            'konoha_hard': { modeClass: 'TGM4KonohaHardMode', name: 'Konoha Hard', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Hard: Big-mode all-clear challenge with all seven pieces' } },
+            'konoha_easy': { modeClass: 'TGM4KonohaEasyMode', name: 'Konoha Easy', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Easy: endless-level timed big-mode all-clear challenge that ends at 110 Bravoes' } },
+            'konoha_hard': { modeClass: 'TGM4KonohaHardMode', name: 'Konoha Hard', category: 'ALL CLEAR', config: { difficulty: 'puzzle', description: 'TGM4 Konoha Hard: endless-level timed big-mode all-clear attack with all seven pieces' } },
             'tgm3_sakura': { modeClass: 'TGM3SakuraMode', name: 'TGM3-Sakura', category: 'PUZZLE', config: { difficulty: 'puzzle', description: 'Puzzle mode from TGM3' } },
             'flashpoint': { modeClass: 'ZenMode', name: 'Flashpoint', category: 'PUZZLE', config: { difficulty: 'puzzle', description: 'From Flashpoint.' } },
 

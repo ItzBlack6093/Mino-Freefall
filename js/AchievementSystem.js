@@ -639,7 +639,21 @@ class AchievementSystem {
       GM: 19,
       S13: 20,
       MASTER: 21,
-      "GM-Rounds": 22
+      "GM-Rounds": 22,
+      "GM-Rounds-One": 23,
+      "GM-Rounds-Two": 24,
+      "GM-Rounds-Three": 25,
+      "GM-Rounds-Four": 26,
+      "GM-Rounds-Five": 27,
+      "GM-Rounds-Six": 28,
+      "GM-Rounds-Seven": 29,
+      "GM-Rounds-Eight": 30,
+      "GM-Rounds-Nine": 31,
+      "GM-Rounds-Ten": 32,
+      "GM-Rounds-Sir Tristan": 33,
+      "GM-Rounds-Sir Gawain": 34,
+      "GM-Rounds-Sir Lancelot": 35,
+      "GM-King of Rounds": 36
     };
     return gradeValues[grade] || 0;
   }

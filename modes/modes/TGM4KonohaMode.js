@@ -7,6 +7,13 @@ class TGM4KonohaMode extends BaseMode {
         this.bravoCount = 0;
         this.config = this.getModeConfig();
         this.bigMode = null;
+        this.currentRotationSystem = 'SRS';
+        this.timeRemaining = 0;
+        this.timerStarted = false;
+        this.timeExpired = false;
+        this.lastTimerTime = null;
+        this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
+        this.randomizerFirstPiece = true;
     }
 
     getModeConfig() {
@@ -24,7 +31,7 @@ class TGM4KonohaMode extends BaseMode {
             ghostEnabled: true,
             levelUpType: 'lines',
             lineClearBonus: 1,
-            gravityLevelCap: hard ? 9999 : 110,
+            gravityLevelCap: 9999,
             specialMechanics: {
                 bigMode: true,
                 allClearChallenge: true,
@@ -33,6 +40,7 @@ class TGM4KonohaMode extends BaseMode {
                 timeLimitStandard: 120,
                 timeLimitTGM: 250,
                 maxTime: 300,
+                konohaEasyGoalBravoes: 110,
                 konohaMasterBravoes: 110
             }
         };
@@ -65,6 +73,16 @@ class TGM4KonohaMode extends BaseMode {
 
         if (!gameScene) return;
 
+        this.currentRotationSystem = gameScene.rotationSystem || 'SRS';
+        this.timeRemaining = this.getTimeLimit(this.currentRotationSystem);
+        this.timerStarted = false;
+        this.timeExpired = false;
+        this.lastTimerTime = null;
+        this.bravoCount = 0;
+        this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
+        this.randomizerFirstPiece = true;
+        gameScene.bravoCount = 0;
+
         // Initialize big mode for Konoha with shared module instance.
         if (!this.bigMode && typeof getBigModeInstance === 'function') {
             this.bigMode = getBigModeInstance();
@@ -95,15 +113,132 @@ class TGM4KonohaMode extends BaseMode {
             : this.config.specialMechanics.timeLimitStandard;
     }
 
-    onAllClear(gameScene) {
-        this.bravoCount += 1;
-        if (gameScene) gameScene.bravoCount = this.bravoCount;
-        return this.bravoCount;
+    getTimeBonusFrames(linesCleared, isBravo, level) {
+        if (linesCleared <= 0) return 0;
+        const post1000 = level >= 1000;
+        if (post1000) {
+            return linesCleared >= 4 ? 60 : 0;
+        }
+        if (isBravo) {
+            if (linesCleared >= 4) return 900;
+            if (linesCleared === 3) return 660;
+            if (linesCleared === 2) return 480;
+            return 300;
+        }
+        if (linesCleared >= 4) return 11;
+        if (linesCleared === 3) return 5;
+        if (linesCleared === 2) return 2;
+        return 1;
+    }
+
+    addTimeBonus(frames) {
+        if (!frames) return;
+        const seconds = frames / 60;
+        this.timeRemaining = Math.min(this.config.specialMechanics.maxTime, this.timeRemaining + seconds);
+    }
+
+    getAllowedPieces() {
+        return this.variant === 'hard'
+            ? ['I', 'J', 'L', 'O', 'S', 'T', 'Z']
+            : ['I', 'J', 'L', 'O', 'T'];
+    }
+
+    generateNextPiece() {
+        const allowedPieces = this.getAllowedPieces();
+        const firstPiecePool = allowedPieces.filter(piece => !['S', 'Z', 'O'].includes(piece));
+
+        let piece = allowedPieces[0];
+        if (this.randomizerFirstPiece) {
+            const pool = firstPiecePool.length > 0 ? firstPiecePool : allowedPieces;
+            piece = pool[Math.floor(Math.random() * pool.length)];
+            this.randomizerFirstPiece = false;
+        } else {
+            let attempts = 0;
+            do {
+                piece = allowedPieces[Math.floor(Math.random() * allowedPieces.length)];
+                attempts += 1;
+            } while (attempts < 6 && this.randomizerHistory.includes(piece));
+        }
+
+        this.randomizerHistory.shift();
+        this.randomizerHistory.push(piece);
+        return piece;
+    }
+
+    onLevelUpdate(level, oldLevel, updateType, amount) {
+        if (updateType !== 'lines') return level;
+        const lineGain = {
+            1: 2,
+            2: 4,
+            3: 6,
+            4: 12
+        };
+        const nextLevel = oldLevel + (lineGain[amount] || 0);
+        return Math.min(nextLevel, this.config.gravityLevelCap);
+    }
+
+    handleLineClear(gameScene, linesCleared) {
+        const isBravo = gameScene?.bravoActive ||
+            gameScene?.lastClearType === 'bravo' ||
+            (typeof gameScene?.lastClearType === 'string' && gameScene.lastClearType.includes('all clear'));
+
+        if (isBravo) {
+            this.bravoCount += 1;
+            if (gameScene) {
+                gameScene.bravoCount = this.bravoCount;
+            }
+        }
+
+        this.addTimeBonus(this.getTimeBonusFrames(linesCleared, isBravo, gameScene?.level || 0));
+
+        if (
+            this.variant === 'easy' &&
+            this.bravoCount >= this.config.specialMechanics.konohaEasyGoalBravoes &&
+            gameScene &&
+            !gameScene.gameOver
+        ) {
+            gameScene.showGameOverScreen();
+        }
+    }
+
+    getDisplayedTime() {
+        return this.timeRemaining;
     }
 
     getDisplayedGrade() {
         if (this.variant === 'hard' && this.bravoCount >= 110) return 'Km';
         return `${this.bravoCount} Bravoes`;
+    }
+
+    update(gameScene) {
+        if (!gameScene || gameScene.gameOver) return;
+        if (!this.timerStarted && gameScene.currentPiece) {
+            this.timerStarted = true;
+            this.lastTimerTime = gameScene.currentTime || 0;
+        }
+        if (!this.timerStarted || this.timeExpired) return;
+
+        const now = gameScene.currentTime || 0;
+        const delta = this.lastTimerTime === null ? 0 : Math.max(0, now - this.lastTimerTime);
+        this.lastTimerTime = now;
+        this.timeRemaining = Math.max(0, this.timeRemaining - delta);
+        if (this.timeRemaining <= 0) {
+            this.timeExpired = true;
+            gameScene.showGameOverScreen();
+        }
+    }
+
+    onGameOver(gameScene) {
+        if (!gameScene || typeof gameScene.saveLeaderboardEntry !== 'function') return;
+        const time = `${Math.floor(gameScene.currentTime / 60)}:${Math.floor(gameScene.currentTime % 60).toString().padStart(2, '0')}.${Math.floor((gameScene.currentTime % 1) * 100).toString().padStart(2, '0')}`;
+        gameScene.saveLeaderboardEntry(gameScene.selectedMode, {
+            allClears: this.bravoCount,
+            level: gameScene.level,
+            grade: this.getDisplayedGrade(),
+            time,
+            pps: gameScene.conventionalPPS != null ? Number(gameScene.conventionalPPS.toFixed(2)) : undefined
+        });
+        gameScene.leaderboardSaved = true;
     }
 }
 
