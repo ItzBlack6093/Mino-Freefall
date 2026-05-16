@@ -10,6 +10,20 @@ class TGM3ShiraseMode extends BaseMode {
         this.sectionTimes = {};
         this.sectionGrades = {};
         this.rollReached = false;
+
+        // Progressive timing phases (seconds) — matches Ti Shirase table
+        this.timingPhases = [
+            { minLevel: 0,    maxLevel: 99,   are: 12/60, lineAre: 8/60,  das: 10/60, arr: 1/60, lock: 18/60, lineClear: 6/60 },
+            { minLevel: 100,  maxLevel: 199,  are: 12/60, lineAre: 7/60,  das: 8/60,  arr: 1/60, lock: 18/60, lineClear: 5/60 },
+            { minLevel: 200,  maxLevel: 299,  are: 12/60, lineAre: 6/60,  das: 8/60,  arr: 1/60, lock: 17/60, lineClear: 4/60 },
+            { minLevel: 300,  maxLevel: 499,  are: 6/60,  lineAre: 6/60,  das: 8/60,  arr: 1/60, lock: 15/60, lineClear: 4/60 },
+            { minLevel: 500,  maxLevel: 599,  are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 13/60, lineClear: 3/60 },
+            { minLevel: 600,  maxLevel: 1099, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 12/60, lineClear: 3/60 },
+            { minLevel: 1100, maxLevel: 1199, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 10/60, lineClear: 3/60 },
+            { minLevel: 1200, maxLevel: 1299, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 13/60,  lineClear: 3/60 },
+            { minLevel: 1300, maxLevel: 1399, are: 6/60,  lineAre: 6/60,  das: 6/60,  arr: 1/60, lock: 15/60, lineClear: 6/60 }
+        ];
+        this.currentTimingPhase = 1;
         this.currentTiming = this.getTimingForLevel(0);
     }
 
@@ -44,18 +58,14 @@ class TGM3ShiraseMode extends BaseMode {
     }
 
     getTimingForLevel(level) {
-        // Table from tgm3modes.md (frames at 60fps)
-        const frame = (n) => n / 60;
-        if (level < 100) return { are: frame(12), lineAre: frame(8), das: frame(10), lock: frame(18), lineClear: frame(6) };
-        if (level < 200) return { are: frame(12), lineAre: frame(7), das: frame(8), lock: frame(18), lineClear: frame(5) };
-        if (level < 300) return { are: frame(12), lineAre: frame(6), das: frame(8), lock: frame(17), lineClear: frame(4) };
-        if (level < 500) return { are: frame(6), lineAre: frame(6), das: frame(8), lock: frame(15), lineClear: frame(4) };
-        if (level < 600) return { are: frame(6), lineAre: frame(5), das: frame(6), lock: frame(13), lineClear: frame(3) };
-        if (level < 1100) return { are: frame(6), lineAre: frame(5), das: frame(6), lock: frame(12), lineClear: frame(3) };
-        if (level < 1200) return { are: frame(6), lineAre: frame(5), das: frame(6), lock: frame(10), lineClear: frame(3) };
-        if (level < 1300) return { are: frame(6), lineAre: frame(5), das: frame(6), lock: frame(8), lineClear: frame(3) };
-        // 1300 roll
-        return { are: frame(6), lineAre: frame(6), das: frame(6), lock: frame(15), lineClear: frame(6) };
+        for (let i = this.timingPhases.length - 1; i >= 0; i--) {
+            const phase = this.timingPhases[i];
+            if (level >= phase.minLevel && level <= phase.maxLevel) {
+                this.currentTimingPhase = i + 1;
+                return phase;
+            }
+        }
+        return this.timingPhases[0];
     }
 
     updateTiming(level) {
@@ -127,6 +137,18 @@ class TGM3ShiraseMode extends BaseMode {
         }
         // Default to empty string before any sections are completed
         return '';
+    }
+
+    onCreditsStart(gameScene) {
+        // Enable 5x10 field (double-sized pieces) for the entire credits roll
+        if (gameScene) {
+            gameScene.bigBlocksActive = true;
+            // Use BigMode module if available
+            if (typeof BigMode !== 'undefined') {
+                this.bigMode = new BigMode();
+                this.bigMode.initializeBigMode(gameScene);
+            }
+        }
     }
 }
 

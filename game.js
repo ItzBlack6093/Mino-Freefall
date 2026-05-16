@@ -10047,10 +10047,6 @@ class GameScene extends Phaser.Scene {
     const holdJustDown = justDown(this.keys.hold);
     if (holdJustDown) {
       this.holdRequest = true;
-      // If currently in ARE, mark for IHS; otherwise try to consume immediately later in the frame
-      if (this.areActive) {
-        this.initialHoldSystem = true;
-      }
     }
 
     // Global hold consumption pass (piece-active, not in ARE)
@@ -10749,15 +10745,15 @@ class GameScene extends Phaser.Scene {
       this.gameOverSfxPlayed = true;
       this.gameOverFadeDoneTime = null;
     } else if (!this.creditsPending && this.fadingComplete && this.gameOverFadeDoneTime !== null) {
-      if (!this.creditsActive || this.rollFailedDuringRoll) {
-        const elapsedSinceFade = this.time.now - this.gameOverFadeDoneTime;
-        if (elapsedSinceFade >= 3000) {
+      const elapsedSinceFade = this.time.now - this.gameOverFadeDoneTime;
+      if (elapsedSinceFade >= 3000) {
+        if (!this.creditsActive || this.rollFailedDuringRoll) {
           this.showGameOverText = true;
           this.metricsPauseActive = false; // resume metrics after topout animation finishes
-          if (!this.gameOverSfxPlayed) {
-            this.gameOverSfxPlayed = true;
-            this.playSfx?.("gameover", 0.8);
-          }
+        }
+        if (!this.gameOverSfxPlayed) {
+          this.gameOverSfxPlayed = true;
+          this.playSfx?.("gameover", 0.8);
         }
       }
     }
@@ -11821,7 +11817,8 @@ class GameScene extends Phaser.Scene {
     const allowDasInputs = allowAreInputs || this.isFirstSpawn;
     const rotationDirectionAtSpawn = allowAreInputs ? this.areRotationDirection : 0;
     const rotationKeysAtSpawn = allowAreInputs ? { ...this.areRotationKeys } : {};
-    const holdPressedAtSpawn = allowAreInputs ? this.areHoldPressed : false;
+    // Check actual key state at spawn time for IHS (must be held down, not just pressed once)
+    const holdPressedAtSpawn = allowAreInputs && this.holdEnabled && !!(this.keys.hold && this.keys.hold.isDown);
 
     // Reset ARE rotation and hold tracking for the next cycle
     this.areRotationDirection = 0;
@@ -11830,7 +11827,9 @@ class GameScene extends Phaser.Scene {
     // Handle ARE hold (Initial Hold System) for modes that support hold
     if (allowAreInputs && this.holdEnabled && holdPressedAtSpawn) {
       this.performHoldSwap({ bypassCanHold: true, isIHS: true });
-      // Consume the request so it doesn't double-trigger after spawn
+    }
+    // Always clear queued hold requests from ARE so they don't trigger a regular hold after spawn
+    if (allowAreInputs) {
       this.holdRequest = false;
     }
 
@@ -13536,6 +13535,17 @@ class GameScene extends Phaser.Scene {
         }
         this.bigBlocksActive = false;
       }
+    } else {
+      // Check if mode has bigMode enabled (e.g., Konoha)
+      const specMech =
+        (this.gameMode &&
+          typeof this.gameMode.getConfig === "function" &&
+          this.gameMode.getConfig()?.specialMechanics) ||
+        {};
+      const bigModeEnabled = specMech.bigMode === true;
+      if (!bigModeEnabled) {
+        this.bigBlocksActive = false;
+      }
     }
 
     // Update mode-specific timings in case they change with level (but don't overwrite user overrides)
@@ -13552,7 +13562,7 @@ class GameScene extends Phaser.Scene {
         this.gameMode.getARE && typeof this.gameMode.getARE === "function"
           ? this.gameMode.getARE()
           : 30 / 60;
-      this.lockDelay =
+      this.lockDelayMax =
         this.gameMode.getLockDelay && typeof this.gameMode.getLockDelay === "function"
           ? this.gameMode.getLockDelay()
           : 0.5;
@@ -13669,7 +13679,9 @@ class GameScene extends Phaser.Scene {
           this.selectedMode === "tgm2_master" ||
           this.selectedMode === "tgm3" ||
           this.selectedMode === "tgm3_master" ||
-          this.selectedMode === "tgm3_easy";
+          this.selectedMode === "tgm3_easy" ||
+          this.selectedMode === "tgm3_shirase" ||
+          this.selectedMode === "shirase";
 
         // TGM2/TGM3 Master/TGM3 Easy: run stack fade before credits; credits start once fade completes.
         if (usesStackFadeToCredits) {

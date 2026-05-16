@@ -118,7 +118,10 @@ class TGM3GradingSystem {
     }
 
     updateDecayRate() {
-        const entry = this.gradeMapping[Math.min(this.internalGrade, this.gradeMapping.length - 1)];
+        // Decay rate uses internal grade capped at 31 (S9)
+        // m-grades and M-grades have no decay rate
+        const gradeIndex = Math.min(this.internalGrade, 31);
+        const entry = this.gradeMapping[Math.min(gradeIndex, this.gradeMapping.length - 1)];
         if (entry && entry.decayRate) {
             this.decayRate = entry.decayRate;
         }
@@ -228,12 +231,41 @@ class TGM3GradingSystem {
     }
 
     getDisplayedGrade() {
+        // Base grade from internal grade (0-31, TAP grades 9 through S9)
         const gradeIndex = Math.min(this.internalGrade, this.gradeMapping.length - 1);
-        const base = this.gradeMapping[gradeIndex]?.display || '9';
-        // Apply section COOL bonus and REGRET deductions to displayed grade estimation
-        const netBoost = this.sectionCoolBonus - this.sectionRegretCount + Math.floor(this.staffRollBonus);
-        const effectiveIndex = Math.max(0, Math.min(gradeIndex + netBoost, this.gradeMapping.length - 1));
-        return this.gradeMapping[effectiveIndex]?.display || base;
+        const baseGrade = this.gradeMapping[gradeIndex]?.display || '9';
+
+        // Calculate effective grade index including COOL and staff roll bonuses
+        // COOL adds +1 per section, staff roll adds fractional bonus
+        const netBoost = this.sectionCoolBonus - this.sectionRegretCount + this.staffRollBonus;
+        const effectiveIndex = gradeIndex + netBoost;
+
+        // m-grades: internal grade (0-31) + COOL bonus
+        // m1 = S9 (31) + 1 COOL = index 32
+        // m9 = S9 (31) + 9 COOLs = index 40
+        if (effectiveIndex >= 32 && effectiveIndex < 41) {
+            const mGrade = Math.floor(effectiveIndex - 31);
+            return `m${mGrade}`;
+        }
+
+        // M-grades: staff roll bonus progression
+        // M = index 41+, MK = index 42+, MV = index 43+, MO = index 44+, MM = index 45+, GM = index 46+
+        if (effectiveIndex >= 46) {
+            return 'GM';
+        } else if (effectiveIndex >= 45) {
+            return 'MM';
+        } else if (effectiveIndex >= 44) {
+            return 'MO';
+        } else if (effectiveIndex >= 43) {
+            return 'MV';
+        } else if (effectiveIndex >= 42) {
+            return 'MK';
+        } else if (effectiveIndex >= 41) {
+            return 'M';
+        }
+
+        // Fall back to base TAP grade
+        return baseGrade;
     }
 
     // TAP-style display without COOL/REGRET bonuses

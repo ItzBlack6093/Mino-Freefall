@@ -6,6 +6,10 @@ class TGM4KonohaMode extends BaseMode {
         this.modeId = `tgm4_konoha_${variant}`;
         this.bravoCount = 0;
         this.config = this.getModeConfig();
+        // Initialize BigMode module
+        if (typeof BigMode !== 'undefined') {
+            this.bigMode = new BigMode();
+        }
     }
 
     getModeConfig() {
@@ -57,6 +61,14 @@ class TGM4KonohaMode extends BaseMode {
         if (level < 177) return 176;
         if (level < 200) return 192;
         return 5376;
+    }
+
+    initializeForGameScene(gameScene) {
+        if (super.initializeForGameScene) super.initializeForGameScene(gameScene);
+        // Initialize big mode for Konoha
+        if (this.bigMode && gameScene) {
+            this.bigMode.initializeBigMode(gameScene);
+        }
     }
 
     getTimeLimit(rotationSystem) {

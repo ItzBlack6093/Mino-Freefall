@@ -45,7 +45,12 @@ class ModeManager {
             'easy_easy': 0x00ff00, // green
             'tgm2_master': 0x888888, // grey
             'tgm2_normal': 0x00ff00, // green
+            'tgm3_easy': 0x00ff00,  // green
             'tgm_plus': 0x888888,   // grey
+            'tgm4_1_1': 0x888888,   // grey
+            'tgm4_2_1': 0xff0000,   // red
+            'tgm4_3_1': 0xff0000,   // red
+            'tgm4_4_1': 0xff0000,   // red
             'versus_guideline': 0xffcc00, // gold
             'versus_tgm': 0xffcc00  // gold
         };
