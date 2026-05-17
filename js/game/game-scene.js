@@ -909,6 +909,12 @@ class GameScene extends Phaser.Scene {
     if (modeId === "tgm3_shirase") {
       return 13;
     }
+    if (modeId === "tgm4_asuka_normal" || modeId === "tgm4_asuka_hard") {
+      return 13;
+    }
+    if (modeId === "tgm4_rounds") {
+      return 26;
+    }
     return 10;
   }
 
@@ -1858,8 +1864,8 @@ class GameScene extends Phaser.Scene {
     this.borderOffsetY =
       Math.floor((windowHeight - this.playfieldHeight) / 2) - 30; // Adjusted for better centering
 
-    this.matrixOffsetX = this.borderOffsetX + 17 + (this.bigModeBoardActive ? 10 : 0);
-    this.matrixOffsetY = this.borderOffsetY + 20 + (this.bigModeBoardActive ? 10 : 0);
+    this.matrixOffsetX = this.borderOffsetX + 17 + (this.bigModeBoardActive ? 20 : 0);
+    this.matrixOffsetY = this.borderOffsetY + 20 + (this.bigModeBoardActive ? 20 : 0);
 
     this.windowWidth = windowWidth;
     this.windowHeight = windowHeight;
@@ -2499,7 +2505,7 @@ class GameScene extends Phaser.Scene {
     };
 
     const shouldShowSectionTracker =
-      !(isUltraMode || isZenMode) && modeId !== "tgm3_sakura";
+      !(isUltraMode || isZenMode) && modeId !== "tgm3_sakura" && !modeId.startsWith("tgm4_konoha");
     const shouldShowZenPanel = isZenMode && this.zenSandboxConfig;
     if (this.sectionTrackerGroup) {
       this.sectionTrackerGroup.destroy(true);
@@ -2617,8 +2623,10 @@ class GameScene extends Phaser.Scene {
         const isShiraseMode =
           modeId === "tgm3_shirase" || modeId === "shirase" || modeId === "tgm3_shirase_mode";
         const isEasyMode = modeId === "tgm3_easy";
+        const isAsukaNormalOrHard = modeId === "tgm4_asuka_normal" || modeId === "tgm4_asuka_hard";
+        const isTgm4Rounds = modeId === "tgm4_rounds";
 
-        if (!isTgm2Normal && !isMarathonMode && !isShiraseMode && !isEasyMode) {
+        if (!isTgm2Normal && !isMarathonMode && !isShiraseMode && !isEasyMode && !isAsukaNormalOrHard && !isTgm4Rounds) {
           const colWidth = 120;
           const labelStyle = {
             fontSize: `${sectionLabelFontSize}px`,
