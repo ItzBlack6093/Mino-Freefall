@@ -34,8 +34,6 @@ class GameScene extends Phaser.Scene {
     this.gradePointsText = null;
     this.asukaKitaLabel = null;
     this.asukaKitaText = null;
-    this.minosaStatus = "possible";
-    this.minosaPath = [];
     this.nextGradeText = null;
     this.levelDisplay = null;
     this.rollBonus = 0;
@@ -911,11 +909,18 @@ class GameScene extends Phaser.Scene {
     if (modeId === "tgm3_shirase") {
       return 13;
     }
-    if (modeId === "tgm4_asuka_normal" || modeId === "tgm4_asuka_hard") {
-      return 13;
-    }
-    if (modeId === "tgm4_rounds") {
-      return 26;
+    if (
+      modeId === "tgm4_rounds" ||
+      modeId === "tgm4_asuka_normal" ||
+      modeId === "tgm4_asuka_hard"
+    ) {
+      const displayCap =
+        this.gameMode && typeof this.gameMode.getDisplayLevelCap === "function"
+          ? this.gameMode.getDisplayLevelCap()
+          : this.gameMode && typeof this.gameMode.getGravityLevelCap === "function"
+            ? this.gameMode.getGravityLevelCap()
+            : this.gravityLevelCap || 999;
+      return Math.max(1, Math.ceil(Math.max(1, displayCap) / this.getSectionLength()));
     }
     return 10;
   }
@@ -2469,19 +2474,17 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0, 0);
 
     const showAsukaKitas = typeof modeId === "string" && modeId.startsWith("tgm4_asuka");
-    const showKonohaMinosa = typeof modeId === "string" && modeId.startsWith("tgm4_konoha");
-    const showKitaDisplay = showAsukaKitas || showKonohaMinosa;
     this.asukaKitaLabel = this.add
-      .text(ppsX, ppsY - 85, showKonohaMinosa ? "KITA" : "KITAS", {
+      .text(ppsX, ppsY - 85, "KITAS", {
         fontSize: `${uiFontSize - 6}px`,
         fill: "#ccc",
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0, 0)
-      .setVisible(showKitaDisplay);
+      .setVisible(showAsukaKitas);
     this.asukaKitaText = this.add
-      .text(ppsX, ppsY - 70, showKonohaMinosa ? "🦊" : "0", {
+      .text(ppsX, ppsY - 70, "0", {
         fontSize: `${largeFontSize - 4}px`,
         fill: "#ffff88",
         fontFamily: "Courier New",
@@ -2489,7 +2492,7 @@ class GameScene extends Phaser.Scene {
         align: "left",
       })
       .setOrigin(0, 0)
-      .setVisible(showKitaDisplay);
+      .setVisible(showAsukaKitas);
 
     // Show Hanabi counter only in Easy mode
     const showHanabi = modeId === "tgm3_easy";
@@ -2508,8 +2511,9 @@ class GameScene extends Phaser.Scene {
       this.sectionTallyTexts = null;
     };
 
+    const isKonohaMode = typeof modeId === "string" && modeId.startsWith("tgm4_konoha_");
     const shouldShowSectionTracker =
-      !(isUltraMode || isZenMode) && modeId !== "tgm3_sakura" && !modeId.startsWith("tgm4_konoha");
+      !(isUltraMode || isZenMode || isKonohaMode) && modeId !== "tgm3_sakura";
     const shouldShowZenPanel = isZenMode && this.zenSandboxConfig;
     if (this.sectionTrackerGroup) {
       this.sectionTrackerGroup.destroy(true);
@@ -2627,10 +2631,12 @@ class GameScene extends Phaser.Scene {
         const isShiraseMode =
           modeId === "tgm3_shirase" || modeId === "shirase" || modeId === "tgm3_shirase_mode";
         const isEasyMode = modeId === "tgm3_easy";
-        const isAsukaNormalOrHard = modeId === "tgm4_asuka_normal" || modeId === "tgm4_asuka_hard";
-        const isTgm4Rounds = modeId === "tgm4_rounds";
 
-        if (!isTgm2Normal && !isMarathonMode && !isShiraseMode && !isEasyMode && !isAsukaNormalOrHard && !isTgm4Rounds) {
+        const hideHalfSplits =
+          modeId === "tgm4_rounds" ||
+          modeId === "tgm4_asuka_normal" ||
+          modeId === "tgm4_asuka_hard";
+        if (!isTgm2Normal && !isMarathonMode && !isShiraseMode && !isEasyMode && !hideHalfSplits) {
           const colWidth = 120;
           const labelStyle = {
             fontSize: `${sectionLabelFontSize}px`,
@@ -10813,31 +10819,11 @@ class GameScene extends Phaser.Scene {
     this.ppsText.setText(this.conventionalPPS.toFixed(2));
     this.rawPpsText.setText(this.rawPPS.toFixed(2));
     if (this.asukaKitaText) {
-      const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode;
-      if (typeof modeId === "string" && modeId.startsWith("tgm4_konoha")) {
-        const status = this.gameMode?.minosaStatus || this.minosaStatus || "possible";
-        const iconByStatus = {
-          achieved: "🦊✓",
-          possible: "🦊",
-          impossible: "🦊✕",
-        };
-        const colorByStatus = {
-          achieved: "#88ff88",
-          possible: "#ffff88",
-          impossible: "#ff8888",
-        };
-        this.asukaKitaText.setText(iconByStatus[status] || iconByStatus.impossible);
-        this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
-      } else {
-        const kitaCount =
-          this.gameMode && typeof this.gameMode.kitas === "number"
-            ? this.gameMode.kitas
-            : this.kitas || 0;
-        this.asukaKitaText.setText(kitaCount.toString());
-        this.asukaKitaText.setColor("#ffff88");
-      }
+      const kitaCount =
+        this.gameMode && typeof this.gameMode.kitas === "number"
+          ? this.gameMode.kitas
+          : this.kitas || 0;
+      this.asukaKitaText.setText(kitaCount.toString());
     }
     if (
       this.ppsGraphGraphics &&
@@ -11067,7 +11053,18 @@ class GameScene extends Phaser.Scene {
 
     // Draw multiple next pieces based on mode configuration
     const maxNextPieces = this.nextPiecesCount || 1;
-    const previewCellSize = Math.max(8, Math.floor(this.cellSize * 0.6)); // Smaller preview pieces
+    const normalModeCellSize = Math.max(
+      20,
+      Math.min(
+        Math.floor((this.windowWidth * 0.8) / 10),
+        Math.floor((this.windowHeight * 0.9) / 20),
+        40,
+      ),
+    );
+    const previewBaseCellSize = this.bigModeBoardActive
+      ? normalModeCellSize
+      : this.cellSize;
+    const previewCellSize = Math.max(8, Math.floor(previewBaseCellSize * 0.6)); // Keep queue previews at normal-size scale in Big Mode
     let queuedPowerupType = null;
     for (let i = 0; i < Math.min(maxNextPieces, this.nextPieces.length); i++) {
       // Sanitize preview type to avoid undefined rotations
@@ -11141,7 +11138,6 @@ class GameScene extends Phaser.Scene {
 
       // Draw hold piece with same size as preview pieces
       if (this.holdPiece) {
-        const previewCellSize = Math.max(8, Math.floor(this.cellSize * 0.6));
         // Create a copy of the hold piece with default rotation for display
         let holdType =
           typeof this.holdPiece.type === "string" ? this.holdPiece.type : "I";
