@@ -17,6 +17,7 @@ class TGM4KonohaMode extends BaseMode {
         this.minosa = null;
         this.minosaStatus = 'possible';
         this.minosaHint = null;
+        this.minosaSignature = null;
     }
 
     getModeConfig() {
@@ -86,6 +87,7 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerFirstPiece = true;
         this.minosaStatus = 'possible';
         this.minosaHint = null;
+        this.minosaSignature = null;
         gameScene.bravoCount = 0;
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = [];
@@ -228,6 +230,9 @@ class TGM4KonohaMode extends BaseMode {
 
     updateMinosaStatus(gameScene) {
         if (!gameScene) return this.minosaStatus;
+        const signature = this.getMinosaSignature(gameScene);
+        if (signature && signature === this.minosaSignature) return this.minosaStatus;
+        this.minosaSignature = signature;
         if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
             this.minosa = getMinosaModuleInstance();
         }
@@ -241,6 +246,44 @@ class TGM4KonohaMode extends BaseMode {
         gameScene.minosaPath = path;
         gameScene.minosaHint = this.minosaHint;
         return this.minosaStatus;
+    }
+
+    getMinosaSignature(gameScene) {
+        if (!gameScene?.board?.grid) return '';
+        const gridKey = gameScene.board.grid
+            .map(row => row.map(cell => cell ? '1' : '0').join(''))
+            .join('/');
+        const currentType = this.normalizeMinosaPiece(gameScene.currentPiece);
+        const queue = (Array.isArray(gameScene.nextPieces) ? gameScene.nextPieces : [])
+            .map(piece => this.normalizeMinosaPiece(piece))
+            .filter(piece => piece)
+            .join('');
+        const holdType = this.normalizeMinosaPiece(gameScene.holdPiece) || '';
+        const achieved = gameScene.bravoActive ||
+            gameScene.lastClearType === 'bravo' ||
+            (typeof gameScene.lastClearType === 'string' && gameScene.lastClearType.includes('all clear')) ||
+            (gameScene.piecesPlaced > 0 && gameScene.board.grid.every(row => row.every(cell => !cell)));
+        return [
+            gameScene.board.rows,
+            gameScene.board.cols,
+            gridKey,
+            currentType || '',
+            queue,
+            holdType,
+            gameScene.canHold !== false ? '1' : '0',
+            achieved ? '1' : '0',
+        ].join('|');
+    }
+
+    normalizeMinosaPiece(piece) {
+        const type = typeof piece === 'string'
+            ? piece
+            : typeof piece?.type === 'string'
+                ? piece.type
+                : typeof piece?.piece === 'string'
+                    ? piece.piece
+                    : null;
+        return typeof type === 'string' ? type.toUpperCase() : null;
     }
 
     update(gameScene) {
