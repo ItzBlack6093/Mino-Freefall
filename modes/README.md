@@ -7,12 +7,17 @@ This directory contains the JavaScript-based mode system for the Tetris game, im
 ### Base Class: `BaseMode.js`
 - Provides common functionality for all game modes
 - Defines configuration structure and default values
-- Handles gravity calculation, timing, and basic game mechanics
+- Handles gravity calculation, timing, metadata, and default lifecycle hooks
+- Exposes no-op hooks for unique mode behavior, so game code can call through one interface
 
 ### Mode Manager: `ModeManager.js`
 - Dynamically loads and manages game modes
-- Maps mode IDs to their corresponding JavaScript classes
 - Provides caching and memory management for mode instances
+
+### Mode Registry: `ModeRegistry.js`
+- Centralizes mode IDs, class names, menu categories, descriptions, and colors
+- Keeps UI metadata out of gameplay mode classes
+- Provides one predictable place to add or reorder modes
 
 ### Specific Mode Implementations
 
@@ -113,20 +118,22 @@ const gameMode = modeManager.loadMode('tgm1');
 const gravitySpeed = gameMode.getGravitySpeed(currentLevel);
 ```
 
+The structure follows the same split as Cambridge's `gamemode.lua` model: `BaseMode` owns default core behavior and extension hooks, `ModeRegistry` owns mode metadata, and each mode file only overrides the pieces that make that mode unique.
+
 ## Benefits
 
-1. **Self-Contained**: Each mode contains all its logic and configuration
-2. **Memory Efficient**: Modes are loaded on-demand and cached
-3. **Extensible**: Easy to add new modes by extending BaseMode
-4. **Type Safe**: JavaScript classes provide better error handling
-5. **Maintainable**: Clear separation between mode logic and game engine
+1. **Centralized Metadata**: `ModeRegistry.js` owns registration, display names, descriptions, and colors
+2. **Self-Contained Logic**: Each mode contains its gameplay rules and configuration
+3. **Memory Efficient**: Modes are loaded on-demand and cached
+4. **Extensible**: Easy to add new modes by extending BaseMode
+5. **Maintainable**: Clear separation between mode metadata, mode logic, and the game engine
 
 ## Adding New Modes
 
 1. Create a new JavaScript file extending `BaseMode`
 2. Implement `getModeConfig()` with desired settings
 3. Override methods as needed for special mechanics
-4. Register the mode in `ModeManager.js`
+4. Register the mode in `ModeRegistry.js`
 5. Add script include to `index.html`
 
 ## Performance

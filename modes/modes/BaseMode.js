@@ -5,7 +5,27 @@ class BaseMode {
     constructor() {
         this.modeName = 'Base Mode';
         this.description = 'Base mode implementation';
+        this.modeDefinition = null;
+        this.metadata = {};
         this.config = this.getDefaultConfig();
+    }
+
+    applyModeDefinition(modeId, modeDefinition = {}) {
+        this.modeId = modeId;
+        this.modeDefinition = modeDefinition;
+        this.metadata = modeDefinition.config || {};
+        this.difficulty = this.metadata.difficulty || this.difficulty || 'unknown';
+        this.displayName = modeDefinition.name || this.displayName || this.modeName;
+        this.category = modeDefinition.category || this.category || this.difficulty;
+    }
+
+    getModeDefinition() {
+        return this.modeDefinition;
+    }
+
+    getMetadata(key, defaultValue = null) {
+        if (!key) return this.metadata;
+        return Object.prototype.hasOwnProperty.call(this.metadata, key) ? this.metadata[key] : defaultValue;
     }
 
     // Override this method in each mode to define specific behavior
@@ -35,9 +55,18 @@ class BaseMode {
 
     // Get the complete configuration for this mode
     getConfig() {
+        const defaultConfig = this.getDefaultConfig();
+        const metadataConfig = this.metadata || {};
+        const modeConfig = this.getModeConfig() || {};
         return {
-            ...this.getDefaultConfig(),
-            ...this.getModeConfig()
+            ...defaultConfig,
+            ...metadataConfig,
+            ...modeConfig,
+            specialMechanics: {
+                ...(defaultConfig.specialMechanics || {}),
+                ...(metadataConfig.specialMechanics || {}),
+                ...(modeConfig.specialMechanics || {})
+            }
         };
     }
 
@@ -72,7 +101,11 @@ class BaseMode {
         
         switch (config.gravity.type) {
             case 'static':
+            case 'fixed':
                 return config.gravity.value;
+
+            case 'fixed_20g':
+                return 5120;
             
             case 'linear':
                 // Simple linear progression: base + (level * multiplier)
@@ -130,27 +163,73 @@ class BaseMode {
 
     // Get mode-specific timing values
     getDAS() {
-        return this.getConfig().das;
+        return this.getTimingValue('das');
     }
 
     getARR() {
-        return this.getConfig().arr;
+        return this.getTimingValue('arr');
     }
 
     getARE() {
-        return this.getConfig().are;
+        return this.getTimingValue('are');
     }
 
     getLineARE() {
-        return this.getConfig().lineAre;
+        return this.getTimingValue('lineAre', 'are');
     }
 
     getLockDelay() {
-        return this.getConfig().lockDelay;
+        return this.getTimingValue('lockDelay', 'lock');
     }
 
     getLineClearDelay() {
-        return this.getConfig().lineClearDelay;
+        return this.getTimingValue('lineClearDelay', 'lineClear');
+    }
+
+    getTimingTable() {
+        return this.timingPhases || this.timings || null;
+    }
+
+    getTimingForLevel(level = 0) {
+        const timingTable = this.getTimingTable();
+        if (!Array.isArray(timingTable) || timingTable.length === 0) {
+            return null;
+        }
+
+        return timingTable.find((timing) => {
+            const min = timing.minLevel ?? timing.start ?? 0;
+            const max = timing.maxLevel ?? timing.end ?? Infinity;
+            return level >= min && level <= max;
+        }) || timingTable[timingTable.length - 1];
+    }
+
+    getCurrentTiming(level = null) {
+        if (this.currentTiming && typeof this.currentTiming === 'object') {
+            return this.currentTiming;
+        }
+        if (typeof this.currentTimingPhase === 'number' && Array.isArray(this.timingPhases)) {
+            return this.timingPhases[this.currentTimingPhase - 1] || this.timingPhases[0] || null;
+        }
+        const effectiveLevel = level ?? this.internalLevel ?? this.level ?? 0;
+        return this.getTimingForLevel(effectiveLevel);
+    }
+
+    getTimingValue(key, alternateKey = null) {
+        const currentTiming = this.getCurrentTiming();
+        if (currentTiming && Object.prototype.hasOwnProperty.call(currentTiming, key)) {
+            return currentTiming[key];
+        }
+        if (alternateKey && currentTiming && Object.prototype.hasOwnProperty.call(currentTiming, alternateKey)) {
+            return currentTiming[alternateKey];
+        }
+
+        const config = this.getConfig();
+        if (Object.prototype.hasOwnProperty.call(config, key)) {
+            return config[key];
+        }
+        return alternateKey && Object.prototype.hasOwnProperty.call(config, alternateKey)
+            ? config[alternateKey]
+            : undefined;
     }
 
     getNextPiecesCount() {
@@ -177,6 +256,26 @@ class BaseMode {
         return 0;
     }
 
+    getDisplayedGrade() {
+        return this.displayedGrade || this.getConfig().lowestGrade || '';
+    }
+
+    getInternalGrade() {
+        return this.internalGrade || 0;
+    }
+
+    getStaffRollBonus() {
+        return 0;
+    }
+
+    addStaffRollBonus(points = 0) {
+        return points;
+    }
+
+    addStaffRollLines(lines = 0) {
+        return lines;
+    }
+
     getGravityLevelCap() {
         return this.getConfig().gravityLevelCap;
     }
@@ -200,6 +299,31 @@ class BaseMode {
         return false;
     }
 
+    onSectionComplete(gameScene, section, previousSection) {
+    }
+
+    evaluateSectionPerformance(section, sectionTime, coolTime = null) {
+        return null;
+    }
+
+    onSectionCool() {
+    }
+
+    onSectionRegret() {
+    }
+
+    onCreditsStart(gameScene) {
+    }
+
+    onCreditsEnd(gameScene) {
+    }
+
+    finishCreditRoll(gameScene) {
+    }
+
+    initializeBigRoll(gameScene) {
+    }
+
     // Mode-specific hook for piece spawning
     onPieceSpawn(piece, game) {
         // Default implementation - can be overridden by modes
@@ -210,6 +334,9 @@ class BaseMode {
     onPieceLock(piece, game) {
         // Default implementation - can be overridden by modes
         return true;
+    }
+
+    onRotateWhileGrounded(gameScene) {
     }
 
     // Mode-specific hook for line clearing
@@ -224,14 +351,43 @@ class BaseMode {
         return Math.floor(baseScore * this.getLineClearBonus());
     }
 
+    getActiveTime(gameScene) {
+        return gameScene?.currentPieceActiveTime || 10;
+    }
+
+    isPerfectClear(gameScene) {
+        const grid = gameScene?.board?.grid || gameScene?.grid;
+        return Array.isArray(grid) && grid.every((row) => Array.isArray(row) && row.every((cell) => !cell));
+    }
+
+    formatGameTime(seconds = 0) {
+        const minutes = Math.floor(seconds / 60);
+        const wholeSeconds = Math.floor(seconds % 60).toString().padStart(2, '0');
+        const centiseconds = Math.floor((seconds % 1) * 100).toString().padStart(2, '0');
+        return `${minutes}:${wholeSeconds}.${centiseconds}`;
+    }
+
+    getBestScore(modeId) {
+        return {
+            score: 0,
+            level: 0,
+            grade: this.getDisplayedGrade(),
+            time: '0:00.00'
+        };
+    }
+
     // Get mode name
     getName() {
-        return this.modeName;
+        return this.displayName || this.modeName || this.getModeId();
+    }
+
+    getDisplayName() {
+        return this.displayName || this.getName();
     }
 
     // Get mode description
     getDescription() {
-        return this.description;
+        return this.getMetadata('description', this.description || '');
     }
     
     // Mode initialization for game scene
@@ -242,6 +398,10 @@ class BaseMode {
     // Handle line clear events
     handleLineClear(gameScene, linesCleared, pieceType) {
         // Default implementation - can be overridden by modes
+    }
+
+    getEffectiveLineClearCount(gameScene, linesToClear = [], allCompletedLines = linesToClear) {
+        return linesToClear.length;
     }
     
     // Update method called every frame
@@ -257,6 +417,43 @@ class BaseMode {
     // Reset mode state
     reset() {
         // Default implementation - can be overridden by modes
+    }
+
+    resetGrading(gameScene) {
+    }
+
+    updateTimingPhase(level) {
+        const timingTable = this.getTimingTable();
+        if (!Array.isArray(timingTable)) return;
+        const timing = this.getTimingForLevel(level);
+        const nextIndex = timingTable.indexOf(timing);
+        if (nextIndex >= 0) {
+            this.currentTimingPhase = nextIndex + 1;
+        }
+    }
+
+    captureBackstepState(gameScene) {
+        return {};
+    }
+
+    restoreBackstepState(gameScene, snapshot = {}) {
+    }
+
+    handleSakuraInput(gameScene, action, isPressed) {
+        return false;
+    }
+
+    advanceSequenceWithHold(gameScene) {
+        return false;
+    }
+
+    isTwentyGMode() {
+        const gravity = this.getConfig().gravity || {};
+        return gravity.type === 'fixed_20g' || gravity.value === 5120 || this.getGravitySpeed(this.level || 0) >= 5120;
+    }
+
+    getDisplayedTime(gameScene) {
+        return gameScene ? gameScene.currentTime : 0;
     }
     
     // Get mode ID

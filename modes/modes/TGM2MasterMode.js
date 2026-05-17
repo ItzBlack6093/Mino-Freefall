@@ -355,21 +355,6 @@ class TGM2MasterMode extends BaseMode {
         }
     }
     
-    // Get active time for speed calculation
-    getActiveTime(gameScene) {
-        // This would track the number of frames the piece was active
-        // For now, return a default value that would be tracked in the game
-        return gameScene.currentPieceActiveTime || 10; // Default 10 frames
-    }
-    
-    // Check if last line clear was a perfect clear
-    isPerfectClear(gameScene) {
-        // Check if the playfield is completely empty after line clear
-        // This would require access to the board state after clear
-        // For now, return false as perfect clear detection is complex
-        return false;
-    }
-    
 
     
     // Check for credit roll start
