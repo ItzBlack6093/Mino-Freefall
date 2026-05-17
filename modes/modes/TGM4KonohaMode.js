@@ -14,6 +14,8 @@ class TGM4KonohaMode extends BaseMode {
         this.lastTimerTime = null;
         this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
         this.randomizerFirstPiece = true;
+        this.minosa = null;
+        this.minosaStatus = 'possible';
     }
 
     getModeConfig() {
@@ -81,7 +83,17 @@ class TGM4KonohaMode extends BaseMode {
         this.bravoCount = 0;
         this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
         this.randomizerFirstPiece = true;
+        this.minosaStatus = 'possible';
         gameScene.bravoCount = 0;
+        gameScene.minosaStatus = this.minosaStatus;
+
+        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
+            this.minosa = getMinosaModuleInstance();
+        } else if (!this.minosa && typeof MinosaModule !== 'undefined') {
+            this.minosa = MinosaModule.getSharedInstance
+                ? MinosaModule.getSharedInstance()
+                : new MinosaModule();
+        }
 
         // Initialize big mode for Konoha with shared module instance.
         if (!this.bigMode && typeof getBigModeInstance === 'function') {
@@ -210,8 +222,23 @@ class TGM4KonohaMode extends BaseMode {
         return `${this.bravoCount} Bravoes`;
     }
 
+    updateMinosaStatus(gameScene) {
+        if (!gameScene) return this.minosaStatus;
+        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
+            this.minosa = getMinosaModuleInstance();
+        }
+        const result = this.minosa && typeof this.minosa.evaluateGameScene === 'function'
+            ? this.minosa.evaluateGameScene(gameScene)
+            : { status: 'impossible' };
+        this.minosaStatus = result.status || 'impossible';
+        gameScene.minosaStatus = this.minosaStatus;
+        gameScene.minosaPath = Array.isArray(result.path) ? result.path : [];
+        return this.minosaStatus;
+    }
+
     update(gameScene) {
         if (!gameScene || gameScene.gameOver) return;
+        this.updateMinosaStatus(gameScene);
         if (!this.timerStarted && gameScene.currentPiece) {
             this.timerStarted = true;
             this.lastTimerTime = gameScene.currentTime || 0;

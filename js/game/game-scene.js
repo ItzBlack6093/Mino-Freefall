@@ -34,6 +34,8 @@ class GameScene extends Phaser.Scene {
     this.gradePointsText = null;
     this.asukaKitaLabel = null;
     this.asukaKitaText = null;
+    this.minosaStatus = "possible";
+    this.minosaPath = [];
     this.nextGradeText = null;
     this.levelDisplay = null;
     this.rollBonus = 0;
@@ -2467,17 +2469,19 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0, 0);
 
     const showAsukaKitas = typeof modeId === "string" && modeId.startsWith("tgm4_asuka");
+    const showKonohaMinosa = typeof modeId === "string" && modeId.startsWith("tgm4_konoha");
+    const showKitaDisplay = showAsukaKitas || showKonohaMinosa;
     this.asukaKitaLabel = this.add
-      .text(ppsX, ppsY - 85, "KITAS", {
+      .text(ppsX, ppsY - 85, showKonohaMinosa ? "KITA" : "KITAS", {
         fontSize: `${uiFontSize - 6}px`,
         fill: "#ccc",
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0, 0)
-      .setVisible(showAsukaKitas);
+      .setVisible(showKitaDisplay);
     this.asukaKitaText = this.add
-      .text(ppsX, ppsY - 70, "0", {
+      .text(ppsX, ppsY - 70, showKonohaMinosa ? "🦊" : "0", {
         fontSize: `${largeFontSize - 4}px`,
         fill: "#ffff88",
         fontFamily: "Courier New",
@@ -2485,7 +2489,7 @@ class GameScene extends Phaser.Scene {
         align: "left",
       })
       .setOrigin(0, 0)
-      .setVisible(showAsukaKitas);
+      .setVisible(showKitaDisplay);
 
     // Show Hanabi counter only in Easy mode
     const showHanabi = modeId === "tgm3_easy";
@@ -10809,11 +10813,31 @@ class GameScene extends Phaser.Scene {
     this.ppsText.setText(this.conventionalPPS.toFixed(2));
     this.rawPpsText.setText(this.rawPPS.toFixed(2));
     if (this.asukaKitaText) {
-      const kitaCount =
-        this.gameMode && typeof this.gameMode.kitas === "number"
-          ? this.gameMode.kitas
-          : this.kitas || 0;
-      this.asukaKitaText.setText(kitaCount.toString());
+      const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+      if (typeof modeId === "string" && modeId.startsWith("tgm4_konoha")) {
+        const status = this.gameMode?.minosaStatus || this.minosaStatus || "possible";
+        const iconByStatus = {
+          achieved: "🦊✓",
+          possible: "🦊",
+          impossible: "🦊✕",
+        };
+        const colorByStatus = {
+          achieved: "#88ff88",
+          possible: "#ffff88",
+          impossible: "#ff8888",
+        };
+        this.asukaKitaText.setText(iconByStatus[status] || iconByStatus.impossible);
+        this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
+      } else {
+        const kitaCount =
+          this.gameMode && typeof this.gameMode.kitas === "number"
+            ? this.gameMode.kitas
+            : this.kitas || 0;
+        this.asukaKitaText.setText(kitaCount.toString());
+        this.asukaKitaText.setColor("#ffff88");
+      }
     }
     if (
       this.ppsGraphGraphics &&
