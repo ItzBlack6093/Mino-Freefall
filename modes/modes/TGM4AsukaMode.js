@@ -158,12 +158,29 @@ class TGM4AsukaMode extends BaseMode {
     }
 
     handleLineClear(gameScene, linesCleared) {
-        this.onLineClear(gameScene, linesCleared);
+        // Asuka processes Kita gain during line-based level updates so section-stop
+        // checks can use the newly earned Kita from the same clear.
     }
 
     onLevelUpdate(level, oldLevel, updateType = 'piece', amount = 1) {
         const max = this.config.gravityLevelCap;
-        let nextLevel = updateType === 'lines' ? level + Math.max(amount || 0, 0) : level + 1;
+        if (updateType !== 'lines') {
+            const nextLevel = Math.min(level + 1, max);
+            this.maxLevelReached = Math.max(this.maxLevelReached, nextLevel);
+            this.completed = this.maxLevelReached >= max;
+            this.currentTiming = this.getTimingForLevel(nextLevel);
+            if (this.gameSceneRef) {
+                this.gameSceneRef.kitas = this.kitas;
+            }
+            return nextLevel;
+        }
+
+        const lineClearAmount = Math.max(amount || 0, 0);
+        if (lineClearAmount > 0) {
+            this.onLineClear(this.gameSceneRef, lineClearAmount);
+        }
+
+        let nextLevel = level + lineClearAmount;
         const nextSection = Math.floor(nextLevel / 100);
         const currentSection = Math.floor(level / 100);
 

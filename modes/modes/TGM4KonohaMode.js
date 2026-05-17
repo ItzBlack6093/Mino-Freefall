@@ -200,7 +200,7 @@ class TGM4KonohaMode extends BaseMode {
             gameScene?.lastClearType === 'bravo' ||
             (typeof gameScene?.lastClearType === 'string' && gameScene.lastClearType.includes('all clear'));
 
-        if (isBravo) {
+        if (isBravo && linesCleared > 0) {
             this.bravoCount += 1;
             if (gameScene) {
                 gameScene.bravoCount = this.bravoCount;

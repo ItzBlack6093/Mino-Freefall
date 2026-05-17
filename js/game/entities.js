@@ -60,7 +60,7 @@ class Board {
             this.grid[y + r][x + c] = piece.tgm4MasterPikii ? { color: piece.color, frozen: true } : piece.color;
           }
           if (this.frozenGrid[y + r]?.[x + c] !== undefined) {
-            this.frozenGrid[y + r][x + c] = !!piece.tgm4MasterPikii;
+            this.frozenGrid[y + r][x + c] = false;
           }
         }
       }
@@ -69,7 +69,7 @@ class Board {
 
   isFrozenCell(r, c) {
     const cell = this.grid?.[r]?.[c];
-    return !!(this.frozenGrid?.[r]?.[c] || cell?.frozen || cell?.pikiiFrozen);
+    return !!(this.frozenGrid?.[r]?.[c] || cell?.pikiiFrozen);
   }
 
   isFrozenLine(r) {
@@ -657,4 +657,3 @@ function getStartingLevelCapForMode(mode) {
 function getConfiguredStartingLevel(maxLevel = 1200) {
   return normalizeStartLevel(localStorage.getItem("startingLevel"), { maxLevel });
 }
-

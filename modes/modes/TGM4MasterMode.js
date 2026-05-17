@@ -7,6 +7,9 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         this.currentRotationSystem = 'SRS';
         this.currentTiming = this.getTimingForLevel(0, this.currentRotationSystem);
         this.displayedGrade = '';
+        this.displayLevel = 0;
+        this.internalLevel = 0;
+        this.bgmStopLevel = 0;
         this.maxLevelReached = 0;
         this.endGameActive = false;
         this.endGameCleared = false;
@@ -20,6 +23,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         this.cycloneActive = false;
         this.masterPikiiFreezeTime = 2 / 60;
         this.lastPikiiSection = null;
+        this.pikiiCountedRows = new Set();
     }
 
     getModeConfig() {
@@ -136,8 +140,17 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         return frames / 60;
     }
 
+    getPikiiStartRow(gameScene) {
+        const rows = gameScene?.board?.rows;
+        if (!Number.isInteger(rows) || rows <= 0) return 12;
+        return Math.max(0, rows - 10);
+    }
+
     updateLevelState(level) {
         const safeLevel = Math.max(0, level || 0);
+        this.displayLevel = safeLevel;
+        this.internalLevel = safeLevel;
+        this.bgmStopLevel = safeLevel;
         this.maxLevelReached = Math.max(this.maxLevelReached, safeLevel);
         if (this.endGameActive) {
             this.pikiiActive = false;
@@ -154,15 +167,36 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         this.displayedGrade = this.getDisplayedGrade();
     }
 
+    onLevelUpdate(level, oldLevel, updateType = 'piece', amount = 1) {
+        const max = this.config.gravityLevelCap || 2600;
+        let nextLevel = level;
+
+        if (updateType === 'piece') {
+            nextLevel = Math.min(level + 1, max);
+        } else if (updateType === 'lines') {
+            const cleared = Math.max(amount || 0, 0);
+            const lineBonus = cleared === 3 ? 1 : cleared === 4 ? 2 : 0;
+            const medalBonus = this.getTotalLevelBonus();
+            nextLevel = Math.min(level + cleared + lineBonus + medalBonus, max);
+        }
+
+        if (nextLevel >= max) {
+            this.rollReached = true;
+        }
+
+        this.currentTiming = this.getTimingForLevel(nextLevel, this.currentRotationSystem);
+        this.updateLevelState(nextLevel);
+        return nextLevel;
+    }
+
     handleLineClear(gameScene, linesCleared) {
         const lastClearType = gameScene?.lastClearType || '';
         const isBravo = typeof lastClearType === 'string' && lastClearType.toLowerCase().includes('bravo');
         const isTSpinReward = !!gameScene?.lastSpinInfo?.isTSpin && linesCleared >= 2;
-        const startFrozenRow = gameScene?.board ? Math.floor(gameScene.board.rows / 2) : 11;
         const clearedFrozenRow =
             (this.pikiiActive || this.pikii2Active) &&
-            Array.isArray(gameScene?.clearedLines) &&
-            gameScene.clearedLines.some(row => row >= startFrozenRow);
+            Array.isArray(gameScene?.newlyCompletedFrozenRowsThisLock) &&
+            gameScene.newlyCompletedFrozenRowsThisLock.length > 0;
 
         if (isBravo) this.medals.bravo += 1;
         if (linesCleared === 4) {
@@ -172,24 +206,76 @@ class TGM4MasterMode extends TGM3ShiraseMode {
             }
         }
         if (isTSpinReward) this.medals.tspin += 1;
-        if (clearedFrozenRow) this.medals.pikii += 1;
+        if (clearedFrozenRow) this.medals.pikii += gameScene.newlyCompletedFrozenRowsThisLock.length;
         this.masterPikiiFreezeTime = this.getMasterPikiiFreezeTime();
     }
 
     getEffectiveLineClearCount(gameScene, linesToClear, allCompletedLines) {
-        const baseCount =
-            (this.pikiiActive || this.masterPikiiActive)
-                ? allCompletedLines.length
-                : linesToClear.length;
-        if (baseCount <= 0) return 0;
-        return baseCount + this.getTotalLevelBonus();
+        if (!(this.pikiiActive || this.pikii2Active)) {
+            this.pikiiCountedRows.clear();
+            if (gameScene) gameScene.newlyCompletedFrozenRowsThisLock = [];
+            return Math.max(0, linesToClear.length);
+        }
+
+        const startFrozenRow = this.getPikiiStartRow(gameScene);
+        const newlyCompletedFrozenRows = allCompletedLines.filter(
+            row => row >= startFrozenRow && !this.pikiiCountedRows.has(row),
+        );
+        newlyCompletedFrozenRows.forEach(row => this.pikiiCountedRows.add(row));
+        if (gameScene) gameScene.newlyCompletedFrozenRowsThisLock = newlyCompletedFrozenRows;
+
+        // Frozen-zone rows should count exactly once when they first become full.
+        return Math.max(0, linesToClear.length + newlyCompletedFrozenRows.length);
+    }
+
+    onPieceLock(piece, gameScene) {
+        if (!gameScene?.board?.setFrozenRows || !(this.pikiiActive || this.pikii2Active)) {
+            return true;
+        }
+        const startRow = this.getPikiiStartRow(gameScene);
+        gameScene.board.setFrozenRows(startRow, gameScene.board.rows - 1, true, true);
+        return true;
+    }
+
+    clearPikiiZoneFilledLines(gameScene) {
+        if (!gameScene?.board?.grid || !Array.isArray(gameScene.board.grid)) return 0;
+        const startRow = this.getPikiiStartRow(gameScene);
+        const frozenRows = [];
+        for (let r = startRow; r < gameScene.board.rows; r++) {
+            if (gameScene.board.grid[r].every(cell => cell !== 0)) {
+                frozenRows.push(r);
+            }
+        }
+        if (frozenRows.length === 0) return 0;
+
+        const clearedSet = new Set(frozenRows);
+        const newGrid = [];
+        const newFadeGrid = [];
+        const newFrozenGrid = [];
+        for (let r = 0; r < gameScene.board.rows; r++) {
+            if (clearedSet.has(r)) continue;
+            newGrid.push(gameScene.board.grid[r]);
+            newFadeGrid.push(gameScene.board.fadeGrid[r]);
+            newFrozenGrid.push(gameScene.board.frozenGrid?.[r] || Array(gameScene.board.cols).fill(false));
+        }
+        for (let i = 0; i < frozenRows.length; i++) {
+            newGrid.unshift(Array(gameScene.board.cols).fill(0));
+            newFadeGrid.unshift(Array(gameScene.board.cols).fill(0));
+            newFrozenGrid.unshift(Array(gameScene.board.cols).fill(false));
+        }
+        gameScene.board.grid = newGrid;
+        gameScene.board.fadeGrid = newFadeGrid;
+        gameScene.board.frozenGrid = newFrozenGrid;
+        return frozenRows.length;
     }
 
     releasePikiiFrozenRows(gameScene, sectionIndex) {
         if (!gameScene?.board?.clearFrozenRows || this.endGameActive) return;
         const level = (sectionIndex + 1) * 100;
         if (!this.isInRange(level - 1, [[300, 399], [500, 599], [700, 999]])) return;
-        const startRow = Math.floor(gameScene.board.rows / 2);
+        const startRow = this.getPikiiStartRow(gameScene);
+        this.pikiiCountedRows.clear();
+        this.clearPikiiZoneFilledLines(gameScene);
         gameScene.board.clearFrozenRows(startRow, gameScene.board.rows - 1);
         if (level >= 800 && level < 1000 && gameScene.board.setFrozenRows) {
             gameScene.board.setFrozenRows(startRow, gameScene.board.rows - 1, true, true);
@@ -198,10 +284,11 @@ class TGM4MasterMode extends TGM3ShiraseMode {
 
     applyPikiiState(gameScene) {
         if (!gameScene?.board?.setFrozenRows) return;
-        const startRow = Math.floor(gameScene.board.rows / 2);
+        const startRow = this.getPikiiStartRow(gameScene);
         if (this.endGameActive) {
             gameScene.board.clearFrozenRows(startRow, gameScene.board.rows - 1);
             this.lastPikiiSection = null;
+            this.pikiiCountedRows.clear();
             return;
         }
 
@@ -213,6 +300,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         } else if (this.lastPikiiSection !== null) {
             gameScene.board.clearFrozenRows(startRow, gameScene.board.rows - 1);
             this.lastPikiiSection = null;
+            this.pikiiCountedRows.clear();
         }
     }
 
@@ -224,10 +312,53 @@ class TGM4MasterMode extends TGM3ShiraseMode {
             ? arsRotations?.[piece.type]?.rotations
             : srsRotations?.[piece.type]?.rotations;
         if (!rotations?.length) return;
-        const rotation = Math.floor(Math.random() * rotations.length);
+        const queuedRotation = Number.isInteger(piece.tgm4CycloneRotation) ? piece.tgm4CycloneRotation : null;
+        const rotation = queuedRotation !== null
+            ? ((queuedRotation % rotations.length) + rotations.length) % rotations.length
+            : Math.floor(Math.random() * rotations.length);
         piece.tgm4Cyclone = true;
+        piece.tgm4CycloneRotation = rotation;
         piece.rotation = rotation;
         piece.shape = rotations[rotation].map(row => [...row]);
+    }
+
+    getCycloneRotationForType(pieceType, gameScene) {
+        if (!this.cycloneActive || !pieceType) return null;
+        const arsRotations = typeof SEGA_ROTATIONS !== 'undefined' ? SEGA_ROTATIONS : null;
+        const srsRotations = typeof TETROMINOES !== 'undefined' ? TETROMINOES : null;
+        const rotations = gameScene?.rotationSystem === 'ARS'
+            ? arsRotations?.[pieceType]?.rotations
+            : srsRotations?.[pieceType]?.rotations;
+        if (!rotations?.length) return null;
+        return Math.floor(Math.random() * rotations.length);
+    }
+
+    prepareNextQueueEntry(entry, gameScene) {
+        if (!this.cycloneActive || entry === undefined || entry === null) return entry;
+        const source = (entry && typeof entry === 'object') ? entry : { type: entry };
+        const pieceType = typeof source.type === 'string'
+            ? source.type
+            : typeof source.piece === 'string'
+                ? source.piece
+                : null;
+        if (!pieceType) return entry;
+        if (Number.isInteger(source.tgm4CycloneRotation)) {
+            return { ...source, type: pieceType, piece: pieceType };
+        }
+        const rotation = this.getCycloneRotationForType(pieceType, gameScene);
+        if (!Number.isInteger(rotation)) return { ...source, type: pieceType, piece: pieceType };
+        return {
+            ...source,
+            type: pieceType,
+            piece: pieceType,
+            tgm4CycloneRotation: rotation,
+        };
+    }
+
+    applyCyclonePreviewToQueue(gameScene) {
+        if (!gameScene || !Array.isArray(gameScene.nextPieces) || !this.cycloneActive) return;
+        if (gameScene.nextPieces.length === 0) return;
+        gameScene.nextPieces[0] = this.prepareNextQueueEntry(gameScene.nextPieces[0], gameScene);
     }
 
     onPieceSpawn(piece, gameScene) {
@@ -235,6 +366,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         this.currentTiming = this.getTimingForLevel(gameScene?.level || this.maxLevelReached, this.currentRotationSystem);
         this.updateLevelState(gameScene?.level || this.maxLevelReached);
         this.applyPikiiState(gameScene);
+        this.applyCyclonePreviewToQueue(gameScene);
         this.applyCycloneRotation(piece, gameScene);
         if (this.masterPikiiActive && piece) {
             piece.tgm4MasterPikii = true;
@@ -300,6 +432,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         if (gameScene.board?.clearFrozenRows) {
             gameScene.board.clearFrozenRows(0, gameScene.board.rows - 1);
         }
+        this.pikiiCountedRows.clear();
         gameScene.backstepHistory = [gameScene.captureBackstepSnapshot('endgame-start')].filter(Boolean);
         this.rerollUpcomingPieces(gameScene);
         this.updateLevelState(targetLevel);
@@ -342,7 +475,8 @@ class TGM4MasterMode extends TGM3ShiraseMode {
             endGameStartTime: this.endGameStartTime,
             endGameTimeRemaining: this.endGameTimeRemaining,
             medals: { ...this.medals },
-            lastPikiiSection: this.lastPikiiSection
+            lastPikiiSection: this.lastPikiiSection,
+            pikiiCountedRows: Array.from(this.pikiiCountedRows)
         };
     }
 
@@ -365,6 +499,11 @@ class TGM4MasterMode extends TGM3ShiraseMode {
             pikii: state.medals?.pikii || 0
         };
         this.lastPikiiSection = typeof state.lastPikiiSection === 'number' ? state.lastPikiiSection : null;
+        this.pikiiCountedRows = new Set(
+            Array.isArray(state.pikiiCountedRows)
+                ? state.pikiiCountedRows.filter(row => Number.isInteger(row))
+                : [],
+        );
         this.updateLevelState(gameScene?.level || 0);
     }
 
@@ -393,6 +532,7 @@ class TGM4MasterMode extends TGM3ShiraseMode {
             cycloneActive: this.cycloneActive,
             masterPikiiActive: this.masterPikiiActive,
             masterPikiiFreezeTime: this.masterPikiiFreezeTime,
+            pikiiStartRow: this.getPikiiStartRow(gameScene),
             endGameActive: this.endGameActive,
             endGameRewindLevel: this.endGameRewindLevel,
             endGameTimeRemaining: this.endGameTimeRemaining,

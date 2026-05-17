@@ -207,38 +207,45 @@ class MinosaModule {
     }
 
     getTurnCandidates(state) {
-        const candidates = [{
+        const currentCandidate = {
             pieceType: state.activeType,
             holdType: state.holdType,
             queue: state.queue,
             nextActiveType: null,
             usedHold: false,
             source: 'current',
-        }];
+        };
 
-        if (!state.canHold) return candidates;
+        if (!state.canHold) return [currentCandidate];
 
-        if (state.holdType) {
-            candidates.push({
+        const holdCandidate = state.holdType
+            ? {
                 pieceType: state.holdType,
                 holdType: state.activeType,
                 queue: state.queue,
                 nextActiveType: null,
                 usedHold: true,
                 source: 'hold',
-            });
-        } else if (state.queue.length > 0) {
-            candidates.push({
-                pieceType: state.queue[0],
-                holdType: state.activeType,
-                queue: state.queue.slice(1),
-                nextActiveType: null,
-                usedHold: true,
-                source: 'next',
-            });
-        }
+            }
+            : state.queue.length > 0
+                ? {
+                    pieceType: state.queue[0],
+                    holdType: state.activeType,
+                    queue: state.queue.slice(1),
+                    nextActiveType: null,
+                    usedHold: true,
+                    source: 'next',
+                }
+                : null;
 
-        return candidates;
+        if (!holdCandidate) return [currentCandidate];
+
+        // Prefer evaluating hold first on the root node so the visible Minosa hint
+        // reflects held-piece opportunities instead of always defaulting to active.
+        if ((state.depth || 0) === 0) {
+            return [holdCandidate, currentCandidate];
+        }
+        return [currentCandidate, holdCandidate];
     }
 
     getPlacements(pieceType, rotationSystem, grid, rows, cols) {

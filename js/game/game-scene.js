@@ -32,8 +32,12 @@ class GameScene extends Phaser.Scene {
     this.gradeDisplay = null;
     this.gradeText = null;
     this.gradePointsText = null;
+    this.bravoCountLabel = null;
+    this.bravoCountText = null;
     this.asukaKitaLabel = null;
     this.asukaKitaText = null;
+    this.roundsMedalLabels = [];
+    this.roundsMedalTexts = [];
     this.minosaStatus = "possible";
     this.minosaPath = [];
     this.minosaHint = null;
@@ -1124,7 +1128,14 @@ class GameScene extends Phaser.Scene {
 
   applyInitialGradeFromMode() {
     const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const hasGrading = modeConfig.hasGrading !== false;
+    const modeId =
+      this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+    const isKonohaMode =
+      typeof modeId === "string" &&
+      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+    const hasGrading = modeConfig.hasGrading !== false && !isKonohaMode;
 
     if (!hasGrading) {
       this.grade = null;
@@ -1990,12 +2001,15 @@ class GameScene extends Phaser.Scene {
 
     // Grade display - next to matrix on left, right-aligned, moved 25px right
     // Only show for modes that use grading
-    const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const hasGrading = modeConfig.hasGrading !== false;
     const modeId =
       this.gameMode && typeof this.gameMode.getModeId === "function"
         ? this.gameMode.getModeId()
         : this.selectedMode;
+    const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
+    const isKonohaMode =
+      typeof modeId === "string" &&
+      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+    const hasGrading = modeConfig.hasGrading !== false && !isKonohaMode;
     const specialMechanics = modeConfig.specialMechanics || {};
     const isTADeathMode = modeId === "tadeath" || modeId === "ta_death";
     const isTGM2Mode =
@@ -2466,6 +2480,40 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setVisible(showPieceCount);
 
+    const showRoundsMedals = modeId === "tgm4_rounds";
+    const roundsMedalDefs = [
+      { key: "bravo", label: "AC", color: "#ffff88" },
+      { key: "tetris", label: "TET", color: "#88ddff" },
+      { key: "tspin", label: "TSP", color: "#ffaaaa" },
+      { key: "pikii", label: "PIK", color: "#ffffff" },
+    ];
+    this.roundsMedalLabels = [];
+    this.roundsMedalTexts = [];
+    roundsMedalDefs.forEach((medal, index) => {
+      const rowY = ppsY - 125 + index * 20;
+      const label = this.add
+        .text(ppsX, rowY, medal.label, {
+          fontSize: `${uiFontSize - 6}px`,
+          fill: "#ccc",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0)
+        .setVisible(showRoundsMedals);
+      const value = this.add
+        .text(ppsX + 42, rowY, "0", {
+          fontSize: `${uiFontSize - 4}px`,
+          fill: medal.color,
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+          align: "left",
+        })
+        .setOrigin(0, 0)
+        .setVisible(showRoundsMedals);
+      this.roundsMedalLabels.push(label);
+      this.roundsMedalTexts.push(value);
+    });
+
     this.ppsLabel = this.add
       .text(ppsX, ppsY, "PPS", {
         fontSize: `${uiFontSize - 4}px`,
@@ -2501,20 +2549,46 @@ class GameScene extends Phaser.Scene {
       })
       .setOrigin(0, 0);
 
-    const showAsukaKitas = typeof modeId === "string" && modeId.startsWith("tgm4_asuka");
+    const showAsukaKitas =
+      typeof modeId === "string" &&
+      (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
     const showKonohaMinosa = typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
     const showKitaDisplay = showAsukaKitas || showKonohaMinosa;
-    this.asukaKitaLabel = this.add
-      .text(ppsX, ppsY - 85, showKonohaMinosa ? "KITA" : "KITAS", {
+    const showBravoCounter = showKonohaMinosa;
+    const bravoLabelY = showKonohaMinosa ? ppsY - 85 : ppsY - 45;
+    const bravoTextY = showKonohaMinosa ? ppsY - 70 : ppsY - 30;
+    const kitaLabelY = showKonohaMinosa ? ppsY - 45 : ppsY - 85;
+    const kitaTextY = showKonohaMinosa ? ppsY - 30 : ppsY - 70;
+    this.bravoCountLabel = this.add
+      .text(ppsX, bravoLabelY, "BRAVO", {
         fontSize: `${uiFontSize - 6}px`,
         fill: "#ccc",
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0, 0)
-      .setVisible(showKitaDisplay);
+      .setVisible(showBravoCounter);
+    this.bravoCountText = this.add
+      .text(ppsX, bravoTextY, "0", {
+        fontSize: `${largeFontSize - 4}px`,
+        fill: "#ffff88",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+        align: "left",
+      })
+      .setOrigin(0, 0)
+      .setVisible(showBravoCounter);
+    this.asukaKitaLabel = this.add
+      .text(ppsX, kitaLabelY, "KITAS", {
+        fontSize: `${uiFontSize - 6}px`,
+        fill: "#ccc",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0, 0)
+      .setVisible(false);
     this.asukaKitaText = this.add
-      .text(ppsX, ppsY - 70, showKonohaMinosa ? "🦊" : "0", {
+      .text(ppsX, kitaTextY, showKonohaMinosa ? "🦊" : "0", {
         fontSize: `${largeFontSize - 4}px`,
         fill: "#ffff88",
         fontFamily: "Courier New",
@@ -2541,7 +2615,6 @@ class GameScene extends Phaser.Scene {
       this.sectionTallyTexts = null;
     };
 
-    const isKonohaMode = typeof modeId === "string" && modeId.startsWith("tgm4_konoha_");
     const shouldShowSectionTracker =
       !(isUltraMode || isZenMode || isKonohaMode) && modeId !== "tgm3_sakura";
     const shouldShowZenPanel = isZenMode && this.zenSandboxConfig;
@@ -3100,17 +3173,29 @@ class GameScene extends Phaser.Scene {
       this.gradeDisplay = null;
       this.gradeText = null;
       this.gradePointsText = null;
+      this.bravoCountLabel = null;
+      this.bravoCountText = null;
       this.nextGradeText = null;
+      this.roundsMedalLabels = [];
+      this.roundsMedalTexts = [];
       this.playfieldBorder = null;
       this.minoRowFadeAlpha = null;
       if (this.hanabiLabel) this.hanabiLabel.destroy();
       if (this.hanabiTextInGame) this.hanabiTextInGame.destroy();
+      if (this.bravoCountLabel) this.bravoCountLabel.destroy();
+      if (this.bravoCountText) this.bravoCountText.destroy();
       if (this.asukaKitaLabel) this.asukaKitaLabel.destroy();
       if (this.asukaKitaText) this.asukaKitaText.destroy();
+      (this.roundsMedalLabels || []).forEach((label) => label?.destroy());
+      (this.roundsMedalTexts || []).forEach((text) => text?.destroy());
       this.hanabiLabel = null;
       this.hanabiTextInGame = null;
+      this.bravoCountLabel = null;
+      this.bravoCountText = null;
       this.asukaKitaLabel = null;
       this.asukaKitaText = null;
+      this.roundsMedalLabels = [];
+      this.roundsMedalTexts = [];
     });
 
     const keybinds = (() => {
@@ -3245,50 +3330,7 @@ class GameScene extends Phaser.Scene {
     createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
   }
 
-  initializeBGM() {
-    try {
-      const addTrack = (key, opts = {}) => {
-        const base = 0.5;
-        const vol = base * this.getMasterVolumeSetting() * this.getBGMVolumeSetting();
-        return this.sound.add(key, { loop: false, volume: vol, ...opts });
-      };
-      this.bgmTracks = {
-        mf1_1: addTrack("mf1_1", { loop: true }),
-        mf1_2: addTrack("mf1_2", { loop: true }),
-        mf1_endroll: addTrack("mf1_endroll", { loop: true }),
-        mf2_3: addTrack("mf2_3", { loop: true }),
-        mf2_4: addTrack("mf2_4", { loop: true }),
-        mf2_endroll: addTrack("mf2_endroll", { loop: true }),
-        mf3_4: addTrack("mf3_4", { loop: true }),
-        mf3_6: addTrack("mf3_6", { loop: true }),
-        mf4_endgame: addTrack("mf4_endgame", { loop: true }),
-        mf_zen: addTrack("mf_zen", { loop: true }),
-        mf_std_1: addTrack("mf_std_1", { loop: true }),
-        mf_std_2: addTrack("mf_std_2", { loop: true }),
-        mf_std_3: addTrack("mf_std_3", { loop: true }),
-      };
-      this.stage1BGM = this.bgmTracks.mf1_1;
-      this.stage2BGM = this.bgmTracks.mf1_2;
-      this.currentBgmKey = null;
-      this.bgmStarted = false;
-    } catch (error) {
-      console.error(
-        "Failed to initialize BGM audio objects. BGM functionality may be limited.",
-        error,
-      );
-    }
-  }
-
-  startInitialBGM() {
-    if (!this.bgmEnabled) return;
-    this.bgmStarted = true;
-    this.updateBGM();
-  }
-
-  updateBGM() {
-    if (!this.bgmEnabled || !this.bgmStarted) return;
-    this.updateModeBGM();
-  }
+  // BGM methods are attached from js/game/game-scene-bgm.js.
 
   getMasterVolumeSetting() {
     const v = localStorage.getItem("masterVolume");
@@ -3514,218 +3556,6 @@ class GameScene extends Phaser.Scene {
       }
     });
   }
-
-  applyEffectiveVolumesScene() {
-    const master = this.getMasterVolumeSetting();
-    const bgm = this.getBGMVolumeSetting();
-    const sfx = this.getSFXVolumeSetting();
-
-    if (this.sound && typeof this.sound.setVolume === "function") {
-      // Manager volume applies master only; per-sound uses sfx/base
-      this.sound.setVolume(master);
-    }
-
-    if (this.bgmTracks) {
-      Object.entries(this.bgmTracks).forEach(([key, track]) => {
-        if (track && track.setVolume) {
-          const base = 0.5; // consistent base
-          track.setVolume(base * master * bgm);
-        }
-      });
-    }
-
-    if (this.currentBGM && this.currentBGM.setVolume) {
-      const base = 0.5;
-      this.currentBGM.setVolume(base * master * bgm);
-    }
-  }
-
-  getBgmSchedule(modeId) {
-    const sharedTGM1 = [
-      { end: 499, key: "mf1_1" },
-      { end: 999, key: "mf1_2" },
-    ];
-    const sharedTADeath = [
-      { end: 299, key: "mf1_2" },
-      { end: 499, key: "mf2_3" },
-      { end: 999, key: "mf2_4" },
-    ];
-    const sharedShirase = [
-      { end: 499, key: "mf2_4" },
-      { end: 699, key: "mf3_4" },
-      { end: 999, key: "mf1_2" },
-      { end: 1299, key: "mf3_6" },
-    ];
-    const sharedAsuka = [
-      { end: 999, key: "mf2_4" },
-      { end: 1300, key: "mf3_4" },
-    ];
-    const schedules = {
-      normal: { segments: [{ end: 299, key: "mf1_1" }, { end: 999, key: "mf1_2" }], credits: "mf2_endroll" },
-      easy_normal: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf2_endroll" },
-      easy_easy: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
-      marathon: { segments: [{ end: 49, key: "mf_std_1" }, { end: 99, key: "mf_std_2" }, { end: 999, key: "mf_std_3" }], credits: "mf2_endroll" },
-      sprint_40: { segments: [{ end: 999, key: "mf1_1" }] },
-      sprint_100: { segments: [{ end: 999, key: "mf1_1" }] },
-      ultra: { segments: [{ end: 999, key: "mf1_1" }] },
-      zen: { segments: [{ end: 999, key: "mf_zen" }] },
-      tgm1: { segments: sharedTGM1, credits: "mf2_endroll" },
-      tgm_plus: { segments: sharedTGM1, credits: "mf2_endroll" },
-      "master_20g": { segments: sharedTGM1, credits: "mf2_endroll" },
-      tgm2: {
-        segments: [
-          { end: 499, key: "mf1_1" },
-          { end: 699, key: "mf1_2" },
-          { end: 899, key: "mf2_3" },
-          { end: 999, key: "mf2_4" },
-        ],
-        credits: "mf2_endroll",
-      },
-      tgm3: {
-        segments: [
-          { end: 499, key: "mf1_1" },
-          { end: 799, key: "mf1_2" },
-          { end: 1899, key: "mf2_4" },
-        ],
-        credits: "mf2_endroll",
-      },
-      tgm4: {
-        segments: [
-          { end: 299, key: "mf1_1" },
-          { end: 499, key: "mf1_2" },
-          { end: 999, key: "mf2_3" },
-        ],
-        credits: "mf2_endroll",
-      },
-      tadeath: { segments: sharedTADeath, credits: "mf1_endroll" },
-      shirase: { segments: sharedShirase, credits: "mf2_endroll" },
-      tgm4_rounds: {
-        segments: [
-          { end: 299, key: "mf1_2" },
-          { end: 699, key: "mf3_4" },
-          { end: 999, key: "mf3_6" },
-          { end: 1299, key: "mf2_3" },
-          { end: 2600, key: "mf2_4" },
-        ],
-        credits: "mf2_endroll",
-        endgame: "mf4_endgame",
-      },
-      tgm4_1_1: { segments: sharedTGM1, credits: "mf2_endroll" },
-      tgm4_2_1: { segments: sharedTADeath, credits: "mf2_endroll" },
-      tgm4_3_1: {
-        segments: [
-          { end: 499, key: "mf2_4" },
-          { end: 999, key: "mf3_4" },
-          { end: 1299, key: "mf1_2" },
-          { end: 2000, key: "mf3_6" },
-        ],
-        credits: "mf2_endroll",
-      },
-      tgm4_4_1: { segments: [{ end: 999, key: "mf3_6" }], credits: "mf2_endroll" },
-      asuka_easy: { segments: sharedAsuka },
-      asuka_normal: { segments: sharedAsuka },
-      asuka_hard: { segments: sharedAsuka },
-      tgm3_sakura: { segments: [{ end: 999, key: "mf1_1" }] },
-    };
-    return schedules[modeId] || { segments: sharedTGM1, credits: "mf2_endroll" };
-  }
-
-  playBgmByKey(key) {
-    if (!key || !this.bgmTracks || !this.bgmTracks[key]) return;
-    const audio = this.bgmTracks[key];
-    if (this.currentBGM && this.currentBGM !== audio) {
-      this.currentBGM.stop();
-    }
-    audio.play({ loop: true });
-    this.currentBGM = audio;
-    this.currentBgmKey = key;
-  }
-
-  stopCurrentBGM() {
-    if (this.currentBGM) {
-      this.currentBGM.stop();
-      this.currentBGM = null;
-      this.currentBgmKey = null;
-    }
-  }
-
-  updateModeBGM() {
-    const modeId =
-      (this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode) || "tgm1";
-
-    // Custom BGM flow for Marathon: use line count with stop windows
-    if (
-      modeId === "marathon" &&
-      this.gameMode &&
-      typeof this.gameMode.linesCleared === "number"
-    ) {
-      const lines = this.gameMode.linesCleared;
-
-      // Stop all music once the goal is hit
-      if (lines >= 150) {
-        this.stopCurrentBGM();
-        return;
-      }
-
-      // Determine which track should be active, with intentional silent gaps
-      let desiredKey = null;
-      if (lines < 55) {
-        desiredKey = "mf_std_1"; // lines 0-54
-      } else if (lines < 60) {
-        // Silent gap between 55-59
-        this.stopCurrentBGM();
-        return;
-      } else if (lines < 115) {
-        desiredKey = "mf_std_2"; // lines 60-114
-      } else if (lines < 120) {
-        // Silent gap between 115-119
-        this.stopCurrentBGM();
-        return;
-      } else {
-        desiredKey = "mf_std_3"; // lines 120-149
-      }
-
-      if (desiredKey && this.currentBgmKey !== desiredKey) {
-        this.playBgmByKey(desiredKey);
-      }
-      return;
-    }
-
-    const schedule = this.getBgmSchedule(modeId);
-    if (!schedule || !schedule.segments || !schedule.segments.length) return;
-
-    const maxSegment = schedule.segments[schedule.segments.length - 1];
-    const internalLevel =
-      this.gameMode && typeof this.gameMode.internalLevel === "number"
-        ? this.gameMode.internalLevel
-        : this.level;
-    const bgmStopLevel =
-      this.gameMode && typeof this.gameMode.bgmStopLevel === "number"
-        ? this.gameMode.bgmStopLevel
-        : internalLevel;
-    const stopLevel = Math.max(
-      bgmStopLevel,
-      typeof this.bgmInternalLevelBuffer === "number" ? this.bgmInternalLevelBuffer : 0,
-    );
-    let segment = schedule.segments.find((s) => internalLevel <= s.end);
-    if (!segment) segment = maxSegment;
-    const isLast = segment === maxSegment;
-
-    // Stop 10 levels early unless in final segment
-    if (!isLast && stopLevel >= segment.end - 9) {
-      this.stopCurrentBGM();
-      return;
-    }
-
-    if (this.currentBgmKey !== segment.key) {
-      this.playBgmByKey(segment.key);
-    }
-  }
-
-  // Legacy loop-point manager kept for compatibility; no-op with unified BGM
-  manageBGMLoopMode() {}
 
   showReadyGo() {
     this.readyGoPhase = true;
@@ -4772,6 +4602,9 @@ class GameScene extends Phaser.Scene {
           this.incrementFinesseRotation();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
+          if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
+            this.markGroundedSpin();
+          }
         } else if (this.currentPiece) {
           this.isGrounded = !this.currentPiece.canMoveDown(this.board);
           // Don't play ground sound on rotation failure
@@ -5864,6 +5697,10 @@ class GameScene extends Phaser.Scene {
       rawNext && typeof rawNext === "object" && rawNext.textureKey
         ? rawNext.textureKey
         : null;
+    const queuedInitialRotation =
+      rawNext && typeof rawNext === "object" && Number.isInteger(rawNext.tgm4CycloneRotation)
+        ? rawNext.tgm4CycloneRotation
+        : 0;
     if (typeof pieceType !== "string") {
       pieceType = "I";
     }
@@ -5923,7 +5760,7 @@ class GameScene extends Phaser.Scene {
       this.currentPiece = new Piece(
         pieceType,
         this.rotationSystem,
-        0,
+        queuedInitialRotation,
         pieceTextureKey,
       );
       this.activePowerupType = null;
@@ -6906,6 +6743,7 @@ class GameScene extends Phaser.Scene {
 
     // Store cleared lines for animation
     this.clearedLines = linesToClear;
+    this.completedLinesThisLock = allCompletedLines;
 
     // Track pending powerup activation if any part of the powerup piece is cleared
     this.pendingPowerup = null;
@@ -7168,7 +7006,11 @@ class GameScene extends Phaser.Scene {
       raw && typeof raw === "object" && raw.textureKey
         ? raw.textureKey
         : null;
-    return { type: t.toUpperCase(), textureKey };
+    const tgm4CycloneRotation =
+      raw && typeof raw === "object" && Number.isInteger(raw.tgm4CycloneRotation)
+        ? raw.tgm4CycloneRotation
+        : null;
+    return { type: t.toUpperCase(), textureKey, tgm4CycloneRotation };
   }
 
   performHoldSwap({ bypassCanHold = false, isIHS = false } = {}) {
@@ -7188,13 +7030,33 @@ class GameScene extends Phaser.Scene {
       // Swap current with held
       const holdType = this.holdPiece.type;
       const holdTextureKey = this.holdPiece.textureKey || null;
-      this.holdPiece = new Piece(currentType, this.rotationSystem, 0, currentTextureKey);
-      this.currentPiece = new Piece(holdType, this.rotationSystem, 0, holdTextureKey);
+      const holdRotation =
+        Number.isInteger(this.holdPiece.tgm4CycloneRotation) ? this.holdPiece.tgm4CycloneRotation : 0;
+      const currentRotation =
+        Number.isInteger(this.currentPiece.tgm4CycloneRotation) ? this.currentPiece.tgm4CycloneRotation : 0;
+      this.holdPiece = new Piece(currentType, this.rotationSystem, currentRotation, currentTextureKey);
+      if (Number.isInteger(currentRotation)) {
+        this.holdPiece.tgm4CycloneRotation = currentRotation;
+      }
+      this.currentPiece = new Piece(holdType, this.rotationSystem, holdRotation, holdTextureKey);
+      if (Number.isInteger(holdRotation)) {
+        this.currentPiece.tgm4CycloneRotation = holdRotation;
+      }
     } else {
       // Move current to hold, pull next from queue
-      this.holdPiece = new Piece(currentType, this.rotationSystem, 0, currentTextureKey);
+      const currentRotation =
+        Number.isInteger(this.currentPiece.tgm4CycloneRotation) ? this.currentPiece.tgm4CycloneRotation : 0;
+      this.holdPiece = new Piece(currentType, this.rotationSystem, currentRotation, currentTextureKey);
+      if (Number.isInteger(currentRotation)) {
+        this.holdPiece.tgm4CycloneRotation = currentRotation;
+      }
       const nextEntry = this.getNextPieceEntryFromQueue();
-      this.currentPiece = new Piece(nextEntry.type, this.rotationSystem, 0, nextEntry.textureKey);
+      const nextRotation =
+        Number.isInteger(nextEntry.tgm4CycloneRotation) ? nextEntry.tgm4CycloneRotation : 0;
+      this.currentPiece = new Piece(nextEntry.type, this.rotationSystem, nextRotation, nextEntry.textureKey);
+      if (Number.isInteger(nextRotation)) {
+        this.currentPiece.tgm4CycloneRotation = nextRotation;
+      }
     }
 
     // Reset position/rotation on the new current piece
@@ -7262,6 +7124,7 @@ class GameScene extends Phaser.Scene {
       // Create a new grid without the cleared lines
       const newGrid = [];
       const newFadeGrid = [];
+      const newFrozenGrid = [];
       const clearedSet = new Set(this.clearedLines);
 
       // Add all non-cleared rows to new grid
@@ -7269,6 +7132,7 @@ class GameScene extends Phaser.Scene {
         if (!clearedSet.has(r)) {
           newGrid.push(this.board.grid[r]);
           newFadeGrid.push(this.board.fadeGrid[r]);
+          newFrozenGrid.push(this.board.frozenGrid?.[r] || Array(this.board.cols).fill(false));
         }
       }
 
@@ -7277,11 +7141,13 @@ class GameScene extends Phaser.Scene {
       for (let i = 0; i < emptyRowsNeeded; i++) {
         newGrid.unshift(Array(this.board.cols).fill(0));
         newFadeGrid.unshift(Array(this.board.cols).fill(0));
+        newFrozenGrid.unshift(Array(this.board.cols).fill(false));
       }
 
       // Replace the entire grid
       this.board.grid = newGrid;
       this.board.fadeGrid = newFadeGrid;
+      this.board.frozenGrid = newFrozenGrid;
     }
 
     // Powerup effects (run after normal clears, before extra-line pass)
@@ -7357,7 +7223,10 @@ class GameScene extends Phaser.Scene {
     // Phase 2: CRITICAL FIX - Re-check for any newly completed lines
     const additionalLines = [];
     for (let r = 0; r < this.board.rows; r++) {
-      if (this.board.grid[r].every((cell) => cell !== 0)) {
+      if (
+        this.board.grid[r].every((cell) => cell !== 0) &&
+        !(this.board.isFrozenLine && this.board.isFrozenLine(r))
+      ) {
         additionalLines.push(r);
       }
     }
@@ -7366,12 +7235,14 @@ class GameScene extends Phaser.Scene {
     if (additionalLines.length > 0) {
       const newGrid = [];
       const newFadeGrid = [];
+      const newFrozenGrid = [];
       const clearedSet = new Set(additionalLines);
 
       for (let r = 0; r < this.board.rows; r++) {
         if (!clearedSet.has(r)) {
           newGrid.push(this.board.grid[r]);
           newFadeGrid.push(this.board.fadeGrid[r]);
+          newFrozenGrid.push(this.board.frozenGrid?.[r] || Array(this.board.cols).fill(false));
         }
       }
 
@@ -7379,10 +7250,12 @@ class GameScene extends Phaser.Scene {
       for (let i = 0; i < emptyRowsNeeded; i++) {
         newGrid.unshift(Array(this.board.cols).fill(0));
         newFadeGrid.unshift(Array(this.board.cols).fill(0));
+        newFrozenGrid.unshift(Array(this.board.cols).fill(false));
       }
 
       this.board.grid = newGrid;
       this.board.fadeGrid = newFadeGrid;
+      this.board.frozenGrid = newFrozenGrid;
     }
 
     // Final hard inject after all cleanup to ensure target garbage rows exist
@@ -7756,6 +7629,18 @@ class GameScene extends Phaser.Scene {
     this.totalLines += lines;
     if (this.selectedMode === "sprint_40") {
       this.totalLines = Math.min(this.totalLines, 40);
+    }
+    const modeId =
+      this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+    const isRoundsMode = modeId === "tgm4_rounds";
+    const isTSpinClear = !!spinInfo?.isTSpin && lines > 0;
+    if (isRoundsMode && isTSpinClear) {
+      const tSpinLineName = ["zero", "single", "double", "triple", "quad"][Math.min(lines, 4)] || "single";
+      const tSpinClearType = `t-spin ${tSpinLineName}`;
+      clearType = clearType ? `${tSpinClearType} ${clearType}` : tSpinClearType;
+      this.showClearBanner(clearType, { ...spinInfo, isSpin: true, isTSpin: true }, lines, pieceType);
     }
     this.lastClearType = clearType;
 
@@ -8447,11 +8332,13 @@ class GameScene extends Phaser.Scene {
         return { isSpin: false, isTSpin: false, spinType: null };
       }
 
+      const pivotX = piece.x + 1;
+      const pivotY = piece.y + 1;
       const corners = [
-        [piece.x - 1, piece.y - 1],
-        [piece.x + 1, piece.y - 1],
-        [piece.x - 1, piece.y + 1],
-        [piece.x + 1, piece.y + 1],
+        [pivotX - 1, pivotY - 1],
+        [pivotX + 1, pivotY - 1],
+        [pivotX - 1, pivotY + 1],
+        [pivotX + 1, pivotY + 1],
       ];
       let filledCorners = 0;
       for (const [cx, cy] of corners) {
@@ -9184,6 +9071,7 @@ class GameScene extends Phaser.Scene {
     this.timeText.setText("0:00.00");
     this.ppsText.setText("0.00");
     this.rawPpsText.setText("0.00");
+    (this.roundsMedalTexts || []).forEach((text) => text?.setText("0"));
 
     // Restart loading sequence
     this.time.delayedCall(500, () => {
@@ -9375,19 +9263,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Load credits BGM if available
-    try {
-      // Credits BGM: mf1_endroll for TGM3 Easy and T.A.Death, mf1_2 for TGM2 Normal, mf2_endroll for all others
-      let creditsBGMKey = "mf2_endroll";
-      if (this.selectedMode === "tgm2_normal") creditsBGMKey = "mf1_2";
-      else if (this.selectedMode === "tgm3_easy" || this.selectedMode === "tadeath") creditsBGMKey = "mf1_endroll";
-      this.creditsBGM = this.sound.add(creditsBGMKey, {
-        loop: true,
-        volume: 0.3,
-      });
-      // Start playback on first spawned credits piece.
-    } catch (error) {
-      console.warn("Credits BGM could not be loaded:", error);
-    }
+    this.createCreditsBGM();
 
     // Stop current BGM
     if (this.currentBGM) {
@@ -10648,6 +10524,34 @@ class GameScene extends Phaser.Scene {
           this.matrixOffsetY,
           this.cellSize,
         );
+        if (this.selectedMode === "tgm4_rounds" && this.tgm4MasterState?.pikiiActive) {
+          const frozenStartRow = Math.max(
+            2,
+            Number.isInteger(this.tgm4MasterState?.pikiiStartRow)
+              ? this.tgm4MasterState.pikiiStartRow
+              : this.board.rows - 10,
+          );
+          const overlayY = this.matrixOffsetY + (frozenStartRow - 2) * this.cellSize - this.cellSize / 2;
+          const overlayHeight = (this.board.rows - frozenStartRow) * this.cellSize;
+          if (overlayHeight > 0) {
+            const frozenOverlay = this.add.graphics();
+            frozenOverlay.fillStyle(0xffffff, 0.12);
+            frozenOverlay.fillRect(
+              this.matrixOffsetX - this.cellSize / 2,
+              overlayY,
+              this.board.cols * this.cellSize,
+              overlayHeight,
+            );
+            frozenOverlay.lineStyle(2, 0xffffff, 0.45);
+            frozenOverlay.strokeRect(
+              this.matrixOffsetX - this.cellSize / 2,
+              overlayY,
+              this.board.cols * this.cellSize,
+              overlayHeight,
+            );
+            this.gameGroup.add(frozenOverlay);
+          }
+        }
       }
     }
 
@@ -10848,6 +10752,36 @@ class GameScene extends Phaser.Scene {
     // Update piece per second displays
     this.ppsText.setText(this.conventionalPPS.toFixed(2));
     this.rawPpsText.setText(this.rawPPS.toFixed(2));
+    if (Array.isArray(this.roundsMedalTexts) && this.roundsMedalTexts.length > 0) {
+      const medals = this.tgm4MasterState?.medals || this.gameMode?.medals || {};
+      const medalValues = [
+        medals.bravo || 0,
+        medals.tetris || 0,
+        medals.tspin || 0,
+        medals.pikii || 0,
+      ];
+      this.roundsMedalTexts.forEach((text, index) => {
+        if (text) text.setText(`${medalValues[index] ?? 0}`);
+      });
+    }
+    if (this.bravoCountText) {
+      const modeId =
+        this.gameMode && typeof this.gameMode.getModeId === "function"
+          ? this.gameMode.getModeId()
+          : this.selectedMode;
+      const isKonohaMode =
+        typeof modeId === "string" &&
+        (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+      if (isKonohaMode) {
+        const bravoCount =
+          this.gameMode && typeof this.gameMode.bravoCount === "number"
+            ? this.gameMode.bravoCount
+            : typeof this.bravoCount === "number"
+              ? this.bravoCount
+              : 0;
+        this.bravoCountText.setText(bravoCount.toString());
+      }
+    }
     if (this.asukaKitaText) {
       const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
         ? this.gameMode.getModeId()
@@ -10876,7 +10810,12 @@ class GameScene extends Phaser.Scene {
           this.gameMode && typeof this.gameMode.kitas === "number"
             ? this.gameMode.kitas
             : this.kitas || 0;
-        this.asukaKitaText.setText(kitaCount.toString());
+        const isAsukaMode =
+          typeof modeId === "string" &&
+          (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
+        const kitaDisplayText =
+          isAsukaMode && kitaCount > 0 ? `🦊x${kitaCount}` : kitaCount.toString();
+        this.asukaKitaText.setText(kitaDisplayText);
         this.asukaKitaText.setColor("#ffff88");
       }
     }
@@ -11147,7 +11086,19 @@ class GameScene extends Phaser.Scene {
           : this.rotationSystem === "ARS"
             ? "mino_ars"
             : "mino_srs";
-      const nextPiece = new Piece(previewType, this.rotationSystem, 0, previewTextureKey);
+      const previewRotation =
+        i === 0 &&
+        rawNext &&
+        typeof rawNext === "object" &&
+        Number.isInteger(rawNext.tgm4CycloneRotation)
+          ? rawNext.tgm4CycloneRotation
+          : 0;
+      const nextPiece = new Piece(
+        previewType,
+        this.rotationSystem,
+        previewRotation,
+        previewTextureKey,
+      );
       // Use matrix-relative positioning like the main game pieces
       nextPiece.x = 0;
       nextPiece.y = 2; // Start from the top visible row
@@ -11193,10 +11144,21 @@ class GameScene extends Phaser.Scene {
 
       // Draw hold piece with same size as preview pieces
       if (this.holdPiece) {
-        // Create a copy of the hold piece with default rotation for display
+        // Show held piece in its stored orientation (Cyclone can preserve prerotation in hold).
         let holdType =
           typeof this.holdPiece.type === "string" ? this.holdPiece.type : "I";
-        const displayPiece = new Piece(holdType, this.holdPiece.rotationSystem, 0, this.holdPiece.textureKey || null);
+        const holdDisplayRotation =
+          Number.isInteger(this.holdPiece.tgm4CycloneRotation)
+            ? this.holdPiece.tgm4CycloneRotation
+            : Number.isInteger(this.holdPiece.rotation)
+              ? this.holdPiece.rotation
+              : 0;
+        const displayPiece = new Piece(
+          holdType,
+          this.holdPiece.rotationSystem,
+          holdDisplayRotation,
+          this.holdPiece.textureKey || null,
+        );
         displayPiece.x = 0;
         displayPiece.y = 2; // Start from the top visible row
         displayPiece.draw(this, holdX, holdY + 30, previewCellSize, false, 1, false);
