@@ -34,6 +34,9 @@ class GameScene extends Phaser.Scene {
     this.gradePointsText = null;
     this.asukaKitaLabel = null;
     this.asukaKitaText = null;
+    this.minosaStatus = "possible";
+    this.minosaPath = [];
+    this.minosaHint = null;
     this.nextGradeText = null;
     this.levelDisplay = null;
     this.rollBonus = 0;
@@ -1213,6 +1216,11 @@ class GameScene extends Phaser.Scene {
   updatePlacementHint() {
     if (!this.hintGraphics) return;
     this.hintGraphics.clear();
+    const modeId =
+      (this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode) || "";
+    const isKonohaMode = typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
     if (
       !this.currentPiece ||
       this.areActive ||
@@ -1220,17 +1228,24 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayActive ||
       this.loadingPhase ||
       this.readyGoPhase ||
-      !this.isNormalOrEasyMode()
+      !(this.isNormalOrEasyMode() || isKonohaMode)
     ) {
       this.hintPlacement = null;
       this.hintSignature = null;
       return;
     }
-    const hintColor = this.currentPiece && this.currentPiece.color
-      ? this.currentPiece.color
-      : 0x00e0ff;
 
-    // Scoring helpers (lightweight clone and analysis)
+    const minosaStatus = this.gameMode?.minosaStatus || this.minosaStatus || "";
+    const sceneMinosaHint = this.gameMode?.minosaHint || this.minosaHint || null;
+    const minosaHint =
+      isKonohaMode &&
+      minosaStatus === "possible" &&
+      sceneMinosaHint &&
+      typeof sceneMinosaHint.piece === "string"
+        ? sceneMinosaHint
+        : null;
+    const hintPieceType = minosaHint ? minosaHint.piece : this.currentPiece.type;
+
     const rows = this.board.rows;
     const cols = this.board.cols;
     const baseGrid = this.board.grid;
@@ -1241,9 +1256,20 @@ class GameScene extends Phaser.Scene {
         boardSignature += row[c] ? "1" : "0";
       }
     }
-    const hintSignature = `${this.currentPiece.type}|${this.rotationSystem}|${rows}x${cols}|${boardSignature}`;
+    const minosaHintSignature = minosaHint
+      ? `${minosaHint.piece}|${minosaHint.x}|${minosaHint.y}|${minosaHint.rotation}|${minosaHint.usedHold ? "1" : "0"}|${minosaHint.source || ""}`
+      : "";
+    const hintSignature = `${hintPieceType}|${this.rotationSystem}|${rows}x${cols}|${boardSignature}|${minosaHintSignature}`;
 
     if (this.hintSignature !== hintSignature) {
+      if (minosaHint && Number.isFinite(minosaHint.x) && Number.isFinite(minosaHint.y)) {
+        const hintRotation = Number.isInteger(minosaHint.rotation) ? minosaHint.rotation : 0;
+        const hintPiece = new Piece(hintPieceType, this.rotationSystem, hintRotation);
+        hintPiece.x = minosaHint.x;
+        hintPiece.y = minosaHint.y;
+        this.hintPlacement = hintPiece;
+        this.hintSignature = hintSignature;
+      } else {
       const makeGridWithPiece = (piece) => {
         const grid = baseGrid.map((row) => row.slice());
         for (let r = 0; r < piece.shape.length; r++) {
@@ -1325,7 +1351,7 @@ class GameScene extends Phaser.Scene {
 
       const placements = [];
       const rotations = [0, 1, 2, 3];
-      const pieceType = this.currentPiece.type;
+      const pieceType = hintPieceType;
       for (const rot of rotations) {
         const shape = new Piece(pieceType, this.rotationSystem, rot).shape;
         const width = shape[0].length;
@@ -1358,9 +1384,11 @@ class GameScene extends Phaser.Scene {
       placements.sort((a, b) => a.score - b.score);
       this.hintPlacement = placements[0].piece;
       this.hintSignature = hintSignature;
+      }
     }
 
     if (!this.hintPlacement) return;
+    const hintColor = this.hintPlacement.color || 0x00e0ff;
     const startRow = 2;
     const cell = this.cellSize;
     const offX = this.matrixOffsetX;
@@ -2474,17 +2502,19 @@ class GameScene extends Phaser.Scene {
       .setOrigin(0, 0);
 
     const showAsukaKitas = typeof modeId === "string" && modeId.startsWith("tgm4_asuka");
+    const showKonohaMinosa = typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+    const showKitaDisplay = showAsukaKitas || showKonohaMinosa;
     this.asukaKitaLabel = this.add
-      .text(ppsX, ppsY - 85, "KITAS", {
+      .text(ppsX, ppsY - 85, showKonohaMinosa ? "KITA" : "KITAS", {
         fontSize: `${uiFontSize - 6}px`,
         fill: "#ccc",
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0, 0)
-      .setVisible(showAsukaKitas);
+      .setVisible(showKitaDisplay);
     this.asukaKitaText = this.add
-      .text(ppsX, ppsY - 70, "0", {
+      .text(ppsX, ppsY - 70, showKonohaMinosa ? "🦊" : "0", {
         fontSize: `${largeFontSize - 4}px`,
         fill: "#ffff88",
         fontFamily: "Courier New",
@@ -2492,7 +2522,7 @@ class GameScene extends Phaser.Scene {
         align: "left",
       })
       .setOrigin(0, 0)
-      .setVisible(showAsukaKitas);
+      .setVisible(showKitaDisplay);
 
     // Show Hanabi counter only in Easy mode
     const showHanabi = modeId === "tgm3_easy";
@@ -10819,11 +10849,36 @@ class GameScene extends Phaser.Scene {
     this.ppsText.setText(this.conventionalPPS.toFixed(2));
     this.rawPpsText.setText(this.rawPPS.toFixed(2));
     if (this.asukaKitaText) {
-      const kitaCount =
-        this.gameMode && typeof this.gameMode.kitas === "number"
-          ? this.gameMode.kitas
-          : this.kitas || 0;
-      this.asukaKitaText.setText(kitaCount.toString());
+      const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+      if (typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"))) {
+        const status = this.gameMode?.minosaStatus || this.minosaStatus || "possible";
+        const iconByStatus = {
+          achieved: "🦊✓",
+          possible: "🦊",
+          impossible: "🦊✕",
+        };
+        const colorByStatus = {
+          achieved: "#88ff88",
+          possible: "#ffff88",
+          impossible: "#ff8888",
+        };
+        const hint = this.gameMode?.minosaHint || this.minosaHint || null;
+        const hintSuffix =
+          status === "possible" && hint?.usedHold && hint?.piece
+            ? ` ${hint.source === "hold" ? "H" : "N"}:${hint.piece}`
+            : "";
+        this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}`);
+        this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
+      } else {
+        const kitaCount =
+          this.gameMode && typeof this.gameMode.kitas === "number"
+            ? this.gameMode.kitas
+            : this.kitas || 0;
+        this.asukaKitaText.setText(kitaCount.toString());
+        this.asukaKitaText.setColor("#ffff88");
+      }
     }
     if (
       this.ppsGraphGraphics &&

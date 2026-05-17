@@ -16,6 +16,7 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerFirstPiece = true;
         this.minosa = null;
         this.minosaStatus = 'possible';
+        this.minosaHint = null;
     }
 
     getModeConfig() {
@@ -84,8 +85,11 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
         this.randomizerFirstPiece = true;
         this.minosaStatus = 'possible';
+        this.minosaHint = null;
         gameScene.bravoCount = 0;
         gameScene.minosaStatus = this.minosaStatus;
+        gameScene.minosaPath = [];
+        gameScene.minosaHint = null;
 
         if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
             this.minosa = getMinosaModuleInstance();
@@ -231,8 +235,11 @@ class TGM4KonohaMode extends BaseMode {
             ? this.minosa.evaluateGameScene(gameScene)
             : { status: 'impossible' };
         this.minosaStatus = result.status || 'impossible';
+        const path = Array.isArray(result.path) ? result.path : [];
+        this.minosaHint = path.length > 0 ? path[0] : null;
         gameScene.minosaStatus = this.minosaStatus;
-        gameScene.minosaPath = Array.isArray(result.path) ? result.path : [];
+        gameScene.minosaPath = path;
+        gameScene.minosaHint = this.minosaHint;
         return this.minosaStatus;
     }
 

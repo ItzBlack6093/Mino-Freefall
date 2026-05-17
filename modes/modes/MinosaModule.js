@@ -127,6 +127,7 @@ class MinosaModule {
                     y: placement.y,
                     rotation: placement.rotation,
                     usedHold: candidate.usedHold,
+                    source: candidate.source,
                 };
                 state.path.push(step);
 
@@ -170,6 +171,7 @@ class MinosaModule {
             queue: state.queue,
             nextActiveType: null,
             usedHold: false,
+            source: 'current',
         }];
 
         if (!state.canHold) return candidates;
@@ -181,6 +183,7 @@ class MinosaModule {
                 queue: state.queue,
                 nextActiveType: null,
                 usedHold: true,
+                source: 'hold',
             });
         } else if (state.queue.length > 0) {
             candidates.push({
@@ -189,6 +192,7 @@ class MinosaModule {
                 queue: state.queue.slice(1),
                 nextActiveType: null,
                 usedHold: true,
+                source: 'next',
             });
         }
 
