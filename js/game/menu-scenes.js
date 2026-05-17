@@ -23,6 +23,19 @@ class MenuScene extends Phaser.Scene {
     this.startButton = null;
     this.settingsButton = null;
     this.settingsBorder = null;
+    this.pendingStartData = null;
+    this.startingLevelPromptActive = false;
+    this.startingLevelPromptBg = null;
+    this.startingLevelPromptContainer = null;
+    this.startingLevelPromptSelection = 0;
+    this.startingLevelPromptLevelLabel = null;
+    this.startingLevelPromptValueText = null;
+    this.startingLevelPromptLeftArrow = null;
+    this.startingLevelPromptRightArrow = null;
+    this.startingLevelPromptRoundsMedalLabel = null;
+    this.startingLevelPromptRoundsMedalValueText = null;
+    this.startingLevelPromptRoundsMedalLeftArrow = null;
+    this.startingLevelPromptRoundsMedalRightArrow = null;
   }
 
   getModeTypesFromManager() {
@@ -488,6 +501,7 @@ class MenuScene extends Phaser.Scene {
       .setInteractive();
 
     this.startButton.on("pointerdown", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
       this.startSelectedMode();
     });
 
@@ -527,6 +541,7 @@ class MenuScene extends Phaser.Scene {
       .setInteractive();
 
     this.settingsButton.on("pointerdown", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
       this.scene.start("SettingsScene");
     });
 
@@ -540,10 +555,12 @@ class MenuScene extends Phaser.Scene {
 
     // Arrow click handlers
     this.upSubmodeArrow.on("pointerdown", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
       this.navigateSubmode(-1);
     });
 
     this.downSubmodeArrow.on("pointerdown", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
       this.navigateSubmode(1);
     });
 
@@ -630,6 +647,10 @@ class MenuScene extends Phaser.Scene {
       this.profileBadgeGroup.setPosition(this.cameras.main.width - padding - 100, padding + 50);
     }
 
+    if (this.startingLevelPromptActive) {
+      this.layoutStartingLevelPrompt();
+    }
+
     createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
   }
 
@@ -640,31 +661,69 @@ class MenuScene extends Phaser.Scene {
 
     // Left/Right for submode navigation within selected mode type
     this.input.keyboard.on("keydown-LEFT", () => {
+      if (this.hasBlockingOverlay()) return;
+      if (this.startingLevelPromptActive) {
+        this.adjustPendingPromptValue(-1);
+        return;
+      }
       this.navigateSubmode(-1);
     });
 
     this.input.keyboard.on("keydown-RIGHT", () => {
+      if (this.hasBlockingOverlay()) return;
+      if (this.startingLevelPromptActive) {
+        this.adjustPendingPromptValue(1);
+        return;
+      }
       this.navigateSubmode(1);
     });
 
     // Up/Down for mode type selection (all displayed vertically)
     this.input.keyboard.on("keydown-UP", () => {
+      if (this.hasBlockingOverlay()) return;
+      if (this.startingLevelPromptActive) {
+        this.adjustPendingPromptSelection(-1);
+        return;
+      }
       this.navigateModeType(-1);
     });
 
     this.input.keyboard.on("keydown-DOWN", () => {
+      if (this.hasBlockingOverlay()) return;
+      if (this.startingLevelPromptActive) {
+        this.adjustPendingPromptSelection(1);
+        return;
+      }
       this.navigateModeType(1);
     });
 
     // Enter to start game
     this.input.keyboard.on("keydown-ENTER", () => {
+      if (this.hasBlockingOverlay()) return;
+      if (this.startingLevelPromptActive) {
+        this.confirmStartingLevelPrompt();
+        return;
+      }
       this.startSelectedMode();
     });
 
     // Escape for settings
     this.input.keyboard.on("keydown-ESC", () => {
+      if (this.startingLevelPromptActive) {
+        this.hideStartingLevelPrompt();
+        return;
+      }
+      if (this.hasBlockingOverlay()) return;
       this.scene.start("SettingsScene");
     });
+  }
+
+  hasBlockingOverlay() {
+    return Boolean(this.namePromptActive || this.achievementOverlayContainer);
+  }
+
+  shouldSkipStartingLevelPrompt(modeTypeName) {
+    return ["STANDARD", "ALL CLEAR", "PUZZLE"].includes(String(modeTypeName || "").toUpperCase());
   }
 
   navigateModeType(direction) {
@@ -719,6 +778,7 @@ class MenuScene extends Phaser.Scene {
       if (index === this.currentModeTypeIndex) {
         modeTypeText.setInteractive();
         modeTypeText.on("pointerdown", () => {
+          if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
           this.currentModeTypeIndex = index;
           this.currentSubmodeIndex = 0; // Reset to first submode
           this.updateMenuDisplay();
@@ -1029,10 +1089,51 @@ class MenuScene extends Phaser.Scene {
   }
 
   startSelectedMode() {
+    if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
+
     const currentModeType = this.modeTypes[this.currentModeTypeIndex];
     const currentSubmode = currentModeType.modes[this.currentSubmodeIndex];
     const modeId = currentSubmode.id;
     this.selectedMode = modeId;
+
+    // Initialize mode manager and load the selected mode
+    if (typeof getModeManager === "undefined") {
+      console.error(
+        "Mode manager not available - make sure mode files are loaded",
+      );
+      // Fallback to default mode
+      this.recreateGameplayScenes();
+      this.scene.start("AssetLoaderScene", { mode: "tgm1" });
+      return;
+    }
+
+    const modeManager = getModeManager();
+    const mode = modeManager.getMode(modeId);
+
+    if (!mode) {
+      console.error("[MenuScene] Mode not found", { modeId });
+      // Still proceed to asset loader so it can fail gracefully or show message
+      this.recreateGameplayScenes();
+      this.scene.start("AssetLoaderScene", { mode: modeId });
+      return;
+    }
+
+    // Versus modes route through MatchmakingScene for online pairing
+    if (modeId === "versus_guideline" || modeId === "versus_tgm") {
+      const queueType = modeId === "versus_tgm" ? "tgm" : "guideline";
+      this.scene.start("MatchmakingScene", { queueType });
+      return;
+    }
+
+    if (this.shouldSkipStartingLevelPrompt(currentModeType.name)) {
+      this.launchMode(modeId, mode, 0);
+      return;
+    }
+
+    this.showStartingLevelPrompt(modeId, mode);
+  }
+
+  recreateGameplayScenes() {
     try {
       const rootMgr = this.game && this.game.scene ? this.game.scene : this.scene;
       rootMgr && rootMgr.getScenes && rootMgr.getScenes(true).map((s) => s.scene.key);
@@ -1043,7 +1144,6 @@ class MenuScene extends Phaser.Scene {
       console.warn("[MenuScene] failed to inspect scene state before start", e);
     }
 
-    // Ensure fresh loader/loading/game scenes to avoid stale references causing blank screens
     const rootMgr = this.game && this.game.scene ? this.game.scene : this.scene;
     const recreateScene = (key, ctor) => {
       try {
@@ -1061,42 +1161,369 @@ class MenuScene extends Phaser.Scene {
     recreateScene("AssetLoaderScene", AssetLoaderScene);
     recreateScene("LoadingScreenScene", LoadingScreenScene);
     recreateScene("GameScene", GameScene);
+  }
 
-    // Initialize mode manager and load the selected mode
-    if (typeof getModeManager === "undefined") {
-      console.error(
-        "Mode manager not available - make sure mode files are loaded",
+  showStartingLevelPrompt(modeId, mode) {
+    const startLevelCap = getStartingLevelCapForMode(mode);
+    const roundedCap = Math.floor(startLevelCap / 100) * 100;
+    const showRoundsDebugMedals = modeId === "tgm4_rounds";
+    const capLabel =
+      startLevelCap % 100 === 0
+        ? `0-${startLevelCap.toString().padStart(3, "0")}`
+        : `0-${roundedCap.toString().padStart(3, "0")} + MAX ${startLevelCap.toString().padStart(3, "0")}`;
+    this.pendingStartData = {
+      modeId,
+      mode,
+      startLevelCap,
+      startingLevel: getConfiguredStartingLevel(startLevelCap),
+      roundsDebugMedals: showRoundsDebugMedals ? 0 : null,
+      showRoundsDebugMedals,
+    };
+    this.startingLevelPromptSelection = 0;
+    this.startingLevelPromptActive = true;
+
+    this.startingLevelPromptBg = this.add.graphics().setDepth(10000);
+    this.startingLevelPromptBg.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, this.cameras.main.width, this.cameras.main.height),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.startingLevelPromptBg.on("pointerdown", () => {});
+
+    this.startingLevelPromptContainer = this.add.container(
+      this.cameras.main.centerX,
+      this.cameras.main.centerY,
+    );
+    this.startingLevelPromptContainer.setDepth(10001);
+
+    const panel = this.add.graphics();
+    const panelHeight = showRoundsDebugMedals ? 340 : 280;
+    const valueX = 56;
+    const leftArrowX = valueX - 120;
+    const rightArrowX = valueX + 120;
+    const labelX = -185;
+    const levelRowY = showRoundsDebugMedals ? -6 : 0;
+    panel.fillStyle(0x111111, 0.95);
+    panel.fillRect(-240, -panelHeight / 2, 480, panelHeight);
+    panel.lineStyle(2, 0xffffff, 1);
+    panel.strokeRect(-240, -panelHeight / 2, 480, panelHeight);
+    this.startingLevelPromptContainer.add(panel);
+
+    const title = this.add.text(0, showRoundsDebugMedals ? -116 : -96, showRoundsDebugMedals ? "START OPTIONS" : "STARTING LEVEL", {
+      fontSize: "28px",
+      fill: "#ffff00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5);
+    this.startingLevelPromptContainer.add(title);
+
+    const capText = this.add.text(0, showRoundsDebugMedals ? -78 : -58, capLabel, {
+      fontSize: "18px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+    }).setOrigin(0.5);
+    this.startingLevelPromptContainer.add(capText);
+
+    this.startingLevelPromptLevelLabel = this.add.text(labelX, levelRowY, "LEVEL", {
+      fontSize: "22px",
+      fill: "#ffff66",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0, 0.5).setInteractive();
+    this.startingLevelPromptLevelLabel.on("pointerdown", () => {
+      this.startingLevelPromptSelection = 0;
+      this.updateStartingLevelPromptDisplay();
+    });
+    this.startingLevelPromptContainer.add(this.startingLevelPromptLevelLabel);
+
+    this.startingLevelPromptLeftArrow = this.add.text(leftArrowX, levelRowY, "<", {
+      fontSize: "42px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.startingLevelPromptLeftArrow.on("pointerdown", () => {
+      this.startingLevelPromptSelection = 0;
+      this.adjustPendingStartingLevel(-100);
+    });
+    this.startingLevelPromptContainer.add(this.startingLevelPromptLeftArrow);
+
+    this.startingLevelPromptValueText = this.add.text(valueX, levelRowY, "000", {
+      fontSize: "40px",
+      fill: "#00ff00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.startingLevelPromptValueText.on("pointerdown", () => {
+      this.startingLevelPromptSelection = 0;
+      this.updateStartingLevelPromptDisplay();
+    });
+    this.startingLevelPromptContainer.add(this.startingLevelPromptValueText);
+
+    this.startingLevelPromptRightArrow = this.add.text(rightArrowX, levelRowY, ">", {
+      fontSize: "42px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    this.startingLevelPromptRightArrow.on("pointerdown", () => {
+      this.startingLevelPromptSelection = 0;
+      this.adjustPendingStartingLevel(100);
+    });
+    this.startingLevelPromptContainer.add(this.startingLevelPromptRightArrow);
+
+    if (showRoundsDebugMedals) {
+      const medalRowY = 58;
+      this.startingLevelPromptRoundsMedalLabel = this.add.text(labelX, medalRowY, "MEDALS EACH", {
+        fontSize: "22px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      }).setOrigin(0, 0.5).setInteractive();
+      this.startingLevelPromptRoundsMedalLabel.on("pointerdown", () => {
+        this.startingLevelPromptSelection = 1;
+        this.updateStartingLevelPromptDisplay();
+      });
+      this.startingLevelPromptContainer.add(this.startingLevelPromptRoundsMedalLabel);
+
+      this.startingLevelPromptRoundsMedalLeftArrow = this.add.text(leftArrowX, medalRowY, "<", {
+        fontSize: "42px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      }).setOrigin(0.5).setInteractive();
+      this.startingLevelPromptRoundsMedalLeftArrow.on("pointerdown", () => {
+        this.startingLevelPromptSelection = 1;
+        this.adjustPendingRoundsDebugMedals(-1);
+      });
+      this.startingLevelPromptContainer.add(this.startingLevelPromptRoundsMedalLeftArrow);
+
+      this.startingLevelPromptRoundsMedalValueText = this.add.text(valueX, medalRowY, "00", {
+        fontSize: "36px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      }).setOrigin(0.5).setInteractive();
+      this.startingLevelPromptRoundsMedalValueText.on("pointerdown", () => {
+        this.startingLevelPromptSelection = 1;
+        this.updateStartingLevelPromptDisplay();
+      });
+      this.startingLevelPromptContainer.add(this.startingLevelPromptRoundsMedalValueText);
+
+      this.startingLevelPromptRoundsMedalRightArrow = this.add.text(rightArrowX, medalRowY, ">", {
+        fontSize: "42px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      }).setOrigin(0.5).setInteractive();
+      this.startingLevelPromptRoundsMedalRightArrow.on("pointerdown", () => {
+        this.startingLevelPromptSelection = 1;
+        this.adjustPendingRoundsDebugMedals(1);
+      });
+      this.startingLevelPromptContainer.add(this.startingLevelPromptRoundsMedalRightArrow);
+
+      const medalNote = this.add.text(0, 96, "APPLIES TO AC / TET / TSP / PIK", {
+        fontSize: "14px",
+        fill: "#aaaaaa",
+        fontFamily: "Courier New",
+        align: "center",
+      }).setOrigin(0.5);
+      this.startingLevelPromptContainer.add(medalNote);
+    }
+
+    const confirmButton = this.add.text(0, showRoundsDebugMedals ? 132 : 68, "ENTER TO START", {
+      fontSize: "22px",
+      fill: "#00ff00",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    }).setOrigin(0.5).setInteractive();
+    confirmButton.on("pointerdown", () => {
+      this.confirmStartingLevelPrompt();
+    });
+    this.startingLevelPromptContainer.add(confirmButton);
+
+    const instructions = this.add.text(
+      0,
+      showRoundsDebugMedals ? 160 : 112,
+      showRoundsDebugMedals
+        ? "UP/DOWN SELECT  LEFT/RIGHT CHANGE  ENTER CONFIRM  ESC CANCEL"
+        : "LEFT/RIGHT CHANGE  ENTER CONFIRM  ESC CANCEL",
+      {
+        fontSize: "14px",
+        fill: "#aaaaaa",
+        fontFamily: "Courier New",
+        align: "center",
+      },
+    ).setOrigin(0.5);
+    this.startingLevelPromptContainer.add(instructions);
+
+    this.layoutStartingLevelPrompt();
+    this.updateStartingLevelPromptDisplay();
+  }
+
+  layoutStartingLevelPrompt() {
+    if (this.startingLevelPromptBg) {
+      this.startingLevelPromptBg.clear();
+      this.startingLevelPromptBg.fillStyle(0x000000, 0.85);
+      this.startingLevelPromptBg.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
+      if (this.startingLevelPromptBg.input?.hitArea?.setTo) {
+        this.startingLevelPromptBg.input.hitArea.setTo(
+          0,
+          0,
+          this.cameras.main.width,
+          this.cameras.main.height,
+        );
+      }
+    }
+    if (this.startingLevelPromptContainer) {
+      this.startingLevelPromptContainer.setPosition(
+        this.cameras.main.centerX,
+        this.cameras.main.centerY,
       );
-      // Fallback to default mode
-      this.scene.start("AssetLoaderScene", { mode: "tgm1" });
+    }
+  }
+
+  updateStartingLevelPromptDisplay() {
+    if (!this.pendingStartData || !this.startingLevelPromptValueText) return;
+    const {
+      startingLevel,
+      startLevelCap,
+      roundsDebugMedals = 0,
+      showRoundsDebugMedals = false,
+    } = this.pendingStartData;
+    const levelSelected = !showRoundsDebugMedals || this.startingLevelPromptSelection === 0;
+    this.startingLevelPromptValueText.setText(startingLevel.toString().padStart(3, "0"));
+    this.startingLevelPromptValueText.setFill(levelSelected ? "#00ff00" : "#ffffff");
+    if (this.startingLevelPromptLevelLabel) {
+      this.startingLevelPromptLevelLabel.setFill(levelSelected ? "#ffff66" : "#ffffff");
+    }
+    if (this.startingLevelPromptLeftArrow) {
+      this.startingLevelPromptLeftArrow.setFill(
+        startingLevel > 0 ? (levelSelected ? "#00ff00" : "#ffffff") : "#444444",
+      );
+    }
+    if (this.startingLevelPromptRightArrow) {
+      this.startingLevelPromptRightArrow.setFill(
+        startingLevel < startLevelCap ? (levelSelected ? "#00ff00" : "#ffffff") : "#444444",
+      );
+    }
+    if (showRoundsDebugMedals && this.startingLevelPromptRoundsMedalValueText) {
+      const medalsSelected = this.startingLevelPromptSelection === 1;
+      this.startingLevelPromptRoundsMedalValueText.setText(
+        roundsDebugMedals.toString().padStart(2, "0"),
+      );
+      this.startingLevelPromptRoundsMedalValueText.setFill(
+        medalsSelected ? "#00ff00" : "#ffffff",
+      );
+      if (this.startingLevelPromptRoundsMedalLabel) {
+        this.startingLevelPromptRoundsMedalLabel.setFill(
+          medalsSelected ? "#ffff66" : "#ffffff",
+        );
+      }
+      if (this.startingLevelPromptRoundsMedalLeftArrow) {
+        this.startingLevelPromptRoundsMedalLeftArrow.setFill(
+          roundsDebugMedals > 0 ? (medalsSelected ? "#00ff00" : "#ffffff") : "#444444",
+        );
+      }
+      if (this.startingLevelPromptRoundsMedalRightArrow) {
+        this.startingLevelPromptRoundsMedalRightArrow.setFill(
+          roundsDebugMedals < 99 ? (medalsSelected ? "#00ff00" : "#ffffff") : "#444444",
+        );
+      }
+    }
+  }
+
+  adjustPendingStartingLevel(delta) {
+    if (!this.pendingStartData) return;
+    const next = normalizeStartLevel(this.pendingStartData.startingLevel + delta, {
+      maxLevel: this.pendingStartData.startLevelCap,
+    });
+    if (next === this.pendingStartData.startingLevel) return;
+    this.pendingStartData.startingLevel = next;
+    this.updateStartingLevelPromptDisplay();
+  }
+
+  adjustPendingRoundsDebugMedals(delta) {
+    if (!this.pendingStartData?.showRoundsDebugMedals) return;
+    const next = normalizeRoundsDebugMedalCount(
+      (this.pendingStartData.roundsDebugMedals || 0) + delta,
+    );
+    if (next === this.pendingStartData.roundsDebugMedals) return;
+    this.pendingStartData.roundsDebugMedals = next;
+    this.updateStartingLevelPromptDisplay();
+  }
+
+  adjustPendingPromptSelection(delta) {
+    if (!this.pendingStartData?.showRoundsDebugMedals) {
+      this.adjustPendingStartingLevel(delta < 0 ? 100 : -100);
       return;
     }
+    this.startingLevelPromptSelection = (this.startingLevelPromptSelection + delta + 2) % 2;
+    this.updateStartingLevelPromptDisplay();
+  }
 
-    const modeManager = getModeManager();
-    const mode = modeManager.getMode(modeId);
-
-    if (!mode) {
-      console.error("[MenuScene] Mode not found", { modeId });
-      // Still proceed to asset loader so it can fail gracefully or show message
-      this.scene.start("AssetLoaderScene", { mode: modeId });
+  adjustPendingPromptValue(delta) {
+    if (this.pendingStartData?.showRoundsDebugMedals && this.startingLevelPromptSelection === 1) {
+      this.adjustPendingRoundsDebugMedals(delta);
       return;
     }
+    this.adjustPendingStartingLevel(delta * 100);
+  }
 
+  hideStartingLevelPrompt() {
+    this.startingLevelPromptActive = false;
+    this.pendingStartData = null;
+    this.startingLevelPromptSelection = 0;
+    if (this.startingLevelPromptBg) {
+      this.startingLevelPromptBg.destroy();
+      this.startingLevelPromptBg = null;
+    }
+    if (this.startingLevelPromptContainer) {
+      this.startingLevelPromptContainer.destroy(true);
+      this.startingLevelPromptContainer = null;
+    }
+    this.startingLevelPromptLevelLabel = null;
+    this.startingLevelPromptValueText = null;
+    this.startingLevelPromptLeftArrow = null;
+    this.startingLevelPromptRightArrow = null;
+    this.startingLevelPromptRoundsMedalLabel = null;
+    this.startingLevelPromptRoundsMedalValueText = null;
+    this.startingLevelPromptRoundsMedalLeftArrow = null;
+    this.startingLevelPromptRoundsMedalRightArrow = null;
+  }
+
+  confirmStartingLevelPrompt() {
+    if (!this.pendingStartData) return;
+    const {
+      modeId,
+      mode,
+      startingLevel,
+      startLevelCap,
+      roundsDebugMedals = 0,
+      showRoundsDebugMedals = false,
+    } = this.pendingStartData;
+    const normalizedLevel = normalizeStartLevel(startingLevel, {
+      maxLevel: startLevelCap,
+    });
+    localStorage.setItem("startingLevel", String(normalizedLevel));
+    this.hideStartingLevelPrompt();
+    this.launchMode(
+      modeId,
+      mode,
+      normalizedLevel,
+      showRoundsDebugMedals ? normalizeRoundsDebugMedalCount(roundsDebugMedals) : 0,
+    );
+  }
+
+  launchMode(modeId, mode, startingLevel, roundsDebugMedals = 0) {
     this.selectedModeId = modeId;
+    this.recreateGameplayScenes();
 
-    // Versus modes route through MatchmakingScene for online pairing
-    if (modeId === "versus_guideline" || modeId === "versus_tgm") {
-      const queueType = modeId === "versus_tgm" ? "tgm" : "guideline";
-      this.scene.start("MatchmakingScene", { queueType });
-      return;
-    }
-
-    // Start the AssetLoaderScene first; it will continue to LoadingScreenScene -> GameScene
     const startLevelCap = getStartingLevelCapForMode(mode);
     this.scene.start("AssetLoaderScene", {
       mode: modeId,
       gameMode: mode,
-      startingLevel: getConfiguredStartingLevel(startLevelCap),
+      startingLevel: normalizeStartLevel(startingLevel, { maxLevel: startLevelCap }),
+      roundsDebugMedals: normalizeRoundsDebugMedalCount(roundsDebugMedals),
     });
   }
 
@@ -1510,10 +1937,6 @@ class SettingsScene extends Phaser.Scene {
     this.sdfSlider = null;
     this.sdfSliderFill = null;
     this.sdfSliderKnob = null;
-    this.startingLevelLabel = null;
-    this.startingLevelValueText = null;
-    this.startingLevelDownText = null;
-    this.startingLevelUpText = null;
     this.forceMRollLabel = null;
     this.forceMRollText = null;
 
@@ -2351,53 +2774,7 @@ class SettingsScene extends Phaser.Scene {
     });
     this.updateSDFDisplay(sdfValue, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
 
-    const startLevelY = sdfSliderY + 70;
-    this.startingLevelLabel = this.add
-      .text(lineAreX, startLevelY - 26, "Starting Level", {
-        fontSize: "20px",
-        fill: "#ffff00",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0.5);
-
-    this.startingLevelDownText = this.add
-      .text(lineAreX - 90, startLevelY, "<", {
-        fontSize: "28px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    this.startingLevelDownText.on("pointerdown", () => {
-      this.adjustStartingLevel(-100);
-    });
-
-    this.startingLevelValueText = this.add
-      .text(lineAreX, startLevelY, this.getStartingLevelValue().toString().padStart(3, "0"), {
-        fontSize: "24px",
-        fill: "#00ff00",
-        fontFamily: "Courier New",
-        fontStyle: "bold",
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    this.startingLevelValueText.on("pointerdown", () => {
-      this.adjustStartingLevel(100);
-    });
-
-    this.startingLevelUpText = this.add
-      .text(lineAreX + 90, startLevelY, ">", {
-        fontSize: "28px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0.5)
-      .setInteractive();
-    this.startingLevelUpText.on("pointerdown", () => {
-      this.adjustStartingLevel(100);
-    });
-
-    const forceMRollY = startLevelY + 60;
+    const forceMRollY = sdfSliderY + 70;
     const forceMRollEnabled = this.getForceMRollEnabled();
     this.forceMRollLabel = this.add
       .text(lineAreX, forceMRollY - 24, "Force M-Roll (TGM2 Master)", {
@@ -2510,10 +2887,6 @@ class SettingsScene extends Phaser.Scene {
         this.sdfSliderFill,
         this.sdfSliderKnob,
         this.sdfText,
-        this.startingLevelLabel,
-        this.startingLevelDownText,
-        this.startingLevelValueText,
-        this.startingLevelUpText,
         this.forceMRollLabel,
         this.forceMRollText,
       ],
@@ -3120,25 +3493,7 @@ class SettingsScene extends Phaser.Scene {
       width: this.sdfSlider ? this.sdfSlider.getBounds().width : 200,
       y: this.sdfSlider ? this.sdfSlider.getBounds().centerY : 0,
     });
-    this.updateStartingLevelDisplay(0);
     this.updateForceMRollDisplay(false);
-  }
-
-  getStartingLevelValue() {
-    return getConfiguredStartingLevel();
-  }
-
-  updateStartingLevelDisplay(value = this.getStartingLevelValue()) {
-    if (this.startingLevelValueText) {
-      this.startingLevelValueText.setText(value.toString().padStart(3, "0"));
-    }
-  }
-
-  adjustStartingLevel(delta) {
-    const current = this.getStartingLevelValue();
-    const next = normalizeStartLevel(current + delta, { maxLevel: 1200 });
-    localStorage.setItem("startingLevel", String(next));
-    this.updateStartingLevelDisplay(next);
   }
 
   getForceMRollEnabled() {
@@ -4037,7 +4392,10 @@ class AssetLoaderScene extends Phaser.Scene {
     this.selectedMode = data.mode || "Mode 1";
     this.gameMode = data.gameMode || null; // Store gameMode from data
     this.gameModeName = data.gameModeName || null; // Store gameModeName from data
-    this.startingLevel = normalizeStartLevel(data.startingLevel);
+    this.startingLevel = normalizeStartLevel(data.startingLevel, {
+      maxLevel: getStartingLevelCapForMode(this.gameMode),
+    });
+    this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
   }
 
   preload() {
@@ -4154,6 +4512,7 @@ class AssetLoaderScene extends Phaser.Scene {
       mode: this.selectedMode,
       gameMode: this.gameMode,
       startingLevel: this.startingLevel,
+      roundsDebugMedals: this.roundsDebugMedals,
     });
   }
 }
@@ -4166,7 +4525,10 @@ class LoadingScreenScene extends Phaser.Scene {
   init(data) {
     this.selectedMode = data.mode || "Mode 1";
     this.gameMode = data.gameMode || null; // Store gameMode from data
-    this.startingLevel = normalizeStartLevel(data.startingLevel);
+    this.startingLevel = normalizeStartLevel(data.startingLevel, {
+      maxLevel: getStartingLevelCapForMode(this.gameMode),
+    });
+    this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
   }
 
   create() {
@@ -4195,8 +4557,8 @@ class LoadingScreenScene extends Phaser.Scene {
         mode: this.selectedMode,
         gameMode: this.gameMode,
         startingLevel: this.startingLevel,
+        roundsDebugMedals: this.roundsDebugMedals,
       });
     });
   }
 }
-

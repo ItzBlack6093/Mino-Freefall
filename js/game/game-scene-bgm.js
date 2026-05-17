@@ -70,6 +70,45 @@
       }
     },
 
+    resolveBgmModeId(modeId = null, knownModeIds = null) {
+      const aliases = {
+        ta_death: "tadeath",
+        tgm2_master: "tgm2",
+        tgm3_master: "tgm3",
+        tgm3_shirase: "shirase",
+        tgm4_normal: "tgm4",
+        tgm4_asuka_easy: "asuka_easy",
+        tgm4_asuka_normal: "asuka_normal",
+        tgm4_asuka_hard: "asuka_hard",
+      };
+      const candidates = [
+        modeId,
+        this.gameMode && typeof this.gameMode.getModeId === "function"
+          ? this.gameMode.getModeId()
+          : null,
+        this.selectedMode,
+      ].filter((candidate) => typeof candidate === "string" && candidate.length > 0);
+
+      const knownModeIdSet = Array.isArray(knownModeIds) ? new Set(knownModeIds) : null;
+      if (knownModeIdSet) {
+        for (const candidate of candidates) {
+          const normalizedCandidate = aliases[candidate] || candidate;
+          if (knownModeIdSet.has(normalizedCandidate)) {
+            return normalizedCandidate;
+          }
+        }
+      }
+
+      for (const candidate of candidates) {
+        const normalizedCandidate = aliases[candidate] || candidate;
+        if (normalizedCandidate) {
+          return normalizedCandidate;
+        }
+      }
+
+      return "tgm1";
+    },
+
     getBgmSchedule(modeId) {
       const sharedTGM1 = [
         { end: 499, key: "mf1_1" },
@@ -127,7 +166,11 @@
           ],
           credits: "mf2_endroll",
         },
-        tadeath: { segments: sharedTADeath, credits: "mf1_endroll" },
+        tadeath: {
+          segments: sharedTADeath,
+          credits: "mf1_endroll",
+          persistFinalSegmentIntoCredits: true,
+        },
         shirase: { segments: sharedShirase, credits: "mf2_endroll" },
         tgm4_rounds: {
           segments: [
@@ -141,7 +184,11 @@
           endgame: "mf4_endgame",
         },
         tgm4_1_1: { segments: sharedTGM1, credits: "mf2_endroll" },
-        tgm4_2_1: { segments: sharedTADeath, credits: "mf2_endroll" },
+        tgm4_2_1: {
+          segments: sharedTADeath,
+          credits: "mf2_endroll",
+          persistFinalSegmentIntoCredits: true,
+        },
         tgm4_3_1: {
           segments: [
             { end: 499, key: "mf2_4" },
@@ -157,7 +204,8 @@
         asuka_hard: { segments: sharedAsuka },
         tgm3_sakura: { segments: [{ end: 999, key: "mf1_1" }] },
       };
-      return schedules[modeId] || { segments: sharedTGM1, credits: "mf2_endroll" };
+      const resolvedModeId = this.resolveBgmModeId(modeId, Object.keys(schedules));
+      return schedules[resolvedModeId] || { segments: sharedTGM1, credits: "mf2_endroll" };
     },
 
     playBgmByKey(key) {
@@ -184,10 +232,11 @@
         (this.gameMode && typeof this.gameMode.getModeId === "function"
           ? this.gameMode.getModeId()
           : this.selectedMode) || "tgm1";
+      const resolvedModeId = this.resolveBgmModeId(modeId);
 
       // Custom BGM flow for Marathon: use line count with stop windows
       if (
-        modeId === "marathon" &&
+        resolvedModeId === "marathon" &&
         this.gameMode &&
         typeof this.gameMode.linesCleared === "number"
       ) {
@@ -223,10 +272,10 @@
         return;
       }
 
-      const schedule = this.getBgmSchedule(modeId);
+      const schedule = this.getBgmSchedule(resolvedModeId);
       if (!schedule || !schedule.segments || !schedule.segments.length) return;
 
-      if (modeId === "tgm4_rounds" && this.gameMode?.endGameActive && schedule.endgame) {
+      if (resolvedModeId === "tgm4_rounds" && this.gameMode?.endGameActive && schedule.endgame) {
         if (this.currentBgmKey !== schedule.endgame) {
           this.playBgmByKey(schedule.endgame);
         }
@@ -264,17 +313,47 @@
     // Legacy loop-point manager kept for compatibility; no-op with unified BGM
     manageBGMLoopMode() {},
 
+    shouldPersistCurrentBgmIntoCredits(modeId = null) {
+      const resolvedModeId =
+        modeId ||
+        (this.gameMode && typeof this.gameMode.getModeId === "function"
+          ? this.gameMode.getModeId()
+          : this.selectedMode) ||
+        "";
+      const schedule = this.getBgmSchedule(resolvedModeId);
+      if (!schedule?.persistFinalSegmentIntoCredits || !this.currentBGM || !this.currentBgmKey) {
+        return false;
+      }
+      const segments = Array.isArray(schedule.segments) ? schedule.segments : [];
+      const finalSegment = segments[segments.length - 1];
+      return !!finalSegment && this.currentBgmKey === finalSegment.key;
+    },
+
     getCreditsBgmKey() {
-      if (this.selectedMode === "tgm2_normal") return "mf1_2";
-      if (this.selectedMode === "tgm3_easy" || this.selectedMode === "tadeath") {
+      const modeId =
+        (this.gameMode && typeof this.gameMode.getModeId === "function"
+          ? this.gameMode.getModeId()
+          : this.selectedMode) || "";
+      if (modeId === "tgm2_normal") return "mf1_2";
+      if (modeId === "tgm3_easy") {
         return "mf1_endroll";
+      }
+      const schedule = this.getBgmSchedule(modeId);
+      if (schedule && Object.prototype.hasOwnProperty.call(schedule, "credits")) {
+        return schedule.credits;
       }
       return "mf2_endroll";
     },
 
     createCreditsBGM() {
       try {
+        if (this.shouldPersistCurrentBgmIntoCredits()) {
+          return;
+        }
         const creditsBGMKey = this.getCreditsBgmKey();
+        if (!creditsBGMKey) {
+          return;
+        }
         this.creditsBGM = this.sound.add(creditsBGMKey, {
           loop: true,
           volume: 0.3,

@@ -60,9 +60,18 @@ class TGM4MasterMode extends TGM3ShiraseMode {
     }
 
     initializeForGameScene(gameScene) {
+        const debugMedals = Math.max(0, Math.floor(Number(gameScene?.roundsDebugMedals) || 0));
         this.currentRotationSystem = gameScene?.rotationSystem || 'SRS';
         this.currentTiming = this.getTimingForLevel(gameScene?.level || 0, this.currentRotationSystem);
         this.endGameTimeRemaining = this.config.specialMechanics.endGameRewindSeconds;
+        this.medals = {
+            bravo: debugMedals,
+            tetris: debugMedals,
+            tspin: debugMedals,
+            pikii: debugMedals,
+        };
+        this.masterPikiiFreezeTime = this.getMasterPikiiFreezeTime();
+        this.updateLevelState(gameScene?.level || 0);
     }
 
     isTgmRule() {
@@ -358,7 +367,9 @@ class TGM4MasterMode extends TGM3ShiraseMode {
     applyCyclonePreviewToQueue(gameScene) {
         if (!gameScene || !Array.isArray(gameScene.nextPieces) || !this.cycloneActive) return;
         if (gameScene.nextPieces.length === 0) return;
-        gameScene.nextPieces[0] = this.prepareNextQueueEntry(gameScene.nextPieces[0], gameScene);
+        gameScene.nextPieces = gameScene.nextPieces.map((entry) =>
+            this.prepareNextQueueEntry(entry, gameScene)
+        );
     }
 
     onPieceSpawn(piece, gameScene) {
@@ -371,7 +382,6 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         if (this.masterPikiiActive && piece) {
             piece.tgm4MasterPikii = true;
             piece.freezeAfter = this.masterPikiiFreezeTime;
-            piece.freezeAt = (gameScene?.currentTime || 0) + this.masterPikiiFreezeTime;
         }
         return piece;
     }

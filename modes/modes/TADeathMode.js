@@ -29,6 +29,9 @@ class TADeathMode extends BaseMode {
         // T.A. Death grading (minimal - only M and GM)
         this.displayedGrade = ''; // No grade until torikan is beaten
         this.internalGrade = 31;   // Start at 31 (9.5 grade level)
+        this.displayLevel = 0;
+        this.internalLevel = 0;
+        this.bgmStopLevel = 0;
         this.isMGrade = false;
         this.isGMGrade = false;
         
@@ -179,36 +182,48 @@ class TADeathMode extends BaseMode {
     // Initialize mode for game scene
     initializeForGameScene(gameScene) {
         super.initializeForGameScene(gameScene);
+        const startingLevel = Math.max(0, gameScene?.level || 0);
+        this.displayLevel = startingLevel;
+        this.internalLevel = startingLevel;
+        this.bgmStopLevel = startingLevel;
+        this.updateTimingPhase(startingLevel);
+        this.startedAtLevel500 = startingLevel >= 500;
     }
-    
-    // Handle level progression
-    onLevelUpdate(level, oldLevel, updateType, amount) {
-        // Update timing phase
-        this.updateTimingPhase(level);
 
-        // Check for torikan start (level 500)
-        if (level >= 500 && !this.startedAtLevel500) {
+    syncLevelState(level) {
+        const safeLevel = Math.max(0, Math.min(level || 0, 999));
+        this.displayLevel = safeLevel;
+        this.internalLevel = safeLevel;
+        this.bgmStopLevel = safeLevel;
+        this.updateTimingPhase(safeLevel);
+
+        if (safeLevel >= 500 && !this.startedAtLevel500) {
             this.startedAtLevel500 = true;
             this.onTorikanStart();
         }
 
+        return safeLevel;
+    }
+    
+    // Handle level progression
+    onLevelUpdate(level, oldLevel, updateType, amount) {
         // Standard TGM stops: 99, 199, ..., 998
         const atStopLevel = (level % 100 === 99) || level === 998 || level === 999;
 
         if (updateType === 'piece') {
             if (!atStopLevel && level < 999) {
-                return level + 1;
+                return this.syncLevelState(level + 1);
             }
-            return level;
+            return this.syncLevelState(level);
         } else if (updateType === 'lines') {
             const lineIncrement = Math.min(amount || 0, 4);
             if (oldLevel === 998 && lineIncrement > 0) {
-                return 999;
+                return this.syncLevelState(999);
             }
-            return Math.min(level + lineIncrement, 999);
+            return this.syncLevelState(Math.min(level + lineIncrement, 999));
         }
 
-        return level;
+        return this.syncLevelState(level);
     }
     
     // Handle torikan start at level 500

@@ -40,27 +40,40 @@ class Board {
   }
 
   placePiece(piece, x, y) {
+    const masterPikiiFreezeAt =
+      piece.tgm4MasterPikii && Number.isFinite(piece.masterPikiiFreezeAt)
+        ? piece.masterPikiiFreezeAt
+        : null;
     for (let r = 0; r < piece.shape.length; r++) {
       for (let c = 0; c < piece.shape[r].length; c++) {
         if (piece.shape[r][c]) {
+          const boardX = x + c;
+          const boardY = y + r;
+          if (boardX < 0 || boardX >= this.cols || boardY >= this.rows) continue;
+          // Valid lock-outs can leave cells above the matrix; skip writing those rows.
+          if (boardY < 0) continue;
           if (piece.isPowerup && piece.powerupType) {
-            this.grid[y + r][x + c] = {
+            this.grid[boardY][boardX] = {
               color: piece.powerupFillColor || piece.color,
               powerupType: piece.powerupType,
               borderColor: piece.powerupColors ? piece.powerupColors[piece.powerupType] : piece.color,
               originalColor: piece.baseColor || piece.color,
+              ...(masterPikiiFreezeAt !== null ? { masterPikiiFreezeAt } : {}),
             };
           } else if (piece.textureKey) {
-            this.grid[y + r][x + c] = {
+            this.grid[boardY][boardX] = {
               color: piece.textureKey.startsWith("mono") ? 0xffffff : piece.color,
               textureKey: piece.textureKey,
-              frozen: !!piece.tgm4MasterPikii,
+              ...(masterPikiiFreezeAt !== null ? { masterPikiiFreezeAt } : {}),
             };
           } else {
-            this.grid[y + r][x + c] = piece.tgm4MasterPikii ? { color: piece.color, frozen: true } : piece.color;
+            this.grid[boardY][boardX] =
+              masterPikiiFreezeAt !== null
+                ? { color: piece.color, masterPikiiFreezeAt }
+                : piece.color;
           }
-          if (this.frozenGrid[y + r]?.[x + c] !== undefined) {
-            this.frozenGrid[y + r][x + c] = false;
+          if (this.frozenGrid[boardY]?.[boardX] !== undefined) {
+            this.frozenGrid[boardY][boardX] = false;
           }
         }
       }
@@ -213,8 +226,9 @@ class Board {
   }
 
   draw(scene, offsetX, offsetY, cellSize) {
-    const startRow = 2;
-    const endRow = Math.min(this.rows, startRow + scene.visibleRows);
+    const hiddenRows = Math.max(0, this.rows - scene.visibleRows);
+    const startRow = 0;
+    const endRow = Math.min(this.rows, hiddenRows + scene.visibleRows);
 
     const bigBlocks = !!(scene && scene.bigBlocksActive);
     const drawCellSize = bigBlocks ? cellSize * 2 : cellSize;
@@ -265,7 +279,12 @@ class Board {
           const cellVal = this.grid[r][c];
           const isCellObj = cellVal && typeof cellVal === "object";
           const isPowerObj = isCellObj && !!cellVal.powerupType;
-          const color = isCellObj ? cellVal.color : cellVal;
+          const masterPikiiFrozen =
+            isCellObj &&
+            (cellVal.frozen ||
+              (Number.isFinite(cellVal.masterPikiiFreezeAt) &&
+                (scene?.currentTime || 0) >= cellVal.masterPikiiFreezeAt));
+          const color = masterPikiiFrozen ? 0xffffff : isCellObj ? cellVal.color : cellVal;
           const textureKey = cellVal?.textureKey
             ? cellVal.textureKey
             : scene.rotationSystem === "ARS"
@@ -282,7 +301,7 @@ class Board {
           const hasValidTextureSource =
             !!(scene.textures && scene.textures.exists(textureKey));
           const drawX = offsetX + c * cellSize;
-          const drawY = offsetY + (r - startRow) * cellSize;
+          const drawY = offsetY + (r - hiddenRows) * cellSize;
           // X-ray effect: only render current sweep column (ghost still visible elsewhere)
           if (scene.xrayActive) {
             if (scene.xrayRevealCooldown > 0) {
@@ -557,16 +576,18 @@ class Piece {
     while (this.move(board, 0, 1)) {}
   }
 
-  draw(scene, offsetX, offsetY, cellSize, ghost = false, alpha = 1, useBigBlocks = true) {
+  draw(scene, offsetX, offsetY, cellSize, ghost = false, alpha = 1, useBigBlocks = true, renderOptions = {}) {
     const finalAlpha = ghost ? 0.3 : alpha;
     const bigBlocks = useBigBlocks && !!(scene && scene.bigBlocksActive);
     const drawCellSize = bigBlocks ? cellSize * 2 : cellSize;
+    const hiddenRows = Math.max(0, (scene?.board?.rows || 0) - (scene?.visibleRows || 0));
+    const minimumBoardY =
+      renderOptions.minimumBoardY !== undefined ? renderOptions.minimumBoardY : hiddenRows;
     for (let r = 0; r < this.shape.length; r++) {
       for (let c = 0; c < this.shape[r].length; c++) {
         if (this.shape[r][c]) {
           const pieceY = this.y + r;
-          // Only draw pieces that are in the visible area (row 2 and below in the 22-row matrix)
-          if (pieceY >= 2) {
+          if (pieceY >= minimumBoardY) {
             const textureKey =
               this.textureKey ||
               (scene.rotationSystem === "ARS"
@@ -579,7 +600,7 @@ class Piece {
             const hasValidTextureSource =
               !!(scene.textures && scene.textures.exists(textureKey));
             const drawX = offsetX + (this.x + c) * cellSize;
-            const drawY = offsetY + (pieceY - 2) * cellSize;
+            const drawY = offsetY + (pieceY - hiddenRows) * cellSize;
             const renderX = bigBlocks ? drawX - cellSize / 2 : drawX;
             const renderY = bigBlocks ? drawY - cellSize / 2 : drawY;
             if (hasValidTextureSource) {
@@ -648,12 +669,27 @@ function getModeGravityLevelCap(mode) {
   return null;
 }
 
+function getModeDisplayLevelCap(mode) {
+  if (!mode) return null;
+  if (typeof mode.getDisplayLevelCap === "function") {
+    const cap = Number(mode.getDisplayLevelCap());
+    if (Number.isFinite(cap)) return cap;
+  }
+  return getModeGravityLevelCap(mode);
+}
+
 function getStartingLevelCapForMode(mode) {
-  const gravityCap = getModeGravityLevelCap(mode);
-  if (gravityCap !== null && gravityCap <= 999) return 900;
+  const displayCap = getModeDisplayLevelCap(mode);
+  if (displayCap !== null) return Math.max(0, Math.floor(displayCap));
   return 1200;
 }
 
 function getConfiguredStartingLevel(maxLevel = 1200) {
   return normalizeStartLevel(localStorage.getItem("startingLevel"), { maxLevel });
+}
+
+function normalizeRoundsDebugMedalCount(value, maxCount = 99) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return 0;
+  return Math.max(0, Math.min(maxCount, Math.floor(parsed)));
 }
