@@ -2,8 +2,9 @@
 
 class MinosaModule {
     constructor(options = {}) {
-        this.maxNodes = options.maxNodes || 40000;
+        this.maxNodes = options.maxNodes || 2500;
         this.nodesVisited = 0;
+        this.searchLimited = false;
         this.resultCache = new Map();
         this.maxCacheEntries = options.maxCacheEntries || 256;
     }
@@ -63,6 +64,12 @@ class MinosaModule {
             return this.createResult(MinosaModule.STATUS_IMPOSSIBLE);
         }
 
+        const holdType = this.normalizePieceType(options.holdType);
+        const availablePieces = 1 + queue.length + (holdType ? 1 : 0);
+        const targetDepths = this.getTargetDepths(grid, cols, availablePieces);
+        if (!targetDepths.length) {
+            return this.createResult(MinosaModule.STATUS_IMPOSSIBLE);
+        }
         const cacheKey = [
             options.rotationSystem || 'SRS',
             rows,
@@ -70,15 +77,21 @@ class MinosaModule {
             this.gridKey(grid),
             activeType,
             queue.join(''),
-            this.normalizePieceType(options.holdType) || '',
+            holdType || '',
             options.canHold !== false ? '1' : '0',
         ].join('|');
         const cached = this.resultCache.get(cacheKey);
         if (cached) {
-            return this.createResult(cached.status, [...cached.path]);
+            return {
+                status: cached.status,
+                path: [...cached.path],
+                nodesVisited: 0,
+                limited: Boolean(cached.limited),
+            };
         }
 
         this.nodesVisited = 0;
+        this.searchLimited = false;
         const memo = new Set();
         const path = [];
         const possible = this.search({
@@ -88,14 +101,18 @@ class MinosaModule {
             rotationSystem: options.rotationSystem || 'SRS',
             activeType,
             queue,
-            holdType: this.normalizePieceType(options.holdType),
+            holdType,
             canHold: options.canHold !== false,
             memo,
             path,
+            targetDepths,
+            targetDepthSet: new Set(targetDepths),
+            maxDepth: targetDepths[targetDepths.length - 1],
+            depth: 0,
         });
 
         const result = this.createResult(
-            possible ? MinosaModule.STATUS_POSSIBLE : MinosaModule.STATUS_IMPOSSIBLE,
+            possible || this.searchLimited ? MinosaModule.STATUS_POSSIBLE : MinosaModule.STATUS_IMPOSSIBLE,
             possible ? [...path] : []
         );
         this.rememberResult(cacheKey, result);
@@ -103,7 +120,12 @@ class MinosaModule {
     }
 
     search(state) {
-        if (this.nodesVisited++ > this.maxNodes) return false;
+        if (this.nodesVisited++ > this.maxNodes) {
+            this.searchLimited = true;
+            return false;
+        }
+
+        if (state.depth >= state.maxDepth) return false;
 
         const key = this.getStateKey(state);
         if (state.memo.has(key)) return false;
@@ -117,21 +139,32 @@ class MinosaModule {
                 state.grid,
                 state.rows,
                 state.cols
-            );
+            )
+                .map(placement => ({
+                    placement,
+                    nextGrid: this.applyPlacement(state.grid, placement, state.rows, state.cols),
+                }))
+                .sort((a, b) => this.countFilledCells(a.nextGrid) - this.countFilledCells(b.nextGrid));
 
-            for (const placement of placements) {
-                const nextGrid = this.applyPlacement(state.grid, placement, state.rows, state.cols);
+            for (const { placement, nextGrid } of placements) {
                 const step = {
                     piece: candidate.pieceType,
                     x: placement.x,
                     y: placement.y,
                     rotation: placement.rotation,
                     usedHold: candidate.usedHold,
+                    source: candidate.source,
                 };
                 state.path.push(step);
 
+                const nextDepth = state.depth + 1;
                 if (this.isEmptyGrid(nextGrid)) {
-                    return true;
+                    return state.targetDepthSet.has(nextDepth);
+                }
+
+                if (nextDepth >= state.maxDepth) {
+                    state.path.pop();
+                    continue;
                 }
 
                 let nextActiveType = candidate.nextActiveType;
@@ -139,6 +172,12 @@ class MinosaModule {
                 if (!nextActiveType && nextQueue.length > 0) {
                     nextActiveType = nextQueue[0];
                     nextQueue = nextQueue.slice(1);
+                }
+
+                const remainingPieces = (nextActiveType ? 1 : 0) + nextQueue.length + (candidate.holdType ? 1 : 0);
+                if (!this.canReachTargetDepth(state.targetDepths, nextDepth, remainingPieces)) {
+                    state.path.pop();
+                    continue;
                 }
 
                 if (nextActiveType && this.search({
@@ -152,6 +191,10 @@ class MinosaModule {
                     canHold: true,
                     memo: state.memo,
                     path: state.path,
+                    targetDepths: state.targetDepths,
+                    targetDepthSet: state.targetDepthSet,
+                    maxDepth: state.maxDepth,
+                    depth: nextDepth,
                 })) {
                     return true;
                 }
@@ -170,6 +213,7 @@ class MinosaModule {
             queue: state.queue,
             nextActiveType: null,
             usedHold: false,
+            source: 'current',
         }];
 
         if (!state.canHold) return candidates;
@@ -181,6 +225,7 @@ class MinosaModule {
                 queue: state.queue,
                 nextActiveType: null,
                 usedHold: true,
+                source: 'hold',
             });
         } else if (state.queue.length > 0) {
             candidates.push({
@@ -189,6 +234,7 @@ class MinosaModule {
                 queue: state.queue.slice(1),
                 nextActiveType: null,
                 usedHold: true,
+                source: 'next',
             });
         }
 
@@ -299,7 +345,30 @@ class MinosaModule {
             state.queue.join(''),
             state.holdType || '',
             state.canHold ? '1' : '0',
+            state.depth || 0,
         ].join('|');
+    }
+
+    getTargetDepths(grid, cols, availablePieces) {
+        const filledCells = this.countFilledCells(grid);
+        const targetDepths = [];
+        for (let depth = 1; depth <= availablePieces; depth++) {
+            if ((filledCells + depth * 4) % cols === 0) {
+                targetDepths.push(depth);
+            }
+        }
+        return targetDepths;
+    }
+
+    canReachTargetDepth(targetDepths, depth, remainingPieces) {
+        return targetDepths.some(targetDepth => targetDepth > depth && targetDepth <= depth + remainingPieces);
+    }
+
+    countFilledCells(grid) {
+        return grid.reduce(
+            (total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell ? 1 : 0), 0),
+            0
+        );
     }
 
     gridKey(grid) {
@@ -326,7 +395,7 @@ class MinosaModule {
     }
 
     createResult(status, path = []) {
-        return { status, path, nodesVisited: this.nodesVisited };
+        return { status, path, nodesVisited: this.nodesVisited, limited: this.searchLimited };
     }
 
     rememberResult(key, result) {
@@ -334,7 +403,7 @@ class MinosaModule {
             const firstKey = this.resultCache.keys().next().value;
             this.resultCache.delete(firstKey);
         }
-        this.resultCache.set(key, { status: result.status, path: [...result.path] });
+        this.resultCache.set(key, { status: result.status, path: [...result.path], limited: Boolean(result.limited) });
     }
 
     static getSharedInstance() {
