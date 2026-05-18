@@ -6,6 +6,7 @@ const config = {
   // Improve text sharpness on high-DPI displays
   resolution: window.devicePixelRatio || 1,
   scene: [
+    BootScene,
     MenuScene,
     SettingsScene,
     MatchmakingScene,

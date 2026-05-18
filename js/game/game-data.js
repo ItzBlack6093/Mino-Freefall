@@ -303,122 +303,128 @@ function getUserAgentText() {
 }
 
 function createOrUpdateGlobalOverlay(scene, modeInfo = {}) {
-  const camera = scene.cameras?.main;
-  if (!camera) return;
   const padding = 12;
-  const width = camera.width;
-  const height = camera.height;
+  const legacyOverlay = scene.globalOverlayTexts;
+  const looksLikeLegacyPhaserOverlay =
+    legacyOverlay &&
+    legacyOverlay.titleText &&
+    typeof legacyOverlay.titleText.destroy === "function";
+  if (looksLikeLegacyPhaserOverlay) {
+    [
+      legacyOverlay.titleText,
+      legacyOverlay.modeText,
+      legacyOverlay.commitText,
+      legacyOverlay.userAgentText,
+    ]
+      .filter(Boolean)
+      .forEach((textObj) => textObj.destroy());
+    scene.globalOverlayTexts = null;
+  }
 
-  const overlay = scene.globalOverlayTexts;
-  const overlayTextsValid =
+  let overlay = window.__minoGlobalOverlayDom;
+  const overlayValid =
     overlay &&
+    overlay.root &&
     overlay.titleText &&
     overlay.modeText &&
     overlay.commitText &&
     overlay.userAgentText &&
-    overlay.titleText.active &&
-    overlay.modeText.active &&
-    overlay.commitText.active &&
-    overlay.userAgentText.active &&
-    overlay.titleText.scene &&
-    overlay.modeText.scene &&
-    overlay.commitText.scene &&
-    overlay.userAgentText.scene &&
-    overlay.titleText.scene.sys &&
-    overlay.modeText.scene.sys &&
-    overlay.commitText.scene.sys &&
-    overlay.userAgentText.scene.sys &&
-    !overlay.titleText.scene.sys.isDestroyed &&
-    !overlay.modeText.scene.sys.isDestroyed &&
-    !overlay.commitText.scene.sys.isDestroyed &&
-    !overlay.userAgentText.scene.sys.isDestroyed;
+    overlay.root.isConnected;
 
-  if (!overlayTextsValid) {
-    // Clean any stale references from previous scenes
-    scene.globalOverlayTexts = null;
+  if (!overlayValid) {
+    const root = document.createElement("div");
+    root.id = "mino-global-overlay";
+    Object.assign(root.style, {
+      position: "fixed",
+      inset: "0",
+      pointerEvents: "none",
+      zIndex: "10000",
+      fontFamily: "'Courier New', monospace",
+      color: "#ffffff",
+    });
 
-    const titleText = scene.add
-      .text(padding, padding, "Mino Freefall - pre-beta", {
-        fontSize: "16px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-        fontStyle: "bold",
-      })
-      .setScrollFactor(0)
-      .setDepth(10000);
+    const makeCornerText = (style = {}) => {
+      const el = document.createElement("div");
+      Object.assign(el.style, {
+        position: "absolute",
+        whiteSpace: "nowrap",
+        lineHeight: "1",
+        ...style,
+      });
+      root.appendChild(el);
+      return el;
+    };
 
-    const modeText = scene.add
-      .text(width - padding, padding, "", {
-        fontSize: "16px",
-        fill: "#ffffff",
-        fontFamily: "Courier New",
-        fontStyle: "bold",
-        align: "right",
-      })
-      .setOrigin(1, 0)
-      .setScrollFactor(0)
-      .setDepth(10000);
+    const titleText = makeCornerText({
+      top: `${padding}px`,
+      left: `${padding}px`,
+      fontSize: "16px",
+      fontWeight: "bold",
+    });
+    const modeText = makeCornerText({
+      top: `${padding}px`,
+      right: `${padding}px`,
+      fontSize: "16px",
+      fontWeight: "bold",
+      textAlign: "right",
+    });
+    const commitText = makeCornerText({
+      bottom: `${padding}px`,
+      left: `${padding}px`,
+      fontSize: "14px",
+      color: "#bbbbbb",
+    });
+    const userAgentText = makeCornerText({
+      bottom: `${padding}px`,
+      right: `${padding}px`,
+      fontSize: "14px",
+      color: "#bbbbbb",
+      textAlign: "right",
+    });
 
-    const commitText = scene.add
-      .text(padding, height - padding, "Last commit: loading...", {
-        fontSize: "14px",
-        fill: "#bbbbbb",
-        fontFamily: "Courier New",
-      })
-      .setOrigin(0, 1)
-      .setScrollFactor(0)
-      .setDepth(10000);
+    titleText.textContent = "Mino Freefall - pre-beta";
+    commitText.textContent = "Last commit: loading...";
+    userAgentText.textContent = getUserAgentText();
 
-    const userAgentText = scene.add
-      .text(width - padding, height - padding, getUserAgentText(), {
-        fontSize: "14px",
-        fill: "#bbbbbb",
-        fontFamily: "Courier New",
-        align: "right",
-      })
-      .setOrigin(1, 1)
-      .setScrollFactor(0)
-      .setDepth(10000);
+    document.body.appendChild(root);
 
-    scene.globalOverlayTexts = {
+    overlay = {
+      root,
       titleText,
       modeText,
       commitText,
       userAgentText,
     };
+    window.__minoGlobalOverlayDom = overlay;
 
     fetchLastCommitDateCached().then((text) => {
-      const commit = scene.globalOverlayTexts?.commitText;
-      if (
-        commit &&
-        commit.active &&
-        commit.scene?.sys &&
-        !commit.scene.sys.isDestroyed
-      ) {
-        commit.setText(text);
+      const commit = window.__minoGlobalOverlayDom?.commitText;
+      if (commit && commit.isConnected) {
+        commit.textContent = text;
       }
     });
   }
 
   const { modeLabel = "", modeTypeName = "", showMode = true } = modeInfo;
   const modeColor = getModeTypeColor(modeTypeName);
-  scene.globalOverlayTexts.modeText.setVisible(showMode);
+  overlay.titleText.style.top = `${padding}px`;
+  overlay.titleText.style.left = `${padding}px`;
+  overlay.modeText.style.top = `${padding}px`;
+  overlay.modeText.style.right = `${padding}px`;
+  overlay.commitText.style.bottom = `${padding}px`;
+  overlay.commitText.style.left = `${padding}px`;
+  overlay.userAgentText.style.bottom = `${padding}px`;
+  overlay.userAgentText.style.right = `${padding}px`;
+  overlay.modeText.style.display = showMode ? "block" : "none";
   if (showMode) {
-    scene.globalOverlayTexts.modeText.setText(modeLabel || "");
-    scene.globalOverlayTexts.modeText.setColor(modeColor);
-    scene.globalOverlayTexts.modeText.setStyle({ fontStyle: "bold" });
+    overlay.modeText.textContent = modeLabel || "";
+    overlay.modeText.style.color = modeColor;
+    overlay.modeText.style.fontWeight = "bold";
   } else {
-    scene.globalOverlayTexts.modeText.setText("");
+    overlay.modeText.textContent = "";
   }
-
-  // Reposition on demand
-  scene.globalOverlayTexts.modeText.setPosition(width - padding, padding);
-  scene.globalOverlayTexts.commitText.setPosition(padding, height - padding);
-  scene.globalOverlayTexts.userAgentText.setText(getUserAgentText());
-  scene.globalOverlayTexts.userAgentText.setPosition(
-    width - padding,
-    height - padding,
-  );
+  overlay.userAgentText.textContent = getUserAgentText();
+  scene.globalOverlayTexts = overlay;
 }
 
 // Simple snapshot test for kick tables (SRS and ARS) to help verify tables in other environments.
@@ -1240,4 +1246,3 @@ function ensureMonochromeMinoTextures(scene) {
     rt.destroy();
   });
 }
-

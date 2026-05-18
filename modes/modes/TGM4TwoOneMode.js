@@ -32,6 +32,16 @@ class TGM4TwoOneMode extends TADeathMode {
             }
         };
     }
+
+    getBgmConfig() {
+        return {
+            ...super.getBgmConfig(),
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: true
+            }
+        };
+    }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

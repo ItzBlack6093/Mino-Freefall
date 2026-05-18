@@ -121,6 +121,25 @@ class TGM2MasterMode extends BaseMode {
     getModeId() {
         return this.modeId;
     }
+
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 499, key: 'mf1_1' },
+                { end: 699, key: 'mf1_2' },
+                { end: 899, key: 'mf2_3' },
+                { end: 999, key: 'mf2_4' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
     
     // Handle level progression with Master rules (piece spawn except first piece; 998 -> 999 requires a line clear)
     onLevelUpdate(level, oldLevel, updateType, amount) {

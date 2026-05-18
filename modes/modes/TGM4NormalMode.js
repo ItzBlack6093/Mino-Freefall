@@ -49,6 +49,24 @@ class TGM4NormalMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 299, key: 'mf1_1' },
+                { end: 499, key: 'mf1_2' },
+                { end: 999, key: 'mf2_3' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     getGravitySpeed(level) {
         const g = this.getTGM1GravitySpeed(level);
         return g >= 5120 ? 5376 : g;

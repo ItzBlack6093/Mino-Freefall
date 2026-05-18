@@ -56,6 +56,8 @@ class TADeathMode extends BaseMode {
         
         // T.A. Death specific states
         this.startedAtLevel500 = false;
+        this.torikanFailed = false;
+        this.creditsStarted = false;
         this.hasReachedMGrade = false;
         this.isDeathComplete = false;
     }
@@ -102,6 +104,24 @@ class TADeathMode extends BaseMode {
     // Get mode ID
     getModeId() {
         return this.modeId;
+    }
+
+    getBgmConfig() {
+        return {
+            progressSource: 'internalLevelOrLevel',
+            stopSource: 'bgmStopLevelOrProgress',
+            useStopBuffer: true,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 299, key: 'mf1_2' },
+                { end: 499, key: 'mf2_3' },
+                { end: 999, key: 'mf2_4' }
+            ],
+            credits: {
+                key: 'mf1_endroll',
+                reuseCurrentTrack: true
+            }
+        };
     }
     
     // Get gravity speed (fixed 20G throughout)
@@ -183,11 +203,15 @@ class TADeathMode extends BaseMode {
     initializeForGameScene(gameScene) {
         super.initializeForGameScene(gameScene);
         const startingLevel = Math.max(0, gameScene?.level || 0);
+        this.currentGameTime = gameScene?.currentTime || 0;
         this.displayLevel = startingLevel;
         this.internalLevel = startingLevel;
         this.bgmStopLevel = startingLevel;
         this.updateTimingPhase(startingLevel);
         this.startedAtLevel500 = startingLevel >= 500;
+        if (this.startedAtLevel500) {
+            this.onTorikanStart();
+        }
     }
 
     syncLevelState(level) {
@@ -230,11 +254,15 @@ class TADeathMode extends BaseMode {
     onTorikanStart() {
         console.log('T.A. Death: Torikan started at level 500');
         
-        // Track the time when level 500 was reached
         this.timeAtLevel500 = this.getCurrentGameTime();
-        
-        // The player now has 3:25.00 to reach level 999
-        // This will be checked in the update method
+        this.torikanPassed = this.timeAtLevel500 <= this.torikanLimit;
+        this.torikanFailed = !this.torikanPassed;
+
+        if (this.torikanPassed) {
+            this.awardMGrade();
+        } else {
+            this.displayedGrade = '';
+        }
     }
     
     // Get current game time (placeholder for actual implementation)
@@ -313,15 +341,8 @@ class TADeathMode extends BaseMode {
     
     // Check if player is within time limit
     isWithinTimeLimit(gameScene) {
-        // Calculate required time based on progress
-        // T.A. Death requires reaching level 999 within 3:25.00 from level 500
-        // T.A. Death M grade: Must reach level 500 within 3:25.00
-        if (!this.timeAtLevel500) return false; // Level 500 not reached yet
-        
-        const timeFromLevel500 = gameScene.currentTime; // Simplified - would need to track time at level 500
-        const maxTimeAllowed = this.torikanLimit;
-        
-        return this.timeAtLevel500 <= this.torikanLimit;
+        if (this.timeAtLevel500 == null) return false;
+        return this.torikanPassed;
     }
     
     // Award M grade
@@ -340,19 +361,21 @@ class TADeathMode extends BaseMode {
     
     // Check for T.A. Death completion (GM grade)
     checkDeathCompletion(gameScene) {
-        if (gameScene.level >= 999) {
+        if (gameScene.level >= 999 && !this.creditsStarted) {
             // GM grade: Reach level 999 regardless of time
-            this.awardGMGrade();
-            // Start 30s credits roll with stack intact
-            gameScene.startCredits(30);
-            console.log('T.A. Death: Credits started at level 999');
+            this.awardGMGrade(gameScene);
+            this.startDeathCreditsRoll(gameScene, 'level 999');
             return true;
         }
         return false;
     }
     
     // Award GM grade
-    awardGMGrade() {
+    awardGMGrade(gameScene) {
+        if (this.isGMGrade) {
+            return;
+        }
+
         this.displayedGrade = 'GM';
         this.isGMGrade = true;
         this.isDeathComplete = true;
@@ -361,9 +384,26 @@ class TADeathMode extends BaseMode {
         
         // Show completion message
         this.showCompletionMessage(gameScene, 'GM');
-        
-        // Proceed to game over
-        gameScene.showGameOverScreen();
+    }
+
+    onCreditsStart(gameScene) {
+        this.creditsStarted = true;
+        if (gameScene) {
+            gameScene.invisibleStackActive = false;
+            gameScene.fadingRollActive = false;
+        }
+    }
+
+    startDeathCreditsRoll(gameScene, reason) {
+        if (!gameScene || this.creditsStarted || gameScene.creditsActive || gameScene.creditsPending) {
+            return false;
+        }
+
+        this.creditsStarted = true;
+        this.isDeathComplete = true;
+        gameScene.startCredits(30);
+        console.log(`T.A. Death: Credits started at ${reason}`);
+        return true;
     }
     
     // Show completion message
@@ -393,6 +433,8 @@ class TADeathMode extends BaseMode {
     
     // Update method (called every frame)
     update(gameScene, deltaTime) {
+        this.currentGameTime = gameScene?.currentTime || 0;
+
         // Check torikan time limit
         if (this.startedAtLevel500 && !this.isDeathComplete) {
             this.checkTorikanLimit(gameScene);
@@ -404,19 +446,13 @@ class TADeathMode extends BaseMode {
     
     // Check torikan time limit
     checkTorikanLimit(gameScene) {
-        const timeFromLevel500 = gameScene.currentTime; // Simplified - would need exact time tracking
-        
-        if (timeFromLevel500 > this.torikanLimit) {
-            // Torikan failed - game over with no grade
-            console.log('T.A. Death: TORIKAN FAILED - Time limit exceeded, no grade awarded');
-            
-            // Set grade to empty to indicate no grade was achieved
-            this.displayedGrade = '';
-            
-            // Start 30s credits roll at level 500 failure per spec
-            gameScene.startCredits(30);
-            console.log('T.A. Death: Credits started at torikan failure (level 500)');
+        if (this.torikanPassed || this.creditsStarted || !this.torikanFailed) {
+            return;
         }
+
+        console.log('T.A. Death: TORIKAN FAILED - Time limit exceeded, no grade awarded');
+        this.displayedGrade = '';
+        this.startDeathCreditsRoll(gameScene, 'torikan failure (level 500)');
     }
     
 
@@ -492,8 +528,10 @@ class TADeathMode extends BaseMode {
         this.isGMGrade = false;
         this.deathScore = 0;
         this.torikanPassed = false;
+        this.torikanFailed = false;
         this.timeAtLevel500 = null;
         this.startedAtLevel500 = false;
+        this.creditsStarted = false;
         this.hasReachedMGrade = false;
         this.isDeathComplete = false;
         

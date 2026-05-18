@@ -179,7 +179,11 @@ class MatchmakingScene extends Phaser.Scene {
         const startLevelCap = typeof getStartingLevelCapForMode === "function"
           ? getStartingLevelCapForMode(mode)
           : 999;
-        this.scene.start("AssetLoaderScene", {
+        const startScene =
+          typeof startPreparedGameScene === "function"
+            ? startPreparedGameScene
+            : (scene, payload) => scene.scene.start("AssetLoaderScene", payload);
+        startScene(this, {
           mode: modeId,
           gameMode: mode,
           startingLevel: 0,

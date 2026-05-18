@@ -67,6 +67,16 @@ class TGM3SakuraMode extends BaseMode {
     getName() { return this.modeName; }
     getModeId() { return this.modeId; }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [{ end: 999, key: 'mf1_1' }]
+        };
+    }
+
     // --- Lifecycle hooks ---
     initializeForGameScene(gameScene) {
         super.initializeForGameScene(gameScene);

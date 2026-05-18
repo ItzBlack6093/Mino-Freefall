@@ -39,6 +39,16 @@ class ZenMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [{ end: 999, key: 'mf_zen' }]
+        };
+    }
+
     handleLineClear(gameScene, linesCleared, pieceType) {
         this.linesCleared += linesCleared;
         // No end condition for zen mode

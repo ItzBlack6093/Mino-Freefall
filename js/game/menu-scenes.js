@@ -1,3 +1,256 @@
+const SHARED_IMAGE_ASSETS = [
+  ["mino_srs", "img/mino.png"],
+  ["mino_ars", "img/minoARS.png"],
+  ["mono", "img/mono.png"],
+  ["mono_ars", "img/monoARS.png"],
+];
+
+const SHARED_BGM_ASSETS = [
+  ["mf1_1", "bgm/mf1_1.mp3"],
+  ["mf1_2", "bgm/mf1_2.mp3"],
+  ["mf1_endroll", "bgm/mf1_endroll.mp3"],
+  ["mf2_3", "bgm/mf2_3.mp3"],
+  ["mf2_4", "bgm/mf2_4.mp3"],
+  ["mf2_endroll", "bgm/mf2_endroll.mp3"],
+  ["mf3_4", "bgm/mf3_4.mp3"],
+  ["mf3_6", "bgm/mf3_6.mp3"],
+  ["mf4_endgame", "bgm/mf4_endgame.mp3"],
+  ["mf_zen", "bgm/standard/mf_zen.mp3"],
+  ["mf_std_1", "bgm/standard/mf_std_1.mp3"],
+  ["mf_std_2", "bgm/standard/mf_std_2.mp3"],
+  ["mf_std_3", "bgm/standard/mf_std_3.mp3"],
+];
+
+const SHARED_LEGACY_BGM_ASSETS = [
+  ["legacy_mf1_1", "bgm-old/tm1_1.mp3"],
+  ["legacy_mf1_2", "bgm-old/tm1_2.mp3"],
+  ["legacy_mf1_endroll", "bgm-old/tm1_endroll.mp3"],
+  ["legacy_mf2_3", "bgm-old/tm2_3.mp3"],
+  ["legacy_mf2_4", "bgm-old/tm2_4.mp3"],
+  ["legacy_mf3_4", "bgm-old/tm3_4.mp3"],
+  ["legacy_mf3_6", "bgm-old/tm3_6.mp3"],
+  ["legacy_mf_std_1", "bgm-old/standard/422_m1.mp3"],
+  ["legacy_mf_std_2", "bgm-old/standard/423_m2.mp3"],
+  ["legacy_mf_std_3", "bgm-old/standard/424_m3.mp3"],
+];
+
+const SHARED_SFX_ASSETS = [
+  ["ready", "sfx/ready.wav"],
+  ["go", "sfx/go.wav"],
+  ["gradeup", "sfx/gradeup.wav"],
+  ["complete", "sfx/complete.wav"],
+  ["clear", "sfx/clear.wav"],
+  ["fall", "sfx/fall.wav"],
+  ["sectionchange", "sfx/sectionchange.wav"],
+  ["IRS", "sfx/IRS.wav"],
+  ["ground", "sfx/ground.wav"],
+  ["lock", "sfx/lock.wav"],
+  ["sound_s", "sfx/s.wav"],
+  ["sound_z", "sfx/z.wav"],
+  ["sound_t", "sfx/t.wav"],
+  ["sound_j", "sfx/j.wav"],
+  ["sound_l", "sfx/l.wav"],
+  ["sound_o", "sfx/o.wav"],
+  ["sound_i", "sfx/i.wav"],
+  ["IHS", "sfx/IHS.wav"],
+  ["bell", "sfx/bell.wav"],
+  ["applause", "sfx/applause.wav"],
+  ["combo", "sfx/combo.wav"],
+  ["cool", "sfx/cool.wav"],
+  ["jewelclear", "sfx/jewelclear.wav"],
+  ["firework", "sfx/firework.wav"],
+  ["garbage", "sfx/garbage.wav"],
+  ["gameover", "sfx/gameover.wav"],
+];
+
+const SHARED_AUDIO_ASSETS = [
+  ...SHARED_BGM_ASSETS,
+  ...SHARED_LEGACY_BGM_ASSETS,
+  ...SHARED_SFX_ASSETS,
+];
+
+const BOOT_MARQUEE_SHAPES = [
+  [[0, 1], [1, 1], [2, 1], [3, 1]], // I
+  [[0, 0], [1, 0], [0, 1], [1, 1]], // O
+  [[1, 0], [0, 1], [1, 1], [2, 1]], // T
+  [[1, 0], [2, 0], [0, 1], [1, 1]], // S
+  [[0, 0], [1, 0], [1, 1], [2, 1]], // Z
+  [[0, 0], [0, 1], [1, 1], [2, 1]], // J
+  [[2, 0], [0, 1], [1, 1], [2, 1]], // L
+];
+
+const BOOT_MARQUEE_MONO_COLOR = 0xe8e8e8;
+
+function ensureImageTexture(scene, key, url) {
+  if (scene.textures.exists(key)) {
+    const existingTexture = scene.textures.get(key);
+    const src =
+      existingTexture && existingTexture.source ? existingTexture.source[0] : null;
+    if (!src || !src.image) {
+      scene.textures.remove(key);
+    }
+  }
+  if (!scene.textures.exists(key)) {
+    scene.load.image(key, url);
+  }
+}
+
+function queueSharedGameAssets(scene) {
+  SHARED_IMAGE_ASSETS.forEach(([key, url]) => {
+    ensureImageTexture(scene, key, url);
+  });
+
+  SHARED_AUDIO_ASSETS.forEach(([key, path]) => {
+    if (!scene.cache.audio.exists(key)) {
+      scene.load.audio(key, path);
+    }
+  });
+}
+
+function hasSharedGameAssets(scene) {
+  const hasImages = SHARED_IMAGE_ASSETS.every(([key]) => scene.textures.exists(key));
+  const hasAudio = SHARED_AUDIO_ASSETS.every(([key]) => scene.cache.audio.exists(key));
+  return hasImages && hasAudio;
+}
+
+function startPreparedGameScene(scene, data) {
+  const nextScene = hasSharedGameAssets(scene) ? "GameScene" : "AssetLoaderScene";
+  scene.scene.start(nextScene, data);
+}
+
+function createBootMarqueePiece(scene, x, y, shape, cellSize) {
+  const container = scene.add.container(x, y);
+  shape.forEach(([cx, cy]) => {
+    const block = scene.add.rectangle(
+      (cx - 1.5) * cellSize,
+      (cy - 0.5) * cellSize,
+      cellSize - 1,
+      cellSize - 1,
+      BOOT_MARQUEE_MONO_COLOR,
+    );
+    block.setStrokeStyle(1, 0x222222, 0.95);
+    container.add(block);
+  });
+  container.setAlpha(0.85);
+  return container;
+}
+
+function createBootMarqueeRow(scene, y, direction = 1, phaseOffset = 0) {
+  const width = scene.cameras.main.width;
+  const cellSize = Math.max(12, Math.floor(width / 75));
+  const pieceSpacing = cellSize * 6;
+  const pieceCount = Math.ceil(width / pieceSpacing) + 4;
+  const pieces = [];
+
+  for (let i = 0; i < pieceCount; i += 1) {
+    const sequenceIndex = (i + phaseOffset) % BOOT_MARQUEE_SHAPES.length;
+    const shape = BOOT_MARQUEE_SHAPES[sequenceIndex];
+    const x = i * pieceSpacing - pieceSpacing;
+    const piece = createBootMarqueePiece(scene, x, y, shape, cellSize);
+    pieces.push(piece);
+  }
+
+  return {
+    pieces,
+    speed: Math.max(50, width * 0.05),
+    direction,
+    spacing: pieceSpacing,
+    wrapMin: -pieceSpacing * 2,
+    wrapMax: width + pieceSpacing * 2,
+  };
+}
+
+class BootScene extends Phaser.Scene {
+  constructor() {
+    super({ key: "BootScene" });
+    this.bootMarqueeRows = [];
+    this.loadingText = null;
+    this.titleText = null;
+  }
+
+  preload() {
+    const centerX = this.cameras.main.width / 2;
+    const centerY = this.cameras.main.height / 2;
+    const topRowY = 42;
+    const bottomRowY = this.cameras.main.height - 42;
+
+    this.bootMarqueeRows = [
+      createBootMarqueeRow(this, topRowY, 1, 0),
+      createBootMarqueeRow(this, bottomRowY, -1, 3),
+    ];
+
+    this.titleText = this.add
+      .text(centerX, centerY - 110, "MINO FREEFALL", {
+        fontSize: "56px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+        shadow: {
+          offsetX: 3,
+          offsetY: 3,
+          color: "#000000",
+          blur: 0,
+          stroke: true,
+          fill: false,
+        },
+      })
+      .setOrigin(0.5);
+
+    this.loadingText = this.add
+      .text(centerX, centerY + 30, "LOADING...", {
+        fontSize: "42px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+  }
+
+  create() {
+    const onReady = () => {
+      if (this.titleText) {
+        this.titleText.destroy();
+      }
+      if (this.loadingText) {
+        this.loadingText.destroy();
+      }
+      (this.bootMarqueeRows || []).forEach((row) => {
+        (row.pieces || []).forEach((piece) => piece.destroy());
+      });
+      this.bootMarqueeRows = [];
+      if (typeof getModeManager !== "undefined") {
+        getModeManager();
+      }
+      this.scene.start("MenuScene");
+    };
+
+    if (hasSharedGameAssets(this)) {
+      onReady();
+      return;
+    }
+
+    this.load.once("complete", onReady);
+    queueSharedGameAssets(this);
+    this.load.start();
+  }
+
+  update(_, delta) {
+    const dt = delta / 1000;
+    (this.bootMarqueeRows || []).forEach((row) => {
+      const dx = row.speed * row.direction * dt;
+      row.pieces.forEach((piece) => {
+        piece.x += dx;
+        if (row.direction > 0 && piece.x > row.wrapMax) {
+          piece.x = row.wrapMin;
+        } else if (row.direction < 0 && piece.x < row.wrapMin) {
+          piece.x = row.wrapMax;
+        }
+      });
+    });
+  }
+}
+
 class MenuScene extends Phaser.Scene {
   constructor() {
     super({ key: "MenuScene" });
@@ -1103,7 +1356,7 @@ class MenuScene extends Phaser.Scene {
       );
       // Fallback to default mode
       this.recreateGameplayScenes();
-      this.scene.start("AssetLoaderScene", { mode: "tgm1" });
+      startPreparedGameScene(this, { mode: "tgm1" });
       return;
     }
 
@@ -1114,7 +1367,7 @@ class MenuScene extends Phaser.Scene {
       console.error("[MenuScene] Mode not found", { modeId });
       // Still proceed to asset loader so it can fail gracefully or show message
       this.recreateGameplayScenes();
-      this.scene.start("AssetLoaderScene", { mode: modeId });
+      startPreparedGameScene(this, { mode: modeId });
       return;
     }
 
@@ -1519,7 +1772,7 @@ class MenuScene extends Phaser.Scene {
     this.recreateGameplayScenes();
 
     const startLevelCap = getStartingLevelCapForMode(mode);
-    this.scene.start("AssetLoaderScene", {
+    startPreparedGameScene(this, {
       mode: modeId,
       gameMode: mode,
       startingLevel: normalizeStartLevel(startingLevel, { maxLevel: startLevelCap }),
@@ -1902,6 +2155,9 @@ class SettingsScene extends Phaser.Scene {
     this.sfxVolumeSlider = null;
     this.sfxVolumeSliderFill = null;
     this.sfxVolumeKnob = null;
+    this.bgmStyleLabel = null;
+    this.bgmStyleText = null;
+    this.bgmStyleHint = null;
 
     // ARS lock reset mode toggle
     this.arsResetModeText = null;
@@ -1917,6 +2173,7 @@ class SettingsScene extends Phaser.Scene {
     this.draggingARE = false;
     this.draggingLineARE = false;
     this.draggingSDF = false;
+    this.draggingHudZoom = false;
     this.arrLabel = null;
     this.arrText = null;
     this.arrSlider = null;
@@ -1937,6 +2194,11 @@ class SettingsScene extends Phaser.Scene {
     this.sdfSlider = null;
     this.sdfSliderFill = null;
     this.sdfSliderKnob = null;
+    this.hudZoomLabel = null;
+    this.hudZoomText = null;
+    this.hudZoomSlider = null;
+    this.hudZoomSliderFill = null;
+    this.hudZoomSliderKnob = null;
     this.forceMRollLabel = null;
     this.forceMRollText = null;
 
@@ -2391,7 +2653,39 @@ class SettingsScene extends Phaser.Scene {
       this.draggingARE = false;
       this.draggingLineARE = false;
       this.draggingSDF = false;
+      this.draggingHudZoom = false;
     });
+
+    this.bgmStyleLabel = this.add
+      .text(centerX, centerY + 30, "BGM Pack", {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.bgmStyleText = this.add
+      .text(centerX, centerY + 60, "", {
+        fontSize: "20px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    this.bgmStyleText.on("pointerdown", () => {
+      const nextStyle = this.getBGMStyle() === "legacy" ? "modern" : "legacy";
+      this.setBGMStyle(nextStyle);
+    });
+
+    this.bgmStyleHint = this.add
+      .text(centerX, centerY + 90, "Takes effect when a new game starts", {
+        fontSize: "14px",
+        fill: "#aaaaaa",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+    this.updateBGMStyleDisplay();
 
     // Timing sliders (right column, aligned with master volume)
     const timingX = centerX - 300; // move timing sliders further right of audio sliders
@@ -2774,7 +3068,93 @@ class SettingsScene extends Phaser.Scene {
     });
     this.updateSDFDisplay(sdfValue, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
 
-    const forceMRollY = sdfSliderY + 70;
+    const hudZoomValue = this.getGameplayHudZoom();
+    const hudZoomSliderY = sdfSliderY + 70;
+    this.hudZoomLabel = this.add
+      .text(lineAreX, hudZoomSliderY - 30, "Gameplay HUD Zoom", {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.hudZoomSlider = this.add.graphics();
+    this.hudZoomSlider.fillStyle(0x333333);
+    this.hudZoomSlider.fillRect(
+      lineAreX - timingSliderWidth / 2,
+      hudZoomSliderY - timingSliderHeight / 2,
+      timingSliderWidth,
+      timingSliderHeight,
+    );
+
+    this.hudZoomSliderFill = this.add.graphics();
+    this.hudZoomSliderFill.fillStyle(0x00ff00);
+    this.hudZoomSliderFill.fillRect(
+      lineAreX - timingSliderWidth / 2,
+      hudZoomSliderY - timingSliderHeight / 2,
+      timingSliderWidth * this.timingToPct(hudZoomValue, 0.75, 1.25),
+      timingSliderHeight,
+    );
+
+    this.hudZoomSliderKnob = this.add.graphics();
+    this.hudZoomSliderKnob.fillStyle(0xffffff);
+    this.hudZoomSliderKnob.fillCircle(
+      lineAreX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(hudZoomValue, 0.75, 1.25),
+      hudZoomSliderY,
+      8,
+    );
+
+    this.hudZoomText = this.add
+      .text(lineAreX, hudZoomSliderY + 25, "", {
+        fontSize: "16px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.hudZoomSlider.setInteractive(
+      new Phaser.Geom.Rectangle(
+        lineAreX - timingSliderWidth / 2,
+        hudZoomSliderY - timingSliderHeight / 2,
+        timingSliderWidth,
+        timingSliderHeight,
+      ),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    this.hudZoomSlider.on("pointerdown", (pointer) => {
+      this.draggingHudZoom = true;
+      this.updateHudZoomFromPointer(pointer, {
+        x: lineAreX,
+        width: timingSliderWidth,
+        y: hudZoomSliderY,
+      });
+    });
+    this.hudZoomSlider.on("pointermove", (pointer) => {
+      if (pointer.isDown) {
+        this.draggingHudZoom = true;
+        this.updateHudZoomFromPointer(pointer, {
+          x: lineAreX,
+          width: timingSliderWidth,
+          y: hudZoomSliderY,
+        });
+      }
+    });
+    this.input.on("pointermove", (pointer) => {
+      if (this.draggingHudZoom && pointer.isDown) {
+        this.updateHudZoomFromPointer(pointer, {
+          x: lineAreX,
+          width: timingSliderWidth,
+          y: hudZoomSliderY,
+        });
+      }
+    });
+    this.updateHudZoomDisplay(hudZoomValue, {
+      x: lineAreX,
+      width: timingSliderWidth,
+      y: hudZoomSliderY,
+    });
+
+    const forceMRollY = hudZoomSliderY + 70;
     const forceMRollEnabled = this.getForceMRollEnabled();
     this.forceMRollLabel = this.add
       .text(lineAreX, forceMRollY - 24, "Force M-Roll (TGM2 Master)", {
@@ -2887,6 +3267,11 @@ class SettingsScene extends Phaser.Scene {
         this.sdfSliderFill,
         this.sdfSliderKnob,
         this.sdfText,
+        this.hudZoomLabel,
+        this.hudZoomSlider,
+        this.hudZoomSliderFill,
+        this.hudZoomSliderKnob,
+        this.hudZoomText,
         this.forceMRollLabel,
         this.forceMRollText,
       ],
@@ -2912,6 +3297,9 @@ class SettingsScene extends Phaser.Scene {
         this.sfxVolumeSliderFill,
         this.sfxVolumeKnob,
         this.sfxVolumeText,
+        this.bgmStyleLabel,
+        this.bgmStyleText,
+        this.bgmStyleHint,
       ],
       profile: [
         this.profileNameLabel,
@@ -3458,6 +3846,7 @@ class SettingsScene extends Phaser.Scene {
     localStorage.removeItem("timing_are_frames");
     localStorage.removeItem("timing_line_are_frames");
     localStorage.removeItem("timing_sdf_mult");
+    localStorage.removeItem("gameplayHudZoom");
     localStorage.removeItem("startingLevel");
     localStorage.removeItem("forceMRoll");
     // Refresh all keybind displays
@@ -3493,6 +3882,11 @@ class SettingsScene extends Phaser.Scene {
       width: this.sdfSlider ? this.sdfSlider.getBounds().width : 200,
       y: this.sdfSlider ? this.sdfSlider.getBounds().centerY : 0,
     });
+    this.updateHudZoomDisplay(1, {
+      x: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerX : 0,
+      width: this.hudZoomSlider ? this.hudZoomSlider.getBounds().width : 200,
+      y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
+    });
     this.updateForceMRollDisplay(false);
   }
 
@@ -3522,6 +3916,11 @@ class SettingsScene extends Phaser.Scene {
     return volume ? parseFloat(volume) : 1.0;
   }
 
+  getBGMStyle() {
+    const style = localStorage.getItem("bgmStyle");
+    return style === "legacy" ? "legacy" : "modern";
+  }
+
   setMasterVolume(volume) {
     const clampedVolume = Math.max(0, Math.min(1, volume));
     localStorage.setItem("masterVolume", clampedVolume.toString());
@@ -3541,6 +3940,12 @@ class SettingsScene extends Phaser.Scene {
     localStorage.setItem("sfxVolume", clampedVolume.toString());
     this.updateSFXVolumeDisplay();
     this.applyEffectiveVolumes();
+  }
+
+  setBGMStyle(style) {
+    const normalizedStyle = style === "legacy" ? "legacy" : "modern";
+    localStorage.setItem("bgmStyle", normalizedStyle);
+    this.updateBGMStyleDisplay(normalizedStyle);
   }
 
   applyEffectiveVolumes() {
@@ -3822,6 +4227,55 @@ class SettingsScene extends Phaser.Scene {
     }
   }
 
+  getGameplayHudZoom() {
+    const raw = parseFloat(localStorage.getItem("gameplayHudZoom"));
+    if (!Number.isFinite(raw)) return 1;
+    return Math.min(1.25, Math.max(0.75, raw));
+  }
+
+  setGameplayHudZoom(value) {
+    const clamped = Math.round(Math.min(1.25, Math.max(0.75, value)) * 100) / 100;
+    localStorage.setItem("gameplayHudZoom", clamped.toString());
+    this.updateHudZoomDisplay(clamped, {
+      x: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerX : 0,
+      width: this.hudZoomSlider ? this.hudZoomSlider.getBounds().width : 200,
+      y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
+    });
+  }
+
+  updateHudZoomFromPointer(pointer, slider) {
+    if (!slider) return;
+    const { x, width } = slider;
+    const min = 0.75;
+    const max = 1.25;
+    const step = 0.01;
+    const relativeX = pointer.x - (x - width / 2);
+    const pct = Math.max(0, Math.min(1, relativeX / width));
+    const raw = min + pct * (max - min);
+    const value = this.clampStep(raw, min, max, step);
+    this.setGameplayHudZoom(value);
+    this.updateHudZoomDisplay(value, { x, width, y: slider.y });
+  }
+
+  updateHudZoomDisplay(value, slider) {
+    if (!slider) return;
+    const { x, width, y } = slider;
+    const pct = this.timingToPct(value, 0.75, 1.25);
+    if (this.hudZoomSliderFill) {
+      this.hudZoomSliderFill.clear();
+      this.hudZoomSliderFill.fillStyle(0x00ff00);
+      this.hudZoomSliderFill.fillRect(x - width / 2, y - 5, width * pct, 10);
+    }
+    if (this.hudZoomSliderKnob) {
+      this.hudZoomSliderKnob.clear();
+      this.hudZoomSliderKnob.fillStyle(0xffffff);
+      this.hudZoomSliderKnob.fillCircle(x - width / 2 + width * pct, y, 8);
+    }
+    if (this.hudZoomText) {
+      this.hudZoomText.setText(`${Math.round(value * 100)}% (mouse wheel in-game)`);
+    }
+  }
+
   updateMainVolumeDisplay() {
     const volume = this.getMasterVolume();
     const centerX = this.cameras.main.width / 2;
@@ -3933,20 +4387,68 @@ class SettingsScene extends Phaser.Scene {
     }
   }
 
+  updateBGMStyleDisplay(style = this.getBGMStyle()) {
+    if (!this.bgmStyleText) return;
+    const useLegacy = style === "legacy";
+    this.bgmStyleText.setText(useLegacy ? "Legacy" : "Mino Freefall");
+    this.bgmStyleText.setFill(useLegacy ? "#00ff88" : "#ffffff");
+  }
+
   resetKeybindsToDefaults() {
     localStorage.removeItem("keybinds");
     localStorage.removeItem("masterVolume");
     localStorage.removeItem("bgmVolume");
     localStorage.removeItem("sfxVolume");
+    localStorage.removeItem("bgmStyle");
+    localStorage.removeItem("timing_das_frames");
+    localStorage.removeItem("timing_arr_frames");
+    localStorage.removeItem("timing_are_frames");
+    localStorage.removeItem("timing_line_are_frames");
+    localStorage.removeItem("timing_sdf_mult");
+    localStorage.removeItem("gameplayHudZoom");
+    localStorage.removeItem("startingLevel");
+    localStorage.removeItem("forceMRoll");
     // Refresh all keybind displays
     Object.keys(this.keybindActions).forEach((action) => {
       const currentKey = this.getCurrentKeybind(action);
       this.keybindTexts[action].setText(currentKey);
     });
-    // updateVolumeDisplay() {
+    // Refresh sliders/toggles to their defaults.
     this.updateMainVolumeDisplay();
     this.updateBGMVolumeDisplay();
     this.updateSFXVolumeDisplay();
+    this.updateBGMStyleDisplay();
+    this.updateDASDisplay(10, {
+      x: this.dasSlider ? this.dasSlider.getBounds().centerX : 0,
+      width: this.dasSlider ? this.dasSlider.getBounds().width : 200,
+      y: this.dasSlider ? this.dasSlider.getBounds().centerY : 0,
+    });
+    this.updateARRDisplay(2, {
+      x: this.arrSlider ? this.arrSlider.getBounds().centerX : 0,
+      width: this.arrSlider ? this.arrSlider.getBounds().width : 200,
+      y: this.arrSlider ? this.arrSlider.getBounds().centerY : 0,
+    });
+    this.updateAREDisplay(7, {
+      x: this.areSlider ? this.areSlider.getBounds().centerX : 0,
+      width: this.areSlider ? this.areSlider.getBounds().width : 200,
+      y: this.areSlider ? this.areSlider.getBounds().centerY : 0,
+    });
+    this.updateLineAREDisplay(7, {
+      x: this.lineAreSlider ? this.lineAreSlider.getBounds().centerX : 0,
+      width: this.lineAreSlider ? this.lineAreSlider.getBounds().width : 200,
+      y: this.lineAreSlider ? this.lineAreSlider.getBounds().centerY : 0,
+    });
+    this.updateSDFDisplay(6, {
+      x: this.sdfSlider ? this.sdfSlider.getBounds().centerX : 0,
+      width: this.sdfSlider ? this.sdfSlider.getBounds().width : 200,
+      y: this.sdfSlider ? this.sdfSlider.getBounds().centerY : 0,
+    });
+    this.updateHudZoomDisplay(1, {
+      x: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerX : 0,
+      width: this.hudZoomSlider ? this.hudZoomSlider.getBounds().width : 200,
+      y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
+    });
+    this.updateForceMRollDisplay(false);
 
     this.applyEffectiveVolumes();
   }
@@ -4417,86 +4919,7 @@ class AssetLoaderScene extends Phaser.Scene {
       buildModeInfo(modeId, this.gameMode?.getName?.() || modeId),
     );
 
-    const ensureImageTexture = (key, url) => {
-      if (this.textures.exists(key)) {
-        const existingTexture = this.textures.get(key);
-        const src = existingTexture && existingTexture.source ? existingTexture.source[0] : null;
-        if (!src || !src.image) {
-          this.textures.remove(key);
-        }
-      }
-      if (!this.textures.exists(key)) {
-        this.load.image(key, url);
-      }
-    };
-
-    // Load all assets for the game
-    ensureImageTexture("mino_srs", "img/mino.png");
-    ensureImageTexture("mino_ars", "img/minoARS.png");
-    ensureImageTexture("mono", "img/mono.png");
-    ensureImageTexture("mono_ars", "img/monoARS.png");
-
-    // Load BGM files from the correct directory paths
-    try {
-      // Load MP3 files from bgm directory (Phaser compatible)
-      const bgmLoads = [
-        ["mf1_1", "bgm/mf1_1.mp3"],
-        ["mf1_2", "bgm/mf1_2.mp3"],
-        ["mf1_endroll", "bgm/mf1_endroll.mp3"],
-        ["mf2_3", "bgm/mf2_3.mp3"],
-        ["mf2_4", "bgm/mf2_4.mp3"],
-        ["mf2_endroll", "bgm/mf2_endroll.mp3"],
-        ["mf3_4", "bgm/mf3_4.mp3"],
-        ["mf3_6", "bgm/mf3_6.mp3"],
-        ["mf4_endgame", "bgm/mf4_endgame.mp3"],
-        ["mf_zen", "bgm/standard/mf_zen.mp3"],
-        ["mf_std_1", "bgm/standard/mf_std_1.mp3"],
-        ["mf_std_2", "bgm/standard/mf_std_2.mp3"],
-        ["mf_std_3", "bgm/standard/mf_std_3.mp3"],
-      ];
-      bgmLoads.forEach(([key, path]) => {
-        if (!this.cache.audio.exists(key)) {
-          this.load.audio(key, path);
-        }
-      });
-    } catch (error) {
-      console.warn("BGM files could not be loaded from bgm directory", error);
-    }
-
-    // Load all sound effects
-    const sfxLoads = [
-      ["ready", "sfx/ready.wav"],
-      ["go", "sfx/go.wav"],
-      ["gradeup", "sfx/gradeup.wav"],
-      ["complete", "sfx/complete.wav"],
-      ["clear", "sfx/clear.wav"],
-      ["fall", "sfx/fall.wav"],
-      ["sectionchange", "sfx/sectionchange.wav"],
-      ["IRS", "sfx/IRS.wav"],
-      ["ground", "sfx/ground.wav"],
-      ["lock", "sfx/lock.wav"],
-      ["sound_s", "sfx/s.wav"],
-      ["sound_z", "sfx/z.wav"],
-      ["sound_t", "sfx/t.wav"],
-      ["sound_j", "sfx/j.wav"],
-      ["sound_l", "sfx/l.wav"],
-      ["sound_o", "sfx/o.wav"],
-      ["sound_i", "sfx/i.wav"],
-      ["IHS", "sfx/IHS.wav"],
-      ["bell", "sfx/bell.wav"],
-      ["applause", "sfx/applause.wav"],
-      ["combo", "sfx/combo.wav"],
-      ["cool", "sfx/cool.wav"],
-      ["jewelclear", "sfx/jewelclear.wav"],
-      ["firework", "sfx/firework.wav"],
-      ["garbage", "sfx/garbage.wav"],
-      ["gameover", "sfx/gameover.wav"],
-    ];
-    sfxLoads.forEach(([key, path]) => {
-      if (!this.cache.audio.exists(key)) {
-        this.load.audio(key, path);
-      }
-    });
+    queueSharedGameAssets(this);
 
     this.load.once("complete", () => {});
   }
@@ -4507,8 +4930,8 @@ class AssetLoaderScene extends Phaser.Scene {
       this.loadingText.destroy();
     }
 
-    // Proceed to loading/ready-go scene
-    this.scene.start("LoadingScreenScene", {
+    // Shared assets are already loaded by startup or this fallback scene.
+    this.scene.start("GameScene", {
       mode: this.selectedMode,
       gameMode: this.gameMode,
       startingLevel: this.startingLevel,

@@ -36,6 +36,20 @@ class TGM4FourOneMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [{ end: 999, key: 'mf3_6' }],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     onLevelUpdate(level, oldLevel, updateType = 'piece', amount = 1) {
         const max = this.config.gravityLevelCap;
         let nextLevel = level;

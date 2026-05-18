@@ -16,6 +16,10 @@ class TGM4OneOneMode extends TGM4NormalMode {
         const frame = n => n / 60;
         return { are: frame(27), lineAre: frame(27), das: frame(14), lock: frame(30), lineClear: frame(40) };
     }
+
+    getBgmConfig() {
+        return BaseMode.prototype.getBgmConfig.call(this);
+    }
 }
 
 if (typeof module !== 'undefined' && module.exports) {

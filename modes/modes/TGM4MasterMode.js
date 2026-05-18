@@ -59,6 +59,30 @@ class TGM4MasterMode extends TGM3ShiraseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'internalLevelOrLevel',
+            stopSource: 'bgmStopLevelOrProgress',
+            useStopBuffer: true,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 299, key: 'mf1_2' },
+                { end: 699, key: 'mf3_4' },
+                { end: 999, key: 'mf3_6' },
+                { end: 1299, key: 'mf2_3' },
+                { end: 2600, key: 'mf2_4' }
+            ],
+            overrideTrack: {
+                flag: 'endGameActive',
+                key: 'mf4_endgame'
+            },
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     initializeForGameScene(gameScene) {
         const debugMedals = Math.max(0, Math.floor(Number(gameScene?.roundsDebugMedals) || 0));
         this.currentRotationSystem = gameScene?.rotationSystem || 'SRS';

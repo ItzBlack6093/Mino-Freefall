@@ -81,6 +81,16 @@ class TGM2NormalMode extends BaseMode {
     getModeId() {
         return this.modeId;
     }
+
+    getBgmConfig() {
+        return {
+            ...super.getBgmConfig(),
+            credits: {
+                key: 'mf1_2',
+                reuseCurrentTrack: false
+            }
+        };
+    }
     
     // Get gravity speed using TGM2 Normal curve (0-300)
     getGravitySpeed(level) {

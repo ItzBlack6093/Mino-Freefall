@@ -51,6 +51,7 @@ class GameScene extends Phaser.Scene {
     this.tgm3BagQueue = [];
     this.tgm3DroughtCounters = null;
     this.bgmInternalLevelBuffer = 0;
+    this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.regretAnnouncementsPending = {};
     this.regretAnnouncementsShown = new Set();
     this.coolDebugLogged = false;
@@ -84,6 +85,7 @@ class GameScene extends Phaser.Scene {
     this.regretMessageText = null;
     this.playfieldBorder = null;
     this.gameOver = false;
+    this.hudZoom = 1;
     // Calculate cell size and positioning for full screen
     this.calculateLayout();
 
@@ -655,6 +657,7 @@ class GameScene extends Phaser.Scene {
     this.creditsBgmStarted = false;
     this.rollFailedDuringRoll = false;
     this.creditsFinishPending = false;
+    this.creditsRevealFinishPending = false;
     this.creditsFadeInDone = false;
     this.gameOverStatePrepared = false;
 
@@ -1108,6 +1111,7 @@ class GameScene extends Phaser.Scene {
     );
     this.level = this.startingLevel;
     this.customStartingLevelActive = this.startingLevel > 0;
+    this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
 
     // Ensure mode-dependent timing/gravity state reflects configured starting level.
@@ -1302,6 +1306,9 @@ class GameScene extends Phaser.Scene {
     }
 
     if (this.shouldUseStackFadeCredits()) {
+      if (continueSpawnAfterImmediateCredits) {
+        this.suppressGameplayBgmForImmediateCreditsStart = true;
+      }
       this.creditsPending = true;
       this.creditsTransitionStartTime = this.time?.now ?? Date.now();
       this.invisibleStackActive = false;
@@ -1322,6 +1329,9 @@ class GameScene extends Phaser.Scene {
       this.gameMode && typeof this.gameMode.getConfig === "function"
         ? this.gameMode.getConfig()?.specialMechanics?.creditsDuration
         : undefined;
+    if (continueSpawnAfterImmediateCredits) {
+      this.suppressGameplayBgmForImmediateCreditsStart = true;
+    }
     this.startCredits(modeCredits != null ? modeCredits : undefined);
     if (
       continueSpawnAfterImmediateCredits &&
@@ -1595,6 +1605,59 @@ class GameScene extends Phaser.Scene {
   setTimingFromFrames(key, frames) {
     const ms = this.framesToMs(frames);
     this.setStoredTiming(key, ms);
+  }
+
+  getGameplayHudZoomSetting() {
+    const defaultZoom = 1;
+    const minZoom = 0.75;
+    const maxZoom = 1.25;
+    const raw = parseFloat(localStorage.getItem("gameplayHudZoom"));
+    if (!Number.isFinite(raw)) return defaultZoom;
+    return Math.min(maxZoom, Math.max(minZoom, raw));
+  }
+
+  setGameplayHudZoomSetting(value, { refresh = true } = {}) {
+    const minZoom = 0.75;
+    const maxZoom = 1.25;
+    const clamped = Math.round(Math.min(maxZoom, Math.max(minZoom, value)) * 100) / 100;
+    localStorage.setItem("gameplayHudZoom", clamped.toString());
+    this.hudZoom = clamped;
+    if (refresh) {
+      this.applyGameplayHudZoom({ forceRedraw: true });
+    }
+    return clamped;
+  }
+
+  adjustGameplayHudZoom(delta) {
+    const currentZoom = this.getGameplayHudZoomSetting();
+    const nextZoom = currentZoom + delta;
+    return this.setGameplayHudZoomSetting(nextZoom);
+  }
+
+  updatePowerupStatusLayout() {
+    if (!this.powerupStatusText || !this.powerupStatusText.scene) return;
+    const powerupLabelSize = Math.max(12, Math.floor(this.cellSize * 0.6));
+    this.powerupStatusText.setPosition(this.borderOffsetX, this.borderOffsetY - 28);
+    this.powerupStatusText.setStyle({ fontSize: `${powerupLabelSize}px` });
+  }
+
+  applyGameplayHudZoom({ forceRedraw = false } = {}) {
+    const zoom = this.getGameplayHudZoomSetting();
+    this.hudZoom = zoom;
+    this.uiScale = zoom;
+    const camera = this.cameras?.main;
+    if (camera) {
+      camera.setZoom(zoom);
+      const cameraCenterX = (this.scale?.width || camera.width) / 2;
+      const cameraCenterY = (this.scale?.height || camera.height) / 2;
+      camera.centerOn(cameraCenterX, cameraCenterY);
+    }
+    if (this.globalOverlayTexts) {
+      createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
+    }
+    if (forceRedraw && typeof this.draw === "function") {
+      this.draw();
+    }
   }
 
   // Apply mode-specific configuration to game settings
@@ -2021,6 +2084,8 @@ class GameScene extends Phaser.Scene {
     const maxCellWidth = Math.floor((windowWidth * 0.8) / this.board.cols);
     const maxCellHeight = Math.floor((windowHeight * 0.9) / this.visibleRows);
     const maxCellSize = this.bigModeBoardActive ? 80 : 40;
+    this.hudZoom = this.getGameplayHudZoomSetting();
+    this.uiScale = this.hudZoom;
     this.cellSize = Math.min(maxCellWidth, maxCellHeight, maxCellSize);
 
     // Ensure minimum cell size for readability
@@ -2038,6 +2103,10 @@ class GameScene extends Phaser.Scene {
 
     this.windowWidth = windowWidth;
     this.windowHeight = windowHeight;
+
+    if (this.cameras?.main) {
+      this.cameras.main.centerOn(windowWidth / 2, windowHeight / 2);
+    }
 
     if (this.globalOverlayTexts) {
       createOrUpdateGlobalOverlay(this, this.getOverlayModeInfo());
@@ -3051,7 +3120,7 @@ class GameScene extends Phaser.Scene {
     const playerNameBottomY =
       playerNameY + (this.playerNameText?.height || playerNameFontSize);
     const coolRegretY = playerNameBottomY + 6;
-    const timeY = coolRegretY + Math.max(timeFontSize - 4, 18) + 4;
+    const timeY = coolRegretY + Math.max(timeFontSize - 4, 18) - 6;
 
     // Time - centered below border, larger font, bold
     if (this.timeText && !this.timeText.scene) {
@@ -3143,6 +3212,7 @@ class GameScene extends Phaser.Scene {
       },
     );
     this.gameGroup.add(this.powerupStatusText);
+    this.updatePowerupStatusLayout();
     this.cursors = this.input.keyboard.createCursorKeys();
 
     // Scene instances can be reused across restarts; reset runtime flags/timers.
@@ -3250,6 +3320,7 @@ class GameScene extends Phaser.Scene {
     this.minoRowFadeAlpha = {};
     this.gameOverFadeDoneTime = null;
     this.creditsFinishPending = false;
+    this.creditsRevealFinishPending = false;
     this.creditsFadeInDone = false;
     this.gameOverStatePrepared = false;
     this.showGameOverText = false;
@@ -3259,6 +3330,7 @@ class GameScene extends Phaser.Scene {
     this.creditsActive = false;
     this.creditsTimer = 0;
     this.creditsDuration = 61.6;
+    this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.creditsBgmStarted = false;
     this.creditsTransitionStartTime = null;
     this.rollFadeLastExpireTime = 0;
@@ -3281,6 +3353,10 @@ class GameScene extends Phaser.Scene {
     this.calculateLayout();
 
     this.events.once("shutdown", () => {
+      if (this.input && this.handleHudZoomWheel) {
+        this.input.off("wheel", this.handleHudZoomWheel, this);
+        this.handleHudZoomWheel = null;
+      }
       if (this.bgmLoopTimer) {
         this.bgmLoopTimer.remove(false);
         this.bgmLoopTimer = null;
@@ -3426,6 +3502,13 @@ class GameScene extends Phaser.Scene {
       keybinds.restart,
     ]);
     this.restartKey = this.keys.restart;
+    this.handleHudZoomWheel = (_pointer, _gameObjects, _deltaX, deltaY, _deltaZ, event) => {
+      if (!Number.isFinite(deltaY) || deltaY === 0) return;
+      const zoomStep = 0.05;
+      this.adjustGameplayHudZoom(deltaY < 0 ? zoomStep : -zoomStep);
+      event?.preventDefault?.();
+    };
+    this.input.on("wheel", this.handleHudZoomWheel, this);
 
     // Initialize time tracking; actual start time is set on GO
     this.startTime = null;
@@ -3462,6 +3545,7 @@ class GameScene extends Phaser.Scene {
 
     // UI
     this.setupUI();
+    this.applyGameplayHudZoom();
 
     // Initialize BGM system (playback deferred until first spawn)
     this.initializeBGM();
@@ -5174,32 +5258,10 @@ class GameScene extends Phaser.Scene {
         this.minoFadeReversed = false;
         if (this.creditsFinishPending) {
           this.creditsFinishPending = false;
-          this.creditsFadeInDone = true;
-          // Directly set up game over state without calling showGameOverScreen to avoid
-          // triggering another fade animation that could hide the stack.
-          this.gameOver = true;
-          this.gameOverTimer = 0;
-          this.fadingComplete = true;
-          this.gameOverFadeDoneTime = this.time.now;
-          this.invisibleStackActive = false;
-          this.fadingRollActive = false;
-          this.gameOverStatePrepared = true;
-          // Clear fadeGrid to ensure cells are not skipped during rendering after fade-in
-          if (this.board && this.board.fadeGrid) {
-            for (let r = 0; r < this.board.rows; r++) {
-              this.board.fadeGrid[r] = Array(this.board.cols).fill(0);
-            }
-          }
-          // Clear minoRowFadeAlpha to ensure rendering defaults to full opacity
-          this.minoRowFadeAlpha = {};
-          // Call mode-specific game over handler if available
-          if (this.gameMode && this.gameMode.onGameOver) {
-            this.gameMode.onGameOver(this);
-          }
-          // Call mode-specific finishCreditRoll if available (for rankings, etc.)
-          if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
-            this.gameMode.finishCreditRoll(this);
-          }
+          this.completeCreditsFadeReveal(true);
+        } else if (this.creditsRevealFinishPending) {
+          this.creditsRevealFinishPending = false;
+          this.completeCreditsFadeReveal(false);
         } else if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
           this.gameOverFadeDoneTime = this.time.now;
         }
@@ -5228,32 +5290,10 @@ class GameScene extends Phaser.Scene {
             this.minoFadeReversed = false;
             if (this.creditsFinishPending) {
               this.creditsFinishPending = false;
-              this.creditsFadeInDone = true;
-              // Directly set up game over state without calling showGameOverScreen to avoid
-              // triggering another fade animation that could hide the stack.
-              this.gameOver = true;
-              this.gameOverTimer = 0;
-              this.fadingComplete = true;
-              this.gameOverFadeDoneTime = this.time.now;
-              this.invisibleStackActive = false;
-              this.fadingRollActive = false;
-              this.gameOverStatePrepared = true;
-              // Clear fadeGrid to ensure cells are not skipped during rendering after fade-in
-              if (this.board && this.board.fadeGrid) {
-                for (let r = 0; r < this.board.rows; r++) {
-                  this.board.fadeGrid[r] = Array(this.board.cols).fill(0);
-                }
-              }
-              // Clear minoRowFadeAlpha to ensure rendering defaults to full opacity
-              this.minoRowFadeAlpha = {};
-              // Call mode-specific game over handler if available
-              if (this.gameMode && this.gameMode.onGameOver) {
-                this.gameMode.onGameOver(this);
-              }
-              // Call mode-specific finishCreditRoll if available (for rankings, etc.)
-              if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
-                this.gameMode.finishCreditRoll(this);
-              }
+              this.completeCreditsFadeReveal(true);
+            } else if (this.creditsRevealFinishPending) {
+              this.creditsRevealFinishPending = false;
+              this.completeCreditsFadeReveal(false);
             } else if (!this.zenTopoutPendingFinish && !this.zenTopoutFreezeActive && this.gameOverFadeDoneTime === null) {
               this.gameOverFadeDoneTime = this.time.now;
             }
@@ -8034,6 +8074,7 @@ class GameScene extends Phaser.Scene {
     // Use mode-specific level update logic
     let newLevel = this.level;
     if (this.gameMode && this.gameMode.onLevelUpdate) {
+      this.gameMode.currentGameTime = this.currentTime || 0;
       newLevel = this.gameMode.onLevelUpdate(
         this.level,
         oldLevel,
@@ -8317,6 +8358,14 @@ class GameScene extends Phaser.Scene {
           const targetLevel = baseLevel + 80 + Math.floor(Math.random() * 11); // 80-90 inclusive
           this.coolAnnouncementsTargets[newSection] = targetLevel;
           this.coolAnnouncementsShown.delete(newSection);
+          const schedule = this.getBgmSchedule(modeId);
+          if (
+            schedule &&
+            schedule.useStopBuffer !== false &&
+            this.hasBgmSegmentChange(schedule, baseLevel, baseLevel + sectionLength)
+          ) {
+            this.bgmInternalLevelBuffer = Math.max(this.bgmInternalLevelBuffer || 0, targetLevel);
+          }
           // Early scheduling done; banner will fire in checkCoolRegretAnnouncements.
         }
       }
@@ -8441,9 +8490,10 @@ class GameScene extends Phaser.Scene {
           if (schedule && schedule.segments) {
             const currentSectionLevel = currentSectionIndex * sectionLength;
             const nextSectionLevel = nextSection * sectionLength;
-            const currentSegment = schedule.segments.find((s) => currentSectionLevel <= s.end);
-            const nextSegment = schedule.segments.find((s) => nextSectionLevel <= s.end);
-            if (currentSegment && nextSegment && currentSegment.key !== nextSegment.key) {
+            if (
+              schedule.useStopBuffer !== false &&
+              this.hasBgmSegmentChange(schedule, currentSectionLevel, nextSectionLevel)
+            ) {
               if (this.gameMode && typeof this.gameMode.bgmStopLevel === "number") {
                 this.bgmInternalLevelBuffer = Math.max(this.bgmInternalLevelBuffer || 0, targetLevel);
               }
@@ -9320,6 +9370,7 @@ class GameScene extends Phaser.Scene {
     this.pauseStartTime = null;
     this.totalPausedTime = 0;
     this.level999Reached = false; // Reset level 999 flag
+    this.suppressGameplayBgmForImmediateCreditsStart = false;
 
     // Clear game elements
     this.gameGroup.clear(true, true);
@@ -9531,6 +9582,7 @@ class GameScene extends Phaser.Scene {
     this.creditsFinalized = false;
     this.creditsBgmStarted = false;
     this.rollFadeLastExpireTime = 0;
+    this.creditsRevealFinishPending = false;
 
     // Determine roll type based on mode flags
     this.rollType = null;
@@ -9881,6 +9933,34 @@ class GameScene extends Phaser.Scene {
     this.invisibleStackActive = false;
   }
 
+  completeCreditsFadeReveal(callOnGameOver = false) {
+    this.creditsFadeInDone = true;
+    // Avoid re-running the default game over fade so the revealed stack stays visible.
+    this.gameOver = true;
+    this.gameOverTimer = 0;
+    this.fadingComplete = true;
+    this.gameOverFadeDoneTime = this.time.now;
+    this.invisibleStackActive = false;
+    this.fadingRollActive = false;
+    this._fadingRollActiveBeforeTopout = undefined;
+    this._invisibleStackActiveBeforeTopout = undefined;
+    this.gameOverStatePrepared = true;
+
+    if (this.board && this.board.fadeGrid) {
+      for (let r = 0; r < this.board.rows; r++) {
+        this.board.fadeGrid[r] = Array(this.board.cols).fill(0);
+      }
+    }
+    this.minoRowFadeAlpha = {};
+
+    if (callOnGameOver && this.gameMode && this.gameMode.onGameOver) {
+      this.gameMode.onGameOver(this);
+    }
+    if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
+      this.gameMode.finishCreditRoll(this);
+    }
+  }
+
   startLockFlash() {
     // Store the locked piece's color and position for the flash effect
     const flashColor = this.currentPiece ? this.currentPiece.color : 0xffffff;
@@ -10036,6 +10116,8 @@ class GameScene extends Phaser.Scene {
   }
 
   showGameOverScreen() {
+    this.stopAllBGMs?.();
+
     // Zen: use custom recover-only flow (no GAME OVER text) and keep matrix visible
     if (this.isZenSandboxActive && this.isZenSandboxActive()) {
       try {
@@ -10283,7 +10365,11 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.gameOverSfxPlayed = false;
+
     const wasCreditsActive = this.creditsActive;
+    const creditsRollUsesHiddenStack =
+      wasCreditsActive && (this.invisibleStackActive || this.fadingRollActive);
     if (wasCreditsActive) {
       this.rollFailedDuringRoll = true;
       // Topping out during credits is a fail: set to at least green line
@@ -10389,7 +10475,7 @@ class GameScene extends Phaser.Scene {
     this.tgm2_stage3 = null;
     this.tgm2_stage4 = null;
 
-    // Start mino fading immediately (fade-in when topping out during credits)
+    // Hidden/disappearing rolls reveal the stack on topout; visible-stack rolls fade out normally.
     if (this.creditsFadeInDone) {
       // Stack was already revealed via credits fade-in; keep it visible.
       this.fadingComplete = true;
@@ -10397,8 +10483,11 @@ class GameScene extends Phaser.Scene {
       // Ensure stack stays visible by explicitly disabling invisibility
       this.invisibleStackActive = false;
       this.fadingRollActive = false;
-    } else if (wasCreditsActive) {
+    } else if (creditsRollUsesHiddenStack) {
+      this.creditsRevealFinishPending = true;
       this.startMinoFadeIn();
+      this._fadingRollActiveBeforeTopout = undefined;
+      this._invisibleStackActiveBeforeTopout = undefined;
     } else {
       this.startMinoFading();
     }
@@ -10602,6 +10691,7 @@ class GameScene extends Phaser.Scene {
     const levelBottomY = this.borderOffsetY + this.playfieldHeight - 60;
     const levelRowHeight = 20; // Decreased spacing
     const rightX = uiX + 120;
+    const currentLevelX = rightX + 17;
     const levelFontSize = Math.max(
       24,
       Math.min(36, Math.floor(this.cellSize * 1.0)),
@@ -10635,6 +10725,8 @@ class GameScene extends Phaser.Scene {
 
     // For Marathon mode, update separate level display
     if (isMarathonMode && this.levelDisplayText) {
+      this.levelDisplayText.setPosition(uiX + 140, levelBottomY - 4 * levelRowHeight - 83);
+      this.levelDisplayText.setStyle({ fontSize: `${levelFontSize}px` });
       this.levelDisplayText.setText((this.level + 1).toString());
     }
 
@@ -10645,7 +10737,7 @@ class GameScene extends Phaser.Scene {
       const currentLinesText = this.totalLines.toString();
       if (!this.currentLevelText) {
         this.currentLevelText = this.add
-          .text(rightX + 17, currentY - 30, currentLinesText, {
+          .text(currentLevelX, currentY - 30, currentLinesText, {
             fontSize: `${levelFontSize}px`,
             fill: "#fff",
             fontFamily: "Courier New",
@@ -10654,6 +10746,8 @@ class GameScene extends Phaser.Scene {
           })
           .setOrigin(1, 0);
       } else {
+        this.currentLevelText.setPosition(currentLevelX, currentY - 30);
+        this.currentLevelText.setStyle({ fontSize: `${levelFontSize}px` });
         this.currentLevelText.setText(currentLinesText);
       }
       return; // Don't draw bar or cap for Zen mode
@@ -10691,7 +10785,7 @@ class GameScene extends Phaser.Scene {
       isLineCountMode ? this.totalLines.toString() : this.level.toString();
     if (!this.currentLevelText) {
       this.currentLevelText = this.add
-        .text(rightX + 17, currentY - 30, currentValue, {
+        .text(currentLevelX, currentY - 30, currentValue, {
           fontSize: `${levelFontSize}px`,
           fill: "#fff",
           fontFamily: "Courier New",
@@ -10700,6 +10794,8 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(1, 0);
     } else {
+      this.currentLevelText.setPosition(currentLevelX, currentY - 30);
+      this.currentLevelText.setStyle({ fontSize: `${levelFontSize}px` });
       this.currentLevelText.setText(currentValue);
     }
     this.currentLevelText.setVisible(true);
@@ -10763,7 +10859,7 @@ class GameScene extends Phaser.Scene {
     const capText = sectionCap.toString();
     if (!this.capLevelText) {
       this.capLevelText = this.add
-        .text(rightX + 17, capY - 25, capText, {
+        .text(currentLevelX, capY - 25, capText, {
           fontSize: `${levelFontSize}px`,
           fill: "#fff",
           fontFamily: "Courier New",
@@ -10772,6 +10868,8 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(1, 0);
     } else {
+      this.capLevelText.setPosition(currentLevelX, capY - 25);
+      this.capLevelText.setStyle({ fontSize: `${levelFontSize}px` });
       this.capLevelText.setText(capText);
     }
     this.capLevelText.setVisible(true);
@@ -10786,6 +10884,7 @@ class GameScene extends Phaser.Scene {
     const suppressRender = this.suppressPieceRenderThisFrame;
     this.suppressPieceRenderThisFrame = false;
     this.gameGroup.clear(true, true);
+    this.playfieldBorder = null;
 
     // Show loading text during loading phase
     if (this.loadingPhase) {

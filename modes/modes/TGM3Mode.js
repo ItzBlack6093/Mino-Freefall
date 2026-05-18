@@ -89,6 +89,24 @@ class TGM3Mode extends BaseMode {
         return this.modeId;
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'internalLevelOrLevel',
+            stopSource: 'bgmStopLevelOrProgress',
+            useStopBuffer: true,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 499, key: 'mf1_1' },
+                { end: 799, key: 'mf1_2' },
+                { end: 1899, key: 'mf2_4' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     getDisplayedGrade() {
         if (this.tgm3Grading) return this.tgm3Grading.getDisplayedGrade();
         return null;

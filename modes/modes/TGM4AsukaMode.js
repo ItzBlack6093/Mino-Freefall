@@ -69,6 +69,23 @@ class TGM4AsukaMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 999, key: 'mf2_4' },
+                { end: 1300, key: 'mf3_4' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     initializeForGameScene(gameScene) {
         this.gameSceneRef = gameScene || null;
         this.currentRotationSystem = gameScene?.rotationSystem || 'SRS';

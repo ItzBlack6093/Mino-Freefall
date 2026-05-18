@@ -70,6 +70,23 @@ class BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'internalLevelOrLevel',
+            stopSource: 'bgmStopLevelOrProgress',
+            useStopBuffer: true,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 499, key: 'mf1_1' },
+                { end: 999, key: 'mf1_2' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     // Default configuration (can be overridden)
     getDefaultConfig() {
         return {

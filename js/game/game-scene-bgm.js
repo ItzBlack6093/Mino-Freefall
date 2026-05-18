@@ -1,27 +1,62 @@
 (function (global) {
   const GameSceneBgm = {
+    getBgmStyleSetting() {
+      return localStorage.getItem("bgmStyle") === "legacy" ? "legacy" : "modern";
+    },
+
+    resolveBgmAssetKey(logicalKey) {
+      const fallbackKey = logicalKey;
+      if (this.getBgmStyleSetting() !== "legacy") {
+        return fallbackKey;
+      }
+
+      const legacyMap = {
+        mf1_1: "legacy_mf1_1",
+        mf1_2: "legacy_mf1_2",
+        mf1_endroll: "legacy_mf1_endroll",
+        mf2_3: "legacy_mf2_3",
+        mf2_4: "legacy_mf2_4",
+        mf3_4: "legacy_mf3_4",
+        mf3_6: "legacy_mf3_6",
+        mf_std_1: "legacy_mf_std_1",
+        mf_std_2: "legacy_mf_std_2",
+        mf_std_3: "legacy_mf_std_3",
+      };
+      const legacyKey = legacyMap[logicalKey];
+      if (!legacyKey) {
+        return fallbackKey;
+      }
+
+      return this.cache?.audio?.exists(legacyKey) ? legacyKey : fallbackKey;
+    },
+
     initializeBGM() {
       try {
-        const addTrack = (key, opts = {}) => {
+        const addTrack = (logicalKey, opts = {}) => {
           const base = 0.5;
           const vol = base * this.getMasterVolumeSetting() * this.getBGMVolumeSetting();
-          return this.sound.add(key, { loop: false, volume: vol, ...opts });
+          const assetKey = this.resolveBgmAssetKey(logicalKey);
+          return this.sound.add(assetKey, { loop: false, volume: vol, ...opts });
         };
-        this.bgmTracks = {
-          mf1_1: addTrack("mf1_1", { loop: true }),
-          mf1_2: addTrack("mf1_2", { loop: true }),
-          mf1_endroll: addTrack("mf1_endroll", { loop: true }),
-          mf2_3: addTrack("mf2_3", { loop: true }),
-          mf2_4: addTrack("mf2_4", { loop: true }),
-          mf2_endroll: addTrack("mf2_endroll", { loop: true }),
-          mf3_4: addTrack("mf3_4", { loop: true }),
-          mf3_6: addTrack("mf3_6", { loop: true }),
-          mf4_endgame: addTrack("mf4_endgame", { loop: true }),
-          mf_zen: addTrack("mf_zen", { loop: true }),
-          mf_std_1: addTrack("mf_std_1", { loop: true }),
-          mf_std_2: addTrack("mf_std_2", { loop: true }),
-          mf_std_3: addTrack("mf_std_3", { loop: true }),
-        };
+        const trackKeys = [
+          "mf1_1",
+          "mf1_2",
+          "mf1_endroll",
+          "mf2_3",
+          "mf2_4",
+          "mf2_endroll",
+          "mf3_4",
+          "mf3_6",
+          "mf4_endgame",
+          "mf_zen",
+          "mf_std_1",
+          "mf_std_2",
+          "mf_std_3",
+        ];
+        this.bgmTracks = trackKeys.reduce((tracks, key) => {
+          tracks[key] = addTrack(key, { loop: true });
+          return tracks;
+        }, {});
         this.stage1BGM = this.bgmTracks.mf1_1;
         this.stage2BGM = this.bgmTracks.mf1_2;
         this.currentBgmKey = null;
@@ -70,142 +105,105 @@
       }
     },
 
-    resolveBgmModeId(modeId = null, knownModeIds = null) {
-      const aliases = {
-        ta_death: "tadeath",
-        tgm2_master: "tgm2",
-        tgm3_master: "tgm3",
-        tgm3_shirase: "shirase",
-        tgm4_normal: "tgm4",
-        tgm4_asuka_easy: "asuka_easy",
-        tgm4_asuka_normal: "asuka_normal",
-        tgm4_asuka_hard: "asuka_hard",
-      };
-      const candidates = [
-        modeId,
-        this.gameMode && typeof this.gameMode.getModeId === "function"
-          ? this.gameMode.getModeId()
-          : null,
-        this.selectedMode,
-      ].filter((candidate) => typeof candidate === "string" && candidate.length > 0);
-
-      const knownModeIdSet = Array.isArray(knownModeIds) ? new Set(knownModeIds) : null;
-      if (knownModeIdSet) {
-        for (const candidate of candidates) {
-          const normalizedCandidate = aliases[candidate] || candidate;
-          if (knownModeIdSet.has(normalizedCandidate)) {
-            return normalizedCandidate;
-          }
-        }
+    getModeBgmConfig() {
+      if (this.gameMode && typeof this.gameMode.getBgmConfig === "function") {
+        return this.gameMode.getBgmConfig(this);
       }
-
-      for (const candidate of candidates) {
-        const normalizedCandidate = aliases[candidate] || candidate;
-        if (normalizedCandidate) {
-          return normalizedCandidate;
-        }
-      }
-
-      return "tgm1";
+      return null;
     },
 
-    getBgmSchedule(modeId) {
-      const sharedTGM1 = [
-        { end: 499, key: "mf1_1" },
-        { end: 999, key: "mf1_2" },
-      ];
-      const sharedTADeath = [
-        { end: 299, key: "mf1_2" },
-        { end: 499, key: "mf2_3" },
-        { end: 999, key: "mf2_4" },
-      ];
-      const sharedShirase = [
-        { end: 499, key: "mf2_4" },
-        { end: 699, key: "mf3_4" },
-        { end: 999, key: "mf1_2" },
-        { end: 1299, key: "mf3_6" },
-      ];
-      const sharedAsuka = [
-        { end: 999, key: "mf2_4" },
-        { end: 1300, key: "mf3_4" },
-      ];
-      const schedules = {
-        normal: { segments: [{ end: 299, key: "mf1_1" }, { end: 999, key: "mf1_2" }], credits: "mf2_endroll" },
-        easy_normal: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf2_endroll" },
-        easy_easy: { segments: [{ end: 199, key: "mf1_1" }, { end: 999, key: "mf1_endroll" }], credits: "mf1_endroll" },
-        marathon: { segments: [{ end: 49, key: "mf_std_1" }, { end: 99, key: "mf_std_2" }, { end: 999, key: "mf_std_3" }], credits: "mf2_endroll" },
-        sprint_40: { segments: [{ end: 999, key: "mf1_1" }] },
-        sprint_100: { segments: [{ end: 999, key: "mf1_1" }] },
-        ultra: { segments: [{ end: 999, key: "mf1_1" }] },
-        zen: { segments: [{ end: 999, key: "mf_zen" }] },
-        tgm1: { segments: sharedTGM1, credits: "mf2_endroll" },
-        tgm_plus: { segments: sharedTGM1, credits: "mf2_endroll" },
-        master_20g: { segments: sharedTGM1, credits: "mf2_endroll" },
-        tgm2: {
-          segments: [
-            { end: 499, key: "mf1_1" },
-            { end: 699, key: "mf1_2" },
-            { end: 899, key: "mf2_3" },
-            { end: 999, key: "mf2_4" },
-          ],
-          credits: "mf2_endroll",
-        },
-        tgm3: {
-          segments: [
-            { end: 499, key: "mf1_1" },
-            { end: 799, key: "mf1_2" },
-            { end: 1899, key: "mf2_4" },
-          ],
-          credits: "mf2_endroll",
-        },
-        tgm4: {
-          segments: [
-            { end: 299, key: "mf1_1" },
-            { end: 499, key: "mf1_2" },
-            { end: 999, key: "mf2_3" },
-          ],
-          credits: "mf2_endroll",
-        },
-        tadeath: {
-          segments: sharedTADeath,
-          credits: "mf1_endroll",
-          persistFinalSegmentIntoCredits: true,
-        },
-        shirase: { segments: sharedShirase, credits: "mf2_endroll" },
-        tgm4_rounds: {
-          segments: [
-            { end: 299, key: "mf1_2" },
-            { end: 699, key: "mf3_4" },
-            { end: 999, key: "mf3_6" },
-            { end: 1299, key: "mf2_3" },
-            { end: 2600, key: "mf2_4" },
-          ],
-          credits: "mf2_endroll",
-          endgame: "mf4_endgame",
-        },
-        tgm4_1_1: { segments: sharedTGM1, credits: "mf2_endroll" },
-        tgm4_2_1: {
-          segments: sharedTADeath,
-          credits: "mf2_endroll",
-          persistFinalSegmentIntoCredits: true,
-        },
-        tgm4_3_1: {
-          segments: [
-            { end: 499, key: "mf2_4" },
-            { end: 999, key: "mf3_4" },
-            { end: 1299, key: "mf1_2" },
-            { end: 2000, key: "mf3_6" },
-          ],
-          credits: "mf2_endroll",
-        },
-        tgm4_4_1: { segments: [{ end: 999, key: "mf3_6" }], credits: "mf2_endroll" },
-        asuka_easy: { segments: sharedAsuka },
-        asuka_normal: { segments: sharedAsuka },
-        asuka_hard: { segments: sharedAsuka },
-        tgm3_sakura: { segments: [{ end: 999, key: "mf1_1" }] },
-      };
-      const resolvedModeId = this.resolveBgmModeId(modeId, Object.keys(schedules));
-      return schedules[resolvedModeId] || { segments: sharedTGM1, credits: "mf2_endroll" };
+    shouldSuppressModeBgm() {
+      return (
+        !!this.suppressGameplayBgmForImmediateCreditsStart &&
+        (this.creditsPending || this.creditsActive)
+      );
+    },
+
+    getBgmStateValue(source, fallbackValue = 0) {
+      switch (source) {
+        case "level":
+          return typeof this.level === "number" ? this.level : fallbackValue;
+        case "internalLevel":
+          return typeof this.gameMode?.internalLevel === "number"
+            ? this.gameMode.internalLevel
+            : fallbackValue;
+        case "internalLevelOrLevel":
+          return typeof this.gameMode?.internalLevel === "number"
+            ? this.gameMode.internalLevel
+            : typeof this.level === "number"
+              ? this.level
+              : fallbackValue;
+        case "displayLevel":
+          return typeof this.gameMode?.displayLevel === "number"
+            ? this.gameMode.displayLevel
+            : fallbackValue;
+        case "bgmStopLevel":
+          return typeof this.gameMode?.bgmStopLevel === "number"
+            ? this.gameMode.bgmStopLevel
+            : fallbackValue;
+        case "bgmStopLevelOrProgress":
+          return typeof this.gameMode?.bgmStopLevel === "number"
+            ? this.gameMode.bgmStopLevel
+            : fallbackValue;
+        case "linesCleared":
+          return typeof this.gameMode?.linesCleared === "number"
+            ? this.gameMode.linesCleared
+            : fallbackValue;
+        default:
+          return fallbackValue;
+      }
+    },
+
+    getBgmSegmentForProgress(bgmConfig, progressValue) {
+      const segments = Array.isArray(bgmConfig?.segments) ? bgmConfig.segments : [];
+      if (!segments.length) return null;
+
+      const rangedSegment = segments.find((segment) => {
+        const hasStart = typeof segment.start === "number";
+        const hasEnd = typeof segment.end === "number";
+        if (hasStart && hasEnd) {
+          return progressValue >= segment.start && progressValue <= segment.end;
+        }
+        if (hasStart) {
+          return progressValue >= segment.start;
+        }
+        if (hasEnd) {
+          return progressValue <= segment.end;
+        }
+        return false;
+      });
+
+      return rangedSegment || segments[segments.length - 1];
+    },
+
+    hasBgmSegmentChange(bgmConfig, fromProgressValue, toProgressValue) {
+      const fromSegment = this.getBgmSegmentForProgress(bgmConfig, fromProgressValue);
+      const toSegment = this.getBgmSegmentForProgress(bgmConfig, toProgressValue);
+      return !!fromSegment && !!toSegment && fromSegment.key !== toSegment.key;
+    },
+
+    isInConfiguredBgmSilentRange(bgmConfig, progressValue) {
+      const silentRanges = Array.isArray(bgmConfig?.silentRanges) ? bgmConfig.silentRanges : [];
+      return silentRanges.some((range) => {
+        const start = typeof range.start === "number" ? range.start : Number.NEGATIVE_INFINITY;
+        const end = typeof range.end === "number" ? range.end : Number.POSITIVE_INFINITY;
+        return progressValue >= start && progressValue <= end;
+      });
+    },
+
+    getCreditsBgmConfig() {
+      const bgmConfig = this.getModeBgmConfig();
+      if (!bgmConfig || !bgmConfig.credits) {
+        return null;
+      }
+      if (typeof bgmConfig.credits === "string") {
+        return { key: bgmConfig.credits, reuseCurrentTrack: false };
+      }
+      return bgmConfig.credits;
+    },
+
+    getBgmSchedule() {
+      return this.getModeBgmConfig();
     },
 
     playBgmByKey(key) {
@@ -227,80 +225,109 @@
       }
     },
 
+    stopAllBGMs() {
+      const activeTracks = new Set();
+      const registerTrack = (track) => {
+        if (track && typeof track.stop === "function") {
+          activeTracks.add(track);
+        }
+      };
+
+      registerTrack(this.currentBGM);
+      registerTrack(this.creditsBGM);
+
+      if (this.bgmTracks && typeof this.bgmTracks === "object") {
+        Object.values(this.bgmTracks).forEach(registerTrack);
+      }
+
+      [
+        this.stage1BGM,
+        this.stage2BGM,
+        this.tgm2_stage1,
+        this.tgm2_stage2,
+        this.tgm2_stage3,
+        this.tgm2_stage4,
+      ].forEach(registerTrack);
+
+      activeTracks.forEach((track) => {
+        try {
+          track.stop();
+        } catch {}
+      });
+
+      this.currentBGM = null;
+      this.currentBgmKey = null;
+      this.creditsBGM = null;
+      this.creditsBgmStarted = false;
+    },
+
     updateModeBGM() {
-      const modeId =
-        (this.gameMode && typeof this.gameMode.getModeId === "function"
-          ? this.gameMode.getModeId()
-          : this.selectedMode) || "tgm1";
-      const resolvedModeId = this.resolveBgmModeId(modeId);
+      const bgmConfig = this.getModeBgmConfig();
+      if (!bgmConfig || !Array.isArray(bgmConfig.segments) || !bgmConfig.segments.length) return;
 
-      // Custom BGM flow for Marathon: use line count with stop windows
+      if (this.shouldSuppressModeBgm()) {
+        this.stopCurrentBGM();
+        return;
+      }
+
+      const overrideTrack = bgmConfig.overrideTrack || null;
       if (
-        resolvedModeId === "marathon" &&
-        this.gameMode &&
-        typeof this.gameMode.linesCleared === "number"
+        overrideTrack &&
+        overrideTrack.flag &&
+        overrideTrack.key &&
+        this.gameMode?.[overrideTrack.flag]
       ) {
-        const lines = this.gameMode.linesCleared;
-
-        // Stop all music once the goal is hit
-        if (lines >= 150) {
-          this.stopCurrentBGM();
-          return;
-        }
-
-        // Determine which track should be active, with intentional silent gaps
-        let desiredKey = null;
-        if (lines < 55) {
-          desiredKey = "mf_std_1"; // lines 0-54
-        } else if (lines < 60) {
-          // Silent gap between 55-59
-          this.stopCurrentBGM();
-          return;
-        } else if (lines < 115) {
-          desiredKey = "mf_std_2"; // lines 60-114
-        } else if (lines < 120) {
-          // Silent gap between 115-119
-          this.stopCurrentBGM();
-          return;
-        } else {
-          desiredKey = "mf_std_3"; // lines 120-149
-        }
-
-        if (desiredKey && this.currentBgmKey !== desiredKey) {
-          this.playBgmByKey(desiredKey);
+        if (this.currentBgmKey !== overrideTrack.key) {
+          this.playBgmByKey(overrideTrack.key);
         }
         return;
       }
 
-      const schedule = this.getBgmSchedule(resolvedModeId);
-      if (!schedule || !schedule.segments || !schedule.segments.length) return;
-
-      if (resolvedModeId === "tgm4_rounds" && this.gameMode?.endGameActive && schedule.endgame) {
-        if (this.currentBgmKey !== schedule.endgame) {
-          this.playBgmByKey(schedule.endgame);
-        }
-        return;
-      }
-
-      const maxSegment = schedule.segments[schedule.segments.length - 1];
-      const internalLevel =
-        this.gameMode && typeof this.gameMode.internalLevel === "number"
-          ? this.gameMode.internalLevel
-          : this.level;
-      const bgmStopLevel =
-        this.gameMode && typeof this.gameMode.bgmStopLevel === "number"
-          ? this.gameMode.bgmStopLevel
-          : internalLevel;
-      const stopLevel = Math.max(
-        bgmStopLevel,
-        typeof this.bgmInternalLevelBuffer === "number" ? this.bgmInternalLevelBuffer : 0,
+      const progressValue = this.getBgmStateValue(
+        bgmConfig.progressSource || "internalLevelOrLevel",
+        typeof this.level === "number" ? this.level : 0,
       );
-      let segment = schedule.segments.find((s) => internalLevel <= s.end);
-      if (!segment) segment = maxSegment;
-      const isLast = segment === maxSegment;
+      if (typeof bgmConfig.stopAt === "number" && progressValue >= bgmConfig.stopAt) {
+        this.stopCurrentBGM();
+        return;
+      }
 
-      // Stop 10 levels early unless in final segment
-      if (!isLast && stopLevel >= segment.end - 9) {
+      if (this.isInConfiguredBgmSilentRange(bgmConfig, progressValue)) {
+        this.stopCurrentBGM();
+        return;
+      }
+
+      const segment = this.getBgmSegmentForProgress(bgmConfig, progressValue);
+      if (!segment || !segment.key) {
+        this.stopCurrentBGM();
+        return;
+      }
+
+      const segments = bgmConfig.segments;
+      const maxSegment = segments[segments.length - 1];
+      const rawStopValue = this.getBgmStateValue(
+        bgmConfig.stopSource || "bgmStopLevelOrProgress",
+        progressValue,
+      );
+      const stopBufferValue =
+        bgmConfig.useStopBuffer === false
+          ? 0
+          : typeof this.bgmInternalLevelBuffer === "number"
+            ? this.bgmInternalLevelBuffer
+            : 0;
+      const stopLevel = Math.max(
+        rawStopValue,
+        stopBufferValue,
+      );
+      const isLast = segment === maxSegment;
+      const transitionStopOffset = Math.max(0, bgmConfig.transitionStopOffset || 0);
+
+      if (
+        !isLast &&
+        transitionStopOffset > 0 &&
+        typeof segment.end === "number" &&
+        stopLevel >= segment.end - transitionStopOffset
+      ) {
         this.stopCurrentBGM();
         return;
       }
@@ -313,36 +340,24 @@
     // Legacy loop-point manager kept for compatibility; no-op with unified BGM
     manageBGMLoopMode() {},
 
-    shouldPersistCurrentBgmIntoCredits(modeId = null) {
-      const resolvedModeId =
-        modeId ||
-        (this.gameMode && typeof this.gameMode.getModeId === "function"
-          ? this.gameMode.getModeId()
-          : this.selectedMode) ||
-        "";
-      const schedule = this.getBgmSchedule(resolvedModeId);
-      if (!schedule?.persistFinalSegmentIntoCredits || !this.currentBGM || !this.currentBgmKey) {
+    shouldPersistCurrentBgmIntoCredits() {
+      const creditsConfig = this.getCreditsBgmConfig();
+      const bgmConfig = this.getModeBgmConfig();
+      if (
+        !creditsConfig?.reuseCurrentTrack ||
+        !bgmConfig ||
+        !this.currentBGM ||
+        !this.currentBgmKey
+      ) {
         return false;
       }
-      const segments = Array.isArray(schedule.segments) ? schedule.segments : [];
+      const segments = Array.isArray(bgmConfig.segments) ? bgmConfig.segments : [];
       const finalSegment = segments[segments.length - 1];
       return !!finalSegment && this.currentBgmKey === finalSegment.key;
     },
 
     getCreditsBgmKey() {
-      const modeId =
-        (this.gameMode && typeof this.gameMode.getModeId === "function"
-          ? this.gameMode.getModeId()
-          : this.selectedMode) || "";
-      if (modeId === "tgm2_normal") return "mf1_2";
-      if (modeId === "tgm3_easy") {
-        return "mf1_endroll";
-      }
-      const schedule = this.getBgmSchedule(modeId);
-      if (schedule && Object.prototype.hasOwnProperty.call(schedule, "credits")) {
-        return schedule.credits;
-      }
-      return "mf2_endroll";
+      return this.getCreditsBgmConfig()?.key || null;
     },
 
     createCreditsBGM() {
@@ -354,7 +369,7 @@
         if (!creditsBGMKey) {
           return;
         }
-        this.creditsBGM = this.sound.add(creditsBGMKey, {
+        this.creditsBGM = this.sound.add(this.resolveBgmAssetKey(creditsBGMKey), {
           loop: true,
           volume: 0.3,
         });

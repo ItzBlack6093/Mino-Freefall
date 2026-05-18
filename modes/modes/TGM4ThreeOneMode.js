@@ -27,6 +27,25 @@ class TGM4ThreeOneMode extends TGM3ShiraseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 499, key: 'mf2_4' },
+                { end: 999, key: 'mf3_4' },
+                { end: 1299, key: 'mf1_2' },
+                { end: 2000, key: 'mf3_6' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     getTimingForLevel(level) {
         // Same as TGM3 Shirase but DAS is 2 frames shorter across the whole mode
         const frame = n => n / 60;

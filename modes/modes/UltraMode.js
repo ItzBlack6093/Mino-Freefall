@@ -38,6 +38,16 @@ class UltraMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [{ end: 999, key: 'mf1_1' }]
+        };
+    }
+
     // Timing getter methods
     getDAS() { return this.getModeConfig().das; }
     getARR() { return this.getModeConfig().arr; }

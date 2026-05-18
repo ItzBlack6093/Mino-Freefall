@@ -20,7 +20,7 @@ class TGM3ShiraseMode extends BaseMode {
             { minLevel: 500,  maxLevel: 599,  are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 13/60, lineClear: 3/60 },
             { minLevel: 600,  maxLevel: 1099, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 12/60, lineClear: 3/60 },
             { minLevel: 1100, maxLevel: 1199, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 10/60, lineClear: 3/60 },
-            { minLevel: 1200, maxLevel: 1299, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 13/60,  lineClear: 3/60 },
+            { minLevel: 1200, maxLevel: 1299, are: 6/60,  lineAre: 5/60,  das: 6/60,  arr: 1/60, lock: 8/60,  lineClear: 3/60 },
             { minLevel: 1300, maxLevel: 1399, are: 6/60,  lineAre: 6/60,  das: 6/60,  arr: 1/60, lock: 15/60, lineClear: 6/60 }
         ];
         this.currentTimingPhase = 1;
@@ -75,6 +75,25 @@ class TGM3ShiraseMode extends BaseMode {
 
     getName() { return this.modeName; }
     getModeId() { return this.modeId; }
+
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 9,
+            segments: [
+                { end: 499, key: 'mf2_4' },
+                { end: 699, key: 'mf3_4' },
+                { end: 999, key: 'mf1_2' },
+                { end: 1299, key: 'mf3_6' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
 
     onLineClear(gameScene, linesCleared) {
         if (linesCleared > 0) {

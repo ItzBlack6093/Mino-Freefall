@@ -38,6 +38,29 @@ class MarathonMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'linesCleared',
+            stopSource: 'linesCleared',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            stopAt: 150,
+            silentRanges: [
+                { start: 55, end: 59 },
+                { start: 115, end: 119 }
+            ],
+            segments: [
+                { start: 0, end: 54, key: 'mf_std_1' },
+                { start: 60, end: 114, key: 'mf_std_2' },
+                { start: 120, end: 149, key: 'mf_std_3' }
+            ],
+            credits: {
+                key: 'mf2_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     // Timing getter methods
     getDAS() { return this.getConfig().das; }
     getARR() { return this.getConfig().arr; }

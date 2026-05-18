@@ -56,6 +56,20 @@ class TGM3EasyMode extends BaseMode {
     getName() { return this.modeName; }
     getModeId() { return this.modeId; }
 
+    getBgmConfig() {
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [{ end: 999, key: 'mf1_1' }],
+            credits: {
+                key: 'mf1_endroll',
+                reuseCurrentTrack: false
+            }
+        };
+    }
+
     onLevelUpdate(level, oldLevel, type, amount) {
         // Match other modes: pieces advance levels normally until 99; beyond 99 only line clears advance
         let next = oldLevel;
