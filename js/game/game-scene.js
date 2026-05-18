@@ -3617,6 +3617,34 @@ class GameScene extends Phaser.Scene {
     );
   }
 
+  getMasterPikiiPreservedColumns(row, boardState = this.board) {
+    const rowCells = boardState?.grid?.[row];
+    if (!Array.isArray(rowCells) || rowCells.length === 0) {
+      return new Set();
+    }
+
+    const preservedColumns = new Set();
+    let latestTimedColumn = -1;
+    let latestTimedFreezeAt = -Infinity;
+
+    for (let c = 0; c < rowCells.length; c++) {
+      const cell = rowCells[c];
+      if (!this.isMasterPikiiFrozenCell(cell)) continue;
+      preservedColumns.add(c);
+      if (Number.isFinite(cell?.masterPikiiFreezeAt) && cell.masterPikiiFreezeAt > latestTimedFreezeAt) {
+        latestTimedFreezeAt = cell.masterPikiiFreezeAt;
+        latestTimedColumn = c;
+      }
+    }
+
+    // Keep at least one cell clearable so a complete row can never stay fully frozen.
+    if (preservedColumns.size === rowCells.length) {
+      preservedColumns.delete(latestTimedColumn >= 0 ? latestTimedColumn : rowCells.length - 1);
+    }
+
+    return preservedColumns;
+  }
+
   buildBoardAfterLineClear(linesToClear, boardState = this.board) {
     if (!boardState || !Array.isArray(boardState.grid)) return null;
     const rows = boardState.rows || boardState.grid.length || 0;
@@ -3639,25 +3667,21 @@ class GameScene extends Phaser.Scene {
       };
     }
 
-    const preservedFrozenRows = validLines.some((row) =>
-      (boardState.grid[row] || []).some((cell) => this.isMasterPikiiFrozenCell(cell)),
-    );
-
-    if (!preservedFrozenRows) {
-      const clearedSet = new Set(validLines);
+    const applyGravityClear = (sourceGrid, sourceFadeGrid, sourceFrozenGrid, clearedRows) => {
+      const clearedSet = new Set(clearedRows);
       const newGrid = [];
       const newFadeGrid = [];
       const newFrozenGrid = [];
 
       for (let r = 0; r < rows; r++) {
         if (!clearedSet.has(r)) {
-          newGrid.push(boardState.grid[r]);
-          newFadeGrid.push(boardState.fadeGrid?.[r] || Array(cols).fill(0));
-          newFrozenGrid.push(boardState.frozenGrid?.[r] || Array(cols).fill(false));
+          newGrid.push(sourceGrid[r]);
+          newFadeGrid.push(sourceFadeGrid?.[r] || Array(cols).fill(0));
+          newFrozenGrid.push(sourceFrozenGrid?.[r] || Array(cols).fill(false));
         }
       }
 
-      for (let i = 0; i < validLines.length; i++) {
+      for (let i = 0; i < clearedRows.length; i++) {
         newGrid.unshift(Array(cols).fill(0));
         newFadeGrid.unshift(Array(cols).fill(0));
         newFrozenGrid.unshift(Array(cols).fill(false));
@@ -3667,47 +3691,62 @@ class GameScene extends Phaser.Scene {
         grid: newGrid,
         fadeGrid: newFadeGrid,
         frozenGrid: newFrozenGrid,
+      };
+    };
+
+    const preservedColumnsByRow = new Map(
+      validLines.map((row) => [row, this.getMasterPikiiPreservedColumns(row, boardState)]),
+    );
+    const preservedFrozenLines = validLines.filter(
+      (row) => (preservedColumnsByRow.get(row)?.size || 0) > 0,
+    );
+    const preservedFrozenRows = preservedFrozenLines.length > 0;
+
+    if (!preservedFrozenRows) {
+      return {
+        ...applyGravityClear(
+          boardState.grid,
+          boardState.fadeGrid,
+          boardState.frozenGrid,
+          validLines,
+        ),
         preservedFrozenRows,
       };
     }
 
-    // Master Pikii rows only clear their non-frozen minos, so rebuild each column independently.
-    const newGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
-    const newFadeGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
-    const newFrozenGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
+    const preservedSet = new Set(preservedFrozenLines);
+    const normalLines = validLines.filter((row) => !preservedSet.has(row));
+    const workingGrid = boardState.grid.map((row) => row.slice());
+    const workingFadeGrid = Array.from({ length: rows }, (_, r) =>
+      (boardState.fadeGrid?.[r] || Array(cols).fill(0)).slice(),
+    );
+    const workingFrozenGrid = Array.from({ length: rows }, (_, r) =>
+      (boardState.frozenGrid?.[r] || Array(cols).fill(false)).slice(),
+    );
 
-    for (let c = 0; c < cols; c++) {
-      const removedRows = new Set(
-        validLines.filter((row) => !this.isMasterPikiiFrozenCell(boardState.grid?.[row]?.[c])),
-      );
-      const columnCells = [];
-      const columnFade = [];
-      const columnFrozen = [];
-
-      for (let r = 0; r < rows; r++) {
-        if (removedRows.has(r)) continue;
-        columnCells.push(boardState.grid?.[r]?.[c] || 0);
-        columnFade.push(boardState.fadeGrid?.[r]?.[c] || 0);
-        columnFrozen.push(boardState.frozenGrid?.[r]?.[c] || false);
-      }
-
-      for (let i = 0; i < removedRows.size; i++) {
-        columnCells.unshift(0);
-        columnFade.unshift(0);
-        columnFrozen.unshift(false);
-      }
-
-      for (let r = 0; r < rows; r++) {
-        newGrid[r][c] = columnCells[r] || 0;
-        newFadeGrid[r][c] = columnFade[r] || 0;
-        newFrozenGrid[r][c] = columnFrozen[r] || false;
+    // Master Pikii frozen rows clear in place: only the non-frozen minos vanish.
+    for (const row of preservedFrozenLines) {
+      const preservedColumns = preservedColumnsByRow.get(row) || new Set();
+      for (let c = 0; c < cols; c++) {
+        if (!preservedColumns.has(c)) {
+          workingGrid[row][c] = 0;
+          workingFadeGrid[row][c] = 0;
+          workingFrozenGrid[row][c] = false;
+        }
       }
     }
 
+    if (normalLines.length === 0) {
+      return {
+        grid: workingGrid,
+        fadeGrid: workingFadeGrid,
+        frozenGrid: workingFrozenGrid,
+        preservedFrozenRows,
+      };
+    }
+
     return {
-      grid: newGrid,
-      fadeGrid: newFadeGrid,
-      frozenGrid: newFrozenGrid,
+      ...applyGravityClear(workingGrid, workingFadeGrid, workingFrozenGrid, normalLines),
       preservedFrozenRows,
     };
   }
@@ -4604,7 +4643,7 @@ class GameScene extends Phaser.Scene {
     const rightPressed = rightDown || cKeyDown;
     const bothPressed = leftPressed && rightPressed;
 
-    // During top-out, ignore all movement/rotation. Only allow Start/Restart to return to menu.
+    // During top-out, ignore all movement/rotation. Only allow restart once the fade has finished.
     if (this.gameOver) {
       this.leftKeyPressed = false;
       this.rightKeyPressed = false;
@@ -4616,7 +4655,7 @@ class GameScene extends Phaser.Scene {
       this.spaceKeyPressed = false;
       this.lKeyPressed = false;
       this.xKeyPressed = false;
-      if (justDown(this.restartKey)) {
+      if (justDown(this.restartKey) && !this.minoFadeActive && this.fadingComplete) {
         this.goToMenu();
         return;
       }
@@ -6074,15 +6113,7 @@ class GameScene extends Phaser.Scene {
       this.currentPiece.tgm4CycloneRotation = queuedInitialRotation;
     }
 
-    if (this.gameMode && typeof this.gameMode.onPieceSpawn === "function") {
-      const modePiece =
-        this.gameMode.onPieceSpawn.length >= 2
-          ? this.gameMode.onPieceSpawn(this.currentPiece, this)
-          : this.gameMode.onPieceSpawn(this);
-      if (modePiece) {
-        this.currentPiece = modePiece;
-      }
-    }
+    this.applyModeSpawnStateToCurrentPiece();
 
     this.positionPieceAtSpawn(this.currentPiece);
 
@@ -7333,6 +7364,19 @@ class GameScene extends Phaser.Scene {
     return { type: t.toUpperCase(), textureKey, tgm4CycloneRotation };
   }
 
+  applyModeSpawnStateToCurrentPiece() {
+    if (!this.currentPiece || !this.gameMode || typeof this.gameMode.onPieceSpawn !== "function") {
+      return;
+    }
+    const modePiece =
+      this.gameMode.onPieceSpawn.length >= 2
+        ? this.gameMode.onPieceSpawn(this.currentPiece, this)
+        : this.gameMode.onPieceSpawn(this);
+    if (modePiece) {
+      this.currentPiece = modePiece;
+    }
+  }
+
   performHoldSwap({ bypassCanHold = false, isIHS = false } = {}) {
     if (!this.holdEnabled) return false;
     if (!bypassCanHold && !this.canHold) return false;
@@ -7382,6 +7426,7 @@ class GameScene extends Phaser.Scene {
     if (!preserveCycloneHoldRotation || !Number.isInteger(this.currentPiece.tgm4CycloneRotation)) {
       this.resetPieceToDefaultRotation(this.currentPiece);
     }
+    this.applyModeSpawnStateToCurrentPiece();
     this.positionPieceAtSpawn(this.currentPiece);
 
     this.canHold = false;
@@ -9702,6 +9747,8 @@ class GameScene extends Phaser.Scene {
     // Rebuild placed mino tracking from current board state to ensure all rows fade.
     this.placedMinos = [];
     this.placedMinoRows = [];
+    this.fadingComplete = false;
+    this.gameOverFadeDoneTime = null;
     for (let y = 0; y < this.board.rows; y++) {
       for (let x = 0; x < this.board.cols; x++) {
         const cell = this.board.grid[y][x];
@@ -9767,6 +9814,8 @@ class GameScene extends Phaser.Scene {
     // Rebuild placed mino tracking from current board state.
     this.placedMinos = [];
     this.placedMinoRows = [];
+    this.fadingComplete = false;
+    this.gameOverFadeDoneTime = null;
     for (let y = 0; y < this.board.rows; y++) {
       for (let x = 0; x < this.board.cols; x++) {
         const cell = this.board.grid[y][x];
