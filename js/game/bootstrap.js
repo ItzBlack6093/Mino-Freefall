@@ -9,6 +9,7 @@ const config = {
     BootScene,
     MenuScene,
     SettingsScene,
+    BgmRoomScene,
     MatchmakingScene,
     AssetLoaderScene,
     LoadingScreenScene,

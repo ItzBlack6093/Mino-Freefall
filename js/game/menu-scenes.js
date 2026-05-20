@@ -69,6 +69,46 @@ const SHARED_AUDIO_ASSETS = [
   ...SHARED_SFX_ASSETS,
 ];
 
+const BGM_ROOM_PACKS = [
+  {
+    key: "modern",
+    label: "Mino Freefall",
+    color: "#00e5ff",
+    tracks: [
+      { key: "mf1_1", label: "TGM1 Stage 1" },
+      { key: "mf1_2", label: "TGM1 Stage 2" },
+      { key: "mf1_endroll", label: "TGM1 End Roll" },
+      { key: "mf2_3", label: "TGM2 Stage 3" },
+      { key: "mf2_4", label: "TGM2 Stage 4" },
+      { key: "mf2_endroll", label: "TGM2 End Roll" },
+      { key: "mf3_4", label: "TGM3 Stage 4" },
+      { key: "mf3_6", label: "TGM3 Stage 6" },
+      { key: "mf4_endgame", label: "TGM4 Endgame" },
+      { key: "mf_zen", label: "Zen" },
+      { key: "mf_std_1", label: "Standard 1" },
+      { key: "mf_std_2", label: "Standard 2" },
+      { key: "mf_std_3", label: "Standard 3" },
+    ],
+  },
+  {
+    key: "legacy",
+    label: "Legacy",
+    color: "#ffb347",
+    tracks: [
+      { key: "legacy_mf1_1", label: "TGM1 Stage 1" },
+      { key: "legacy_mf1_2", label: "TGM1 Stage 2" },
+      { key: "legacy_mf1_endroll", label: "TGM1 End Roll" },
+      { key: "legacy_mf2_3", label: "TGM2 Stage 3" },
+      { key: "legacy_mf2_4", label: "TGM2 Stage 4" },
+      { key: "legacy_mf3_4", label: "TGM3 Stage 4" },
+      { key: "legacy_mf3_6", label: "TGM3 Stage 6" },
+      { key: "legacy_mf_std_1", label: "Standard 1" },
+      { key: "legacy_mf_std_2", label: "Standard 2" },
+      { key: "legacy_mf_std_3", label: "Standard 3" },
+    ],
+  },
+];
+
 const BOOT_MARQUEE_SHAPES = [
   [[0, 1], [1, 1], [2, 1], [3, 1]], // I
   [[0, 0], [1, 0], [0, 1], [1, 1]], // O
@@ -276,6 +316,8 @@ class MenuScene extends Phaser.Scene {
     this.startButton = null;
     this.settingsButton = null;
     this.settingsBorder = null;
+    this.bgmRoomButton = null;
+    this.bgmRoomBorder = null;
     this.pendingStartData = null;
     this.startingLevelPromptActive = false;
     this.startingLevelPromptBg = null;
@@ -806,6 +848,43 @@ class MenuScene extends Phaser.Scene {
       this.settingsButton.setStyle({ fill: "#ffffff" });
     });
 
+    const bgmRoomButtonWidth = 150;
+    const bgmRoomButtonHeight = 40;
+    const bgmRoomButtonX = centerX - 200;
+    const bgmRoomButtonY = this.cameras.main.height - 60;
+
+    this.bgmRoomBorder = this.add.graphics();
+    this.bgmRoomBorder.lineStyle(2, 0xffffff);
+    this.bgmRoomBorder.strokeRect(
+      bgmRoomButtonX - bgmRoomButtonWidth / 2,
+      bgmRoomButtonY - bgmRoomButtonHeight / 2,
+      bgmRoomButtonWidth,
+      bgmRoomButtonHeight,
+    );
+
+    this.bgmRoomButton = this.add
+      .text(bgmRoomButtonX, bgmRoomButtonY, "BGM Room", {
+        fontSize: "18px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+
+    this.bgmRoomButton.on("pointerdown", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
+      this.scene.start("BgmRoomScene", { returnSceneKey: "MenuScene" });
+    });
+
+    this.bgmRoomButton.on("pointerover", () => {
+      this.bgmRoomButton.setStyle({ fill: "#ffff00" });
+    });
+
+    this.bgmRoomButton.on("pointerout", () => {
+      this.bgmRoomButton.setStyle({ fill: "#ffffff" });
+    });
+
     // Arrow click handlers
     this.upSubmodeArrow.on("pointerdown", () => {
       if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
@@ -894,6 +973,24 @@ class MenuScene extends Phaser.Scene {
       );
     }
 
+    if (this.bgmRoomButton && this.bgmRoomBorder) {
+      const buttonWidth = 150;
+      const buttonHeight = 40;
+      const buttonX = centerX - 200;
+      const buttonY = this.cameras.main.height - 60;
+
+      this.bgmRoomButton.setPosition(buttonX, buttonY);
+
+      this.bgmRoomBorder.clear();
+      this.bgmRoomBorder.lineStyle(2, 0xffffff);
+      this.bgmRoomBorder.strokeRect(
+        buttonX - buttonWidth / 2,
+        buttonY - buttonHeight / 2,
+        buttonWidth,
+        buttonHeight,
+      );
+    }
+
     // Update profile badge position
     if (this.profileBadgeGroup) {
       const padding = 20;
@@ -968,6 +1065,11 @@ class MenuScene extends Phaser.Scene {
       }
       if (this.hasBlockingOverlay()) return;
       this.scene.start("SettingsScene");
+    });
+
+    this.input.keyboard.on("keydown-B", () => {
+      if (this.hasBlockingOverlay() || this.startingLevelPromptActive) return;
+      this.scene.start("BgmRoomScene", { returnSceneKey: "MenuScene" });
     });
   }
 
@@ -2158,6 +2260,7 @@ class SettingsScene extends Phaser.Scene {
     this.bgmStyleLabel = null;
     this.bgmStyleText = null;
     this.bgmStyleHint = null;
+    this.bgmRoomOpenButton = null;
 
     // ARS lock reset mode toggle
     this.arsResetModeText = null;
@@ -2214,6 +2317,10 @@ class SettingsScene extends Phaser.Scene {
     this.settingsTabs = [];
     this.activeSettingsTab = "controls";
     this.settingTabObjects = {};
+  }
+
+  init(data = {}) {
+    this.activeSettingsTab = data.activeTab || "controls";
   }
 
   preload() {
@@ -2686,6 +2793,28 @@ class SettingsScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
     this.updateBGMStyleDisplay();
+
+    this.bgmRoomOpenButton = this.add
+      .text(centerX, centerY + 130, "Open BGM Room", {
+        fontSize: "18px",
+        fill: "#00ff88",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    this.bgmRoomOpenButton.on("pointerdown", () => {
+      this.scene.start("BgmRoomScene", {
+        returnSceneKey: "SettingsScene",
+        returnSceneData: { activeTab: "audio" },
+      });
+    });
+    this.bgmRoomOpenButton.on("pointerover", () => {
+      this.bgmRoomOpenButton.setStyle({ fill: "#ffff00" });
+    });
+    this.bgmRoomOpenButton.on("pointerout", () => {
+      this.bgmRoomOpenButton.setStyle({ fill: "#00ff88" });
+    });
 
     // Timing sliders (right column, aligned with master volume)
     const timingX = centerX - 300; // move timing sliders further right of audio sliders
@@ -3300,6 +3429,7 @@ class SettingsScene extends Phaser.Scene {
         this.bgmStyleLabel,
         this.bgmStyleText,
         this.bgmStyleHint,
+        this.bgmRoomOpenButton,
       ],
       profile: [
         this.profileNameLabel,
@@ -4882,6 +5012,591 @@ class SettingsScene extends Phaser.Scene {
     if (this.editNameContainer) {
       this.editNameContainer.destroy();
     }
+  }
+}
+
+class BgmRoomScene extends Phaser.Scene {
+  constructor() {
+    super({ key: "BgmRoomScene" });
+    this.returnSceneKey = "MenuScene";
+    this.returnSceneData = {};
+    this.trackTextsByPack = {};
+    this.selectedTrackIndices = {};
+    this.selectedPackKey = BGM_ROOM_PACKS[0].key;
+    this.currentTrackKey = null;
+    this.currentTrackPackKey = null;
+    this.previewSound = null;
+    this.previewSeek = 0;
+    this.previewStartedAtMs = null;
+    this.previewState = "stopped";
+    this.trackDurationCache = {};
+    this.seekDragActive = false;
+  }
+
+  init(data = {}) {
+    this.returnSceneKey = data.returnSceneKey || "MenuScene";
+    this.returnSceneData = data.returnSceneData || {};
+  }
+
+  preload() {
+    if (!hasSharedGameAssets(this)) {
+      queueSharedGameAssets(this);
+    }
+  }
+
+  create() {
+    this.sound.setVolume(this.getMasterVolume());
+    BGM_ROOM_PACKS.forEach((pack) => {
+      this.selectedTrackIndices[pack.key] = 0;
+    });
+    this.currentTrackKey = this.getSelectedTrackInfo().track?.key || null;
+    this.currentTrackPackKey = this.selectedPackKey;
+
+    const width = this.cameras.main.width;
+    const height = this.cameras.main.height;
+    const leftPanelWidth = Math.max(420, Math.floor(width * 0.54));
+    const rightPanelX = leftPanelWidth + 48;
+    const controlsWidth = Math.max(300, width - rightPanelX - 48);
+    const headingY = 148;
+    const firstTrackY = 188;
+    const rowSpacing = 24;
+    const modernX = 72;
+    const legacyX = 72 + Math.floor(leftPanelWidth / 2);
+
+    this.panelGraphics = this.add.graphics();
+    this.panelGraphics.fillStyle(0x0d0d0d, 0.96);
+    this.panelGraphics.fillRect(24, 96, leftPanelWidth, height - 140);
+    this.panelGraphics.fillStyle(0x121212, 0.96);
+    this.panelGraphics.fillRect(rightPanelX, 96, controlsWidth, height - 140);
+    this.panelGraphics.lineStyle(2, 0xffffff, 1);
+    this.panelGraphics.strokeRect(24, 96, leftPanelWidth, height - 140);
+    this.panelGraphics.strokeRect(rightPanelX, 96, controlsWidth, height - 140);
+
+    this.add
+      .text(width / 2, 46, "BGM ROOM", {
+        fontSize: "40px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.add
+      .text(width / 2, 76, "Browse every modern and legacy BGM from one place.", {
+        fontSize: "16px",
+        fill: "#cccccc",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.createActionButton(width - 120, 48, "Back", "#ffdd55", () => {
+      this.returnToPreviousScene();
+    });
+
+    BGM_ROOM_PACKS.forEach((pack, packIndex) => {
+      const columnX = packIndex === 0 ? modernX : legacyX;
+      this.add
+        .text(columnX, headingY, pack.label, {
+          fontSize: "22px",
+          fill: pack.color,
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        })
+        .setOrigin(0, 0.5);
+
+      this.trackTextsByPack[pack.key] = pack.tracks.map((track, index) => {
+        const y = firstTrackY + index * rowSpacing;
+        const text = this.add
+          .text(columnX, y, track.label, {
+            fontSize: "16px",
+            fill: "#888888",
+            fontFamily: "Courier New",
+          })
+          .setOrigin(0, 0.5)
+          .setInteractive();
+        text.on("pointerdown", () => {
+          this.selectTrack(pack.key, index, { autoPlay: true });
+        });
+        return text;
+      });
+    });
+
+    const controlsX = rightPanelX + controlsWidth / 2;
+    this.selectedTrackTitleText = this.add
+      .text(controlsX, 150, "", {
+        fontSize: "24px",
+        fill: "#00e5ff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+        align: "center",
+        wordWrap: { width: controlsWidth - 50 },
+      })
+      .setOrigin(0.5);
+
+    this.selectedTrackMetaText = this.add
+      .text(controlsX, 188, "", {
+        fontSize: "16px",
+        fill: "#bbbbbb",
+        fontFamily: "Courier New",
+        align: "center",
+        wordWrap: { width: controlsWidth - 50 },
+      })
+      .setOrigin(0.5);
+
+    this.playbackStatusText = this.add
+      .text(controlsX, 236, "", {
+        fontSize: "18px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.playbackTimeText = this.add
+      .text(controlsX, 268, "", {
+        fontSize: "18px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    const buttonY = 328;
+    this.createActionButton(controlsX - 170, buttonY, "Play", "#00ff88", () => {
+      this.playSelectedTrack();
+    });
+    this.createActionButton(controlsX - 56, buttonY, "Pause", "#ffaa33", () => {
+      this.pausePlayback();
+    });
+    this.createActionButton(controlsX + 58, buttonY, "-5s", "#66ccff", () => {
+      this.seekBy(-5);
+    });
+    this.createActionButton(controlsX + 172, buttonY, "+5s", "#66ccff", () => {
+      this.seekBy(5);
+    });
+    this.createActionButton(controlsX, buttonY + 48, "Restart", "#ff6699", () => {
+      this.restartSelectedTrack();
+    });
+
+    this.add
+      .text(controlsX, 398, "Seek", {
+        fontSize: "18px",
+        fill: "#ffff66",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+
+    this.seekBarWidth = Math.max(240, controlsWidth - 90);
+    this.seekBarHeight = 14;
+    this.seekBarX = controlsX - this.seekBarWidth / 2;
+    this.seekBarY = 428;
+    this.seekBarGraphics = this.add.graphics();
+    this.seekBarZone = this.add
+      .zone(this.seekBarX, this.seekBarY - 14, this.seekBarWidth, 34)
+      .setOrigin(0, 0)
+      .setInteractive();
+    this.seekBarZone.on("pointerdown", (pointer) => {
+      this.seekDragActive = true;
+      this.seekToPointer(pointer);
+    });
+
+    this.instructionsText = this.add
+      .text(
+        controlsX,
+        height - 86,
+        "UP/DOWN: track  LEFT/RIGHT: pack  SPACE: play/pause  A/D: seek  ESC: back",
+        {
+          fontSize: "14px",
+          fill: "#aaaaaa",
+          fontFamily: "Courier New",
+          align: "center",
+          wordWrap: { width: controlsWidth - 50 },
+        },
+      )
+      .setOrigin(0.5);
+
+    this.input.on("pointermove", (pointer) => {
+      if (this.seekDragActive && pointer.isDown) {
+        this.seekToPointer(pointer);
+      }
+    });
+    this.input.on("pointerup", () => {
+      this.seekDragActive = false;
+    });
+
+    this.setupKeyboardControls();
+    this.selectTrack(this.selectedPackKey, 0, { autoPlay: false });
+    createOrUpdateGlobalOverlay(this, { modeLabel: "BGM Room", modeTypeName: "" });
+
+    this.events.once("shutdown", () => {
+      this.stopPreviewSound();
+      this.seekDragActive = false;
+      if (this.input?.keyboard?.removeAllListeners) {
+        this.input.keyboard.removeAllListeners();
+      }
+    });
+  }
+
+  update() {
+    this.updatePlaybackUi();
+  }
+
+  createActionButton(x, y, label, color, handler) {
+    const width = Math.max(88, label.length * 11 + 28);
+    const height = 34;
+    const bg = this.add.rectangle(0, 0, width, height, 0x1b1b1b, 0.98);
+    bg.setStrokeStyle(2, 0xffffff, 1);
+    const text = this.add
+      .text(0, 0, label, {
+        fontSize: "16px",
+        fill: color,
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5);
+    const container = this.add.container(x, y, [bg, text]);
+    container.setSize(width, height);
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-width / 2, -height / 2, width, height),
+      Phaser.Geom.Rectangle.Contains,
+    );
+    container.on("pointerdown", handler);
+    container.on("pointerover", () => {
+      bg.setFillStyle(0x2b2b2b, 1);
+      text.setFill("#ffffff");
+    });
+    container.on("pointerout", () => {
+      bg.setFillStyle(0x1b1b1b, 0.98);
+      text.setFill(color);
+    });
+    return container;
+  }
+
+  setupKeyboardControls() {
+    if (this.input?.keyboard?.removeAllListeners) {
+      this.input.keyboard.removeAllListeners();
+    }
+    this.input.keyboard.on("keydown-UP", () => this.moveTrackSelection(-1));
+    this.input.keyboard.on("keydown-DOWN", () => this.moveTrackSelection(1));
+    this.input.keyboard.on("keydown-LEFT", () => this.switchPack(-1));
+    this.input.keyboard.on("keydown-RIGHT", () => this.switchPack(1));
+    this.input.keyboard.on("keydown-SPACE", () => {
+      if (this.previewState === "playing") {
+        this.pausePlayback();
+      } else {
+        this.playSelectedTrack();
+      }
+    });
+    this.input.keyboard.on("keydown-ENTER", () => this.playSelectedTrack());
+    this.input.keyboard.on("keydown-A", () => this.seekBy(-5));
+    this.input.keyboard.on("keydown-D", () => this.seekBy(5));
+    this.input.keyboard.on("keydown-R", () => this.restartSelectedTrack());
+    this.input.keyboard.on("keydown-ESC", () => this.returnToPreviousScene());
+  }
+
+  getPackByKey(packKey) {
+    return BGM_ROOM_PACKS.find((pack) => pack.key === packKey) || BGM_ROOM_PACKS[0];
+  }
+
+  getSelectedTrackInfo() {
+    const pack = this.getPackByKey(this.selectedPackKey);
+    const index = Phaser.Math.Clamp(
+      this.selectedTrackIndices[pack.key] || 0,
+      0,
+      pack.tracks.length - 1,
+    );
+    return { pack, index, track: pack.tracks[index] || null };
+  }
+
+  selectTrack(packKey, index, { autoPlay = true } = {}) {
+    const pack = this.getPackByKey(packKey);
+    const clampedIndex = Phaser.Math.Clamp(index, 0, pack.tracks.length - 1);
+    this.selectedPackKey = pack.key;
+    this.selectedTrackIndices[pack.key] = clampedIndex;
+    const track = pack.tracks[clampedIndex];
+    this.currentTrackKey = track?.key || null;
+    this.currentTrackPackKey = pack.key;
+    this.previewSeek = 0;
+    this.previewState = "stopped";
+    this.previewStartedAtMs = null;
+    this.stopPreviewSound();
+    this.ensureTrackDuration(track);
+    this.refreshTrackList();
+    this.updatePlaybackUi();
+    if (autoPlay && track) {
+      this.startTrack(track, pack.key, 0);
+    }
+  }
+
+  moveTrackSelection(direction) {
+    const pack = this.getPackByKey(this.selectedPackKey);
+    const nextIndex = Phaser.Math.Wrap(
+      (this.selectedTrackIndices[pack.key] || 0) + direction,
+      0,
+      pack.tracks.length,
+    );
+    this.selectTrack(pack.key, nextIndex, { autoPlay: true });
+  }
+
+  switchPack(direction) {
+    const currentPackIndex = BGM_ROOM_PACKS.findIndex((pack) => pack.key === this.selectedPackKey);
+    const nextPack =
+      BGM_ROOM_PACKS[Phaser.Math.Wrap(currentPackIndex + direction, 0, BGM_ROOM_PACKS.length)];
+    const currentIndex = this.selectedTrackIndices[this.selectedPackKey] || 0;
+    const nextIndex = Math.min(currentIndex, nextPack.tracks.length - 1);
+    this.selectTrack(nextPack.key, nextIndex, { autoPlay: true });
+  }
+
+  getMasterVolume() {
+    const volume = parseFloat(localStorage.getItem("masterVolume") || "1");
+    return Number.isFinite(volume) ? Phaser.Math.Clamp(volume, 0, 1) : 1;
+  }
+
+  getBgmVolume() {
+    const volume = parseFloat(localStorage.getItem("bgmVolume") || "1");
+    return Number.isFinite(volume) ? Phaser.Math.Clamp(volume, 0, 1) : 1;
+  }
+
+  getPreviewTrackVolume() {
+    return 0.5 * this.getBgmVolume();
+  }
+
+  getSoundDuration(sound) {
+    const duration = sound?.totalDuration ?? sound?.duration ?? 0;
+    return Number.isFinite(duration) && duration > 0 ? duration : 0;
+  }
+
+  ensureTrackDuration(track) {
+    if (!track) return 0;
+    if (this.trackDurationCache[track.key]) {
+      return this.trackDurationCache[track.key];
+    }
+    let duration = 0;
+    if (this.previewSound && this.currentTrackKey === track.key) {
+      duration = this.getSoundDuration(this.previewSound);
+    } else {
+      try {
+        const tempSound = this.sound.add(track.key, { loop: false, volume: 0 });
+        duration = this.getSoundDuration(tempSound);
+        tempSound.destroy?.();
+      } catch {}
+    }
+    if (duration > 0) {
+      this.trackDurationCache[track.key] = duration;
+    }
+    return duration;
+  }
+
+  startTrack(track, packKey, seekSeconds = 0) {
+    if (!track) return;
+    this.stopPreviewSound();
+    try {
+      const sound = this.sound.add(track.key, {
+        loop: false,
+        volume: this.getPreviewTrackVolume(),
+      });
+      const duration = this.getSoundDuration(sound);
+      if (duration > 0) {
+        this.trackDurationCache[track.key] = duration;
+      }
+      const safeSeek =
+        duration > 0
+          ? Phaser.Math.Clamp(seekSeconds, 0, Math.max(duration - 0.05, 0))
+          : Math.max(0, seekSeconds);
+      sound.once("complete", () => {
+        this.previewStartedAtMs = null;
+        this.previewState = "ended";
+        this.previewSeek = this.trackDurationCache[track.key] || 0;
+        this.updatePlaybackUi();
+        this.refreshTrackList();
+      });
+      sound.play({ seek: safeSeek, loop: false });
+      this.previewSound = sound;
+      this.previewSeek = safeSeek;
+      this.previewStartedAtMs = this.time.now - safeSeek * 1000;
+      this.previewState = "playing";
+      this.currentTrackKey = track.key;
+      this.currentTrackPackKey = packKey;
+      this.refreshTrackList();
+      this.updatePlaybackUi();
+    } catch (error) {
+      console.warn("[BgmRoomScene] Failed to start track", track.key, error);
+      this.previewStartedAtMs = null;
+      this.previewState = "stopped";
+      this.updatePlaybackUi();
+    }
+  }
+
+  stopPreviewSound() {
+    if (!this.previewSound) return;
+    try {
+      this.previewSound.stop?.();
+      this.previewSound.destroy?.();
+    } catch {}
+    this.previewSound = null;
+  }
+
+  playSelectedTrack() {
+    const { pack, track } = this.getSelectedTrackInfo();
+    if (!track) return;
+    const duration = this.ensureTrackDuration(track);
+    const resumeFrom =
+      this.previewState === "ended"
+        ? 0
+        : duration > 0
+          ? Phaser.Math.Clamp(this.previewSeek, 0, duration)
+          : Math.max(0, this.previewSeek);
+    this.startTrack(track, pack.key, resumeFrom);
+  }
+
+  pausePlayback() {
+    if (this.previewState !== "playing") return;
+    this.previewSeek = this.getCurrentPreviewPosition();
+    this.previewStartedAtMs = null;
+    this.previewState = "paused";
+    this.stopPreviewSound();
+    this.refreshTrackList();
+    this.updatePlaybackUi();
+  }
+
+  restartSelectedTrack() {
+    this.previewSeek = 0;
+    this.playSelectedTrack();
+  }
+
+  getCurrentPreviewPosition() {
+    if (this.previewState !== "playing" || this.previewStartedAtMs === null) {
+      return this.previewSeek;
+    }
+    const { track } = this.getSelectedTrackInfo();
+    const duration = this.ensureTrackDuration(track);
+    const elapsed = Math.max(0, (this.time.now - this.previewStartedAtMs) / 1000);
+    return duration > 0 ? Math.min(elapsed, duration) : elapsed;
+  }
+
+  seekTo(seconds) {
+    const { pack, track } = this.getSelectedTrackInfo();
+    if (!track) return;
+    const duration = this.ensureTrackDuration(track);
+    const clamped =
+      duration > 0 ? Phaser.Math.Clamp(seconds, 0, duration) : Math.max(0, seconds);
+    this.previewSeek = clamped;
+    if (this.previewState === "playing") {
+      this.startTrack(track, pack.key, clamped);
+    } else {
+      if (this.previewState === "ended" && clamped < duration) {
+        this.previewState = "paused";
+      }
+      this.updatePlaybackUi();
+    }
+  }
+
+  seekBy(deltaSeconds) {
+    const base =
+      this.previewState === "playing" ? this.getCurrentPreviewPosition() : this.previewSeek;
+    this.seekTo(base + deltaSeconds);
+  }
+
+  seekToPointer(pointer) {
+    const { track } = this.getSelectedTrackInfo();
+    const duration = this.ensureTrackDuration(track);
+    if (!duration) return;
+    const relativeX = Phaser.Math.Clamp(pointer.x - this.seekBarX, 0, this.seekBarWidth);
+    this.seekTo((relativeX / this.seekBarWidth) * duration);
+  }
+
+  formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) return "--:--";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  }
+
+  refreshTrackList() {
+    BGM_ROOM_PACKS.forEach((pack) => {
+      (this.trackTextsByPack[pack.key] || []).forEach((text, index) => {
+        const track = pack.tracks[index];
+        const isSelected =
+          pack.key === this.selectedPackKey && index === this.selectedTrackIndices[pack.key];
+        const isCurrent = track.key === this.currentTrackKey;
+        let marker = "[ ]";
+        let fill = "#888888";
+        if (isCurrent && this.previewState === "playing") {
+          marker = "[>]";
+          fill = "#00ff88";
+        } else if (isCurrent && this.previewState === "paused") {
+          marker = "[||]";
+          fill = "#ffaa33";
+        } else if (isSelected) {
+          marker = "[*]";
+          fill = pack.color;
+        }
+        text.setText(`${marker} ${track.label}`);
+        text.setFill(fill);
+      });
+    });
+  }
+
+  updatePlaybackUi() {
+    const { pack, track, index } = this.getSelectedTrackInfo();
+    if (!track) return;
+    const duration = this.ensureTrackDuration(track);
+    const current =
+      this.previewState === "playing" ? this.getCurrentPreviewPosition() : this.previewSeek;
+    const statusTextMap = {
+      playing: "PLAYING",
+      paused: "PAUSED",
+      ended: "ENDED",
+      stopped: "READY",
+    };
+    this.selectedTrackTitleText?.setText(track.label);
+    this.selectedTrackTitleText?.setFill(pack.color);
+    this.selectedTrackMetaText?.setText(
+      `${pack.label} pack  |  Track ${index + 1}/${pack.tracks.length}  |  ${track.key}`,
+    );
+    this.playbackStatusText?.setText(
+      `Status: ${statusTextMap[this.previewState] || "READY"}`,
+    );
+    this.playbackTimeText?.setText(
+      `${this.formatTime(current)} / ${duration > 0 ? this.formatTime(duration) : "--:--"}`,
+    );
+
+    if (this.seekBarGraphics) {
+      const pct = duration > 0 ? Phaser.Math.Clamp(current / duration, 0, 1) : 0;
+      this.seekBarGraphics.clear();
+      this.seekBarGraphics.fillStyle(0x202020, 1);
+      this.seekBarGraphics.fillRect(
+        this.seekBarX,
+        this.seekBarY,
+        this.seekBarWidth,
+        this.seekBarHeight,
+      );
+      this.seekBarGraphics.fillStyle(pack.key === "legacy" ? 0xffb347 : 0x00e5ff, 1);
+      this.seekBarGraphics.fillRect(
+        this.seekBarX,
+        this.seekBarY,
+        this.seekBarWidth * pct,
+        this.seekBarHeight,
+      );
+      this.seekBarGraphics.lineStyle(2, 0xffffff, 1);
+      this.seekBarGraphics.strokeRect(
+        this.seekBarX,
+        this.seekBarY,
+        this.seekBarWidth,
+        this.seekBarHeight,
+      );
+      this.seekBarGraphics.fillStyle(0xffffff, 1);
+      this.seekBarGraphics.fillCircle(
+        this.seekBarX + this.seekBarWidth * pct,
+        this.seekBarY + this.seekBarHeight / 2,
+        7,
+      );
+    }
+  }
+
+  returnToPreviousScene() {
+    this.stopPreviewSound();
+    this.scene.start(this.returnSceneKey, this.returnSceneData);
   }
 }
 

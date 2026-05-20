@@ -167,6 +167,8 @@ class ModeManager {
 
     // Clear mode cache (for memory management)
     clearCache() {
+        if (!(this.modes instanceof Map)) this.modes = new Map();
+        if (!(this.loadedModes instanceof Set)) this.loadedModes = new Set();
         this.modes.clear();
         this.loadedModes.clear();
         this.currentMode = null;
@@ -174,6 +176,8 @@ class ModeManager {
 
     // Get memory usage statistics
     getMemoryStats() {
+        if (!(this.loadedModes instanceof Set)) this.loadedModes = new Set();
+        if (!(this.modes instanceof Map)) this.modes = new Map();
         return {
             loadedModes: this.loadedModes.size,
             cachedInstances: this.modes.size,

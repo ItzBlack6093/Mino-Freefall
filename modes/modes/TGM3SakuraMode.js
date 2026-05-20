@@ -77,6 +77,13 @@ class TGM3SakuraMode extends BaseMode {
         };
     }
 
+    ensureJewelSet() {
+        if (!(this.jewelSet instanceof Set)) {
+            this.jewelSet = new Set();
+        }
+        return this.jewelSet;
+    }
+
     // --- Lifecycle hooks ---
     initializeForGameScene(gameScene) {
         super.initializeForGameScene(gameScene);
@@ -182,7 +189,8 @@ class TGM3SakuraMode extends BaseMode {
         }
 
         // Completion / fail checks
-        if (this.jewelSet.size === 0) {
+        const jewelSet = this.ensureJewelSet();
+        if (jewelSet.size === 0) {
             this.finishStage(gameScene, true);
         } else if (this.mainTimer <= 0 || (inMainStages && this.stageTimer <= 0)) {
             this.finishStage(gameScene, false);
@@ -209,12 +217,13 @@ class TGM3SakuraMode extends BaseMode {
         }
         // Detect cleared jewels (cells now empty)
         const clearedJewels = [];
-        for (const key of Array.from(this.jewelSet)) {
+        const jewelSet = this.ensureJewelSet();
+        for (const key of Array.from(jewelSet)) {
             const [r, c] = key.split(',').map(Number);
             const cell = (gameScene.board.grid[r] || [])[c];
             if (!cell) {
                 clearedJewels.push(key);
-                this.jewelSet.delete(key);
+                jewelSet.delete(key);
             }
         }
         if (clearedJewels.length > 0) {
@@ -299,7 +308,8 @@ class TGM3SakuraMode extends BaseMode {
 
         const stage = this.stages[this.stageIndex];
         this.effectText = stage.effect || '';
-        this.jewelSet.clear();
+        const jewelSet = this.ensureJewelSet();
+        jewelSet.clear();
         // Big-block effect for EX3
         if (gameScene) {
             const isBig = stage.effectType === 'big';
@@ -326,7 +336,7 @@ class TGM3SakuraMode extends BaseMode {
                 const color = colorMap[ch] || 0x888888;
                 gameScene.board.grid[r][c] = color;
                 if (ch === 'C') {
-                    this.jewelSet.add(`${r},${c}`);
+                    jewelSet.add(`${r},${c}`);
                 }
             }
         });
@@ -388,7 +398,8 @@ class TGM3SakuraMode extends BaseMode {
         const total = this.mainTimer.toFixed(2);
         const completionRate = Math.min(100, (this.bestStageReached / 27) * 100);
         const bestTimeText = this.bestTimeSeconds != null ? `${this.bestTimeSeconds.toFixed(2)}s` : 'N/A';
-        const text = `Stage ${this.stageIndex + 1} ${this.jewelSet.size === 0 ? 'CLEAR' : 'FAIL'}\nTime: ${timeTaken.toFixed(2)}s\nBonus: +${bonus}s\nTotal: ${total}s\nBest Stage: ${this.bestStageReached}\nBest Time (main): ${bestTimeText}\nCompletion: ${completionRate.toFixed(1)}%`;
+        const jewelSet = this.ensureJewelSet();
+        const text = `Stage ${this.stageIndex + 1} ${jewelSet.size === 0 ? 'CLEAR' : 'FAIL'}\nTime: ${timeTaken.toFixed(2)}s\nBonus: +${bonus}s\nTotal: ${total}s\nBest Stage: ${this.bestStageReached}\nBest Time (main): ${bestTimeText}\nCompletion: ${completionRate.toFixed(1)}%`;
         this.ui.postText = gameScene.add.text(
             gameScene.windowWidth / 2, gameScene.windowHeight * 0.35,
             text, { fontSize: '20px', color: '#ffffff', align: 'center' }
@@ -485,7 +496,7 @@ class TGM3SakuraMode extends BaseMode {
         }
         // Also mirror jewels
         const newSet = new Set();
-        for (const key of this.jewelSet) {
+        for (const key of this.ensureJewelSet()) {
             const [r, c] = key.split(',').map(Number);
             const nc = cols - 1 - c;
             newSet.add(`${r},${nc}`);

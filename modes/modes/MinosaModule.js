@@ -406,6 +406,9 @@ class MinosaModule {
     }
 
     rememberResult(key, result) {
+        if (!(this.resultCache instanceof Map)) {
+            this.resultCache = new Map();
+        }
         if (this.resultCache.size >= this.maxCacheEntries) {
             const firstKey = this.resultCache.keys().next().value;
             this.resultCache.delete(firstKey);

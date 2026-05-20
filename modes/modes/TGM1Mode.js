@@ -123,35 +123,81 @@ class TGM1Mode extends BaseMode {
         return gmAchieved;
     }
 
-    onReachedMaxLevel(gameScene) {
+    onReachedMaxLevel(gameScene, context = {}) {
         if (!gameScene) {
             return false;
         }
 
         const gmAchieved = this.checkGMRequirements(gameScene);
-        if (gmAchieved) {
-            gameScene.grade = 'GM';
-            if (gameScene.gradeText && typeof gameScene.gradeText.setText === 'function') {
+        const shouldForceCreditsAccess = context.type === 'start';
+        if (gmAchieved || shouldForceCreditsAccess) {
+            if (gmAchieved) {
+                gameScene.grade = 'GM';
+                this.displayedGrade = 'GM';
+            }
+            gameScene.pendingCompleteSequence = false;
+            gameScene.preserveGameOverMessage = false;
+            if (gmAchieved && gameScene.gradeText && typeof gameScene.gradeText.setText === 'function') {
                 gameScene.gradeText.setText('GM');
             }
-            return false;
+            gameScene.pendingStaticEndScreen = null;
+            gameScene.pendingCreditsStart = null;
+            if (context.type === 'lines' || context.type === 'start') {
+                gameScene.pendingCreditsStart = {
+                    spawnFirstPiece: true
+                };
+            } else {
+                gameScene.beginModeCreditsRoll({ spawnFirstPiece: true });
+            }
+            return true;
         }
 
         gameScene.pendingCompleteSequence = false;
+        gameScene.pendingCreditsStart = null;
         gameScene.gameOverMessage = 'EXCELLENT';
         gameScene.gameOverSubMessage = 'Try again to be a grandmaster';
         gameScene.gameOverMessageColor = '#00ff88';
         gameScene.gameOverSubMessageColor = '#ffffff';
         gameScene.preserveGameOverMessage = true;
-        gameScene.showStaticEndScreen({
+        const finishOptions = {
             showTextImmediately: true,
-            playGameOverSfx: false
-        });
+            playGameOverSfx: false,
+            preserveBoardVisible: true,
+            autoExitDelay: 20
+        };
+        if (context.type === 'lines') {
+            gameScene.pendingCompleteSequence = true;
+            gameScene.pendingStaticEndScreen = {
+                options: finishOptions
+            };
+        } else {
+            gameScene.pendingStaticEndScreen = null;
+            gameScene.showStaticEndScreen(finishOptions);
+        }
         return true;
     }
 
     shouldContinueCreditsAfterTopout(gameScene) {
         return !!gameScene?.creditsActive;
+    }
+
+    shouldAllowCreditsSkip(gameScene) {
+        return !!(gameScene?.creditsActive && gameScene?.creditsTopoutLockActive);
+    }
+
+    finishCreditRoll(gameScene) {
+        if (!gameScene) {
+            return;
+        }
+        if (typeof gameScene.checkAchievements === 'function') {
+            gameScene.checkAchievements();
+        }
+        if (typeof gameScene.saveBestScore === 'function') {
+            gameScene.saveBestScore();
+        }
+        if (typeof gameScene.goToMenu === 'function') {
+            gameScene.goToMenu();
+        }
     }
 
     // Get next grade requirement

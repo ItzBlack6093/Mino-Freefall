@@ -117,6 +117,9 @@ class GameScene extends Phaser.Scene {
     this.lineClearDelayActive = false;
     this.lineClearDelayDuration = 0;
     this.pendingLineAREDelay = 0;
+    this.pendingCompleteSequence = false;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
     this.disableIhsIrsForZeroArr = false;
     this.zenSandboxConfig = null;
     this.zenSandboxRuntime = { bagQueue: [], bagType: null };
@@ -125,6 +128,7 @@ class GameScene extends Phaser.Scene {
     this.garbageLinesClearedLast = 0;
     this.zenTopoutCooldown = false;
     this.zenTopoutFreezeActive = false;
+    this.exitingToMenu = false;
     this.zenTopoutPendingFinish = false;
     this.zenTopoutFreezeStart = 0;
     this.zenSandboxLogOnce = false;
@@ -611,6 +615,8 @@ class GameScene extends Phaser.Scene {
     this.levelMaxSoundPlayed = false;
     this.lastBellLevel = -1;
     this.pendingCompleteSequence = false;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
 
     // Pause functionality
     this.isPaused = false;
@@ -661,6 +667,7 @@ class GameScene extends Phaser.Scene {
     this.creditsRevealFinishPending = false;
     this.creditsFadeInDone = false;
     this.gameOverStatePrepared = false;
+    this.creditsSkipArmed = false;
 
     this.invisibleStackActive = false;
     this.fadingRollActive = false;
@@ -685,6 +692,12 @@ class GameScene extends Phaser.Scene {
     this.gameOverMessageColor = null;
     this.gameOverSubMessageColor = null;
     this.preserveGameOverMessage = false;
+    this.pendingCompleteSequence = false;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
+    this.preserveBoardOnStaticEnd = false;
+    this.gameOverAutoExitDelay = 10;
+    this.exitingToMenu = false;
 
     this.gameOverTextDelay = 3; // seconds until GAME OVER text appears
     this.gameOverTextTimer = 0;
@@ -3336,11 +3349,17 @@ class GameScene extends Phaser.Scene {
     this.gameOverMessageColor = null;
     this.gameOverSubMessageColor = null;
     this.preserveGameOverMessage = false;
+    this.pendingCompleteSequence = false;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
+    this.preserveBoardOnStaticEnd = false;
+    this.gameOverAutoExitDelay = 10;
     this.creditsPending = false;
     this.creditsActive = false;
     this.creditsTimer = 0;
     this.creditsDuration = 61.6;
     this.creditsTopoutLockActive = false;
+    this.creditsSkipArmed = false;
     this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.creditsBgmStarted = false;
     this.creditsTransitionStartTime = null;
@@ -4594,6 +4613,8 @@ class GameScene extends Phaser.Scene {
       this.gameOverTextTimer = 0;
       this.gameOverSfxPlayed = true;
       this.gameOverFadeDoneTime = null;
+      this.preserveBoardOnStaticEnd = false;
+      this.gameOverAutoExitDelay = 10;
       // Continue mino fade progression during freeze
       if (this.minoFadeActive) {
         this.minoFadeTimer += this.deltaTime;
@@ -4649,6 +4670,47 @@ class GameScene extends Phaser.Scene {
     // Input handling (null-safe)
     const isDown = (key) => !!(key && key.isDown);
     const justDown = (key) => !!(key && Phaser.Input.Keyboard.JustDown(key));
+
+    if (
+      this.creditsActive &&
+      this.gameMode &&
+      typeof this.gameMode.shouldAllowCreditsSkip === "function" &&
+      this.gameMode.shouldAllowCreditsSkip(this)
+    ) {
+      const creditsSkipKeys = [
+        this.cursors?.up,
+        this.cursors?.down,
+        this.cursors?.left,
+        this.cursors?.right,
+        this.keys?.left,
+        this.keys?.right,
+        this.keys?.softDrop,
+        this.keys?.hardDrop,
+        this.keys?.rotate180,
+        this.keys?.rotateCW,
+        this.keys?.rotateCW2,
+        this.keys?.rotateCCW,
+        this.keys?.rotateCCW2,
+        this.keys?.hold,
+        this.keys?.start,
+        this.keys?.pause,
+        this.keys?.menu,
+        this.restartKey,
+      ];
+      const anyCreditsSkipHeld = creditsSkipKeys.some((key) => isDown(key));
+      if (!this.creditsSkipArmed) {
+        if (!anyCreditsSkipHeld) {
+          this.creditsSkipArmed = true;
+        }
+      } else if (creditsSkipKeys.some((key) => justDown(key))) {
+        this.finalizeCreditsRoll();
+        if (this.exitingToMenu) {
+          return;
+        }
+        this.draw();
+        return;
+      }
+    }
 
     // Handle pause before gameplay inputs so no movement/rotation/drop can run while paused.
     if (justDown(this.keys.pause) && !this.gameOver) {
@@ -5331,10 +5393,24 @@ class GameScene extends Phaser.Scene {
       this.beginPendingCreditsTransition();
     }
 
+    // Some modes queue a credits roll from outside the line-clear ARE path (e.g. TGM1 999 starts).
+    if (
+      this.pendingCreditsStart &&
+      !this.creditsActive &&
+      !this.lineClearDelayActive &&
+      !this.lineClearPhase &&
+      !this.areActive &&
+      !this.gameOver
+    ) {
+      const pendingCreditsStart = this.pendingCreditsStart;
+      this.pendingCreditsStart = null;
+      this.beginModeCreditsRoll(pendingCreditsStart);
+    }
+
     // Update game over timer (runs even when game is over)
     if (this.gameOver) {
       this.gameOverTimer += this.deltaTime;
-      if (this.gameOverTimer >= 10) {
+      if (this.gameOverTimer >= (this.gameOverAutoExitDelay || 10)) {
         // 10 seconds
         this.saveBestScore();
         this.goToMenu();
@@ -5462,8 +5538,9 @@ class GameScene extends Phaser.Scene {
     }
 
     if (!this.currentPiece) {
-      // If no active piece, only return early when not in ARE; otherwise let ARE progress below.
-      if (!this.areActive) {
+      // Credits can outlive active gameplay, so keep the update loop alive long enough
+      // for the staff roll timer/scroll to continue even after the field locks out.
+      if (!this.areActive && !this.creditsActive) {
         this.draw();
         return;
       }
@@ -5652,59 +5729,59 @@ class GameScene extends Phaser.Scene {
         }
       }
       const internalGravity = Math.max(1, this.getTGMGravitySpeed(this.level));
-      if (!this.currentPiece) return;
-
-      if (skipGravityThisFrame) {
-        this.gravityAccum = 0;
-      } else if (internalGravity >= 5120) {
-        this.currentPiece.hardDrop(this.board);
-        this.isGrounded = true;
-        this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
-        this.gravityAccum = 0;
-      } else {
-        if (softDropHeld) {
+      if (this.currentPiece) {
+        if (skipGravityThisFrame) {
+          this.gravityAccum = 0;
+        } else if (internalGravity >= 5120) {
+          this.currentPiece.hardDrop(this.board);
+          this.isGrounded = true;
+          this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
           this.gravityAccum = 0;
         } else {
-          if (
-            this.isGrounded &&
-            this.board.isValidPosition(
-              this.currentPiece,
-              this.currentPiece.x,
-              this.currentPiece.y + 1,
-            )
-          ) {
-            this.isGrounded = false;
-            this.lockDelay = 0;
-            this.lastGroundedY = null;
-          }
-
-          // rowsPerSecond derived from internalGravity (1/256G units) assuming 60 fps baseline
-          let rowsPerSecond = (internalGravity / 256) * 60;
-          if (typeof zenRowsPerSecond === "number") {
-            rowsPerSecond = zenRowsPerSecond;
-          }
-          this.gravityAccum += rowsPerSecond * this.deltaTime; // deltaTime in seconds
-
-          const rowsToFall = Math.floor(this.gravityAccum);
-          if (rowsToFall > 0) {
-            let movedRows = 0;
-            for (let i = 0; i < rowsToFall; i++) {
-              if (this.currentPiece.move(this.board, 0, 1)) {
-                movedRows++;
-                this.isGrounded = false;
-                this.resetLockDelay();
-              } else {
-                // Piece can't move down anymore
-                if (!this.isGrounded) {
-                  this.isGrounded = true;
-                  this.lockDelay = this.deltaTime; // Start counting from current delta time
-                  this.currentPiece.playGroundSound(this);
-                }
-                break;
-              }
+          if (softDropHeld) {
+            this.gravityAccum = 0;
+          } else {
+            if (
+              this.isGrounded &&
+              this.board.isValidPosition(
+                this.currentPiece,
+                this.currentPiece.x,
+                this.currentPiece.y + 1,
+              )
+            ) {
+              this.isGrounded = false;
+              this.lockDelay = 0;
+              this.lastGroundedY = null;
             }
-            // retain fractional remainder only if we moved; if blocked, drop any accumulated
-            this.gravityAccum = movedRows > 0 ? this.gravityAccum - movedRows : 0;
+
+            // rowsPerSecond derived from internalGravity (1/256G units) assuming 60 fps baseline
+            let rowsPerSecond = (internalGravity / 256) * 60;
+            if (typeof zenRowsPerSecond === "number") {
+              rowsPerSecond = zenRowsPerSecond;
+            }
+            this.gravityAccum += rowsPerSecond * this.deltaTime; // deltaTime in seconds
+
+            const rowsToFall = Math.floor(this.gravityAccum);
+            if (rowsToFall > 0) {
+              let movedRows = 0;
+              for (let i = 0; i < rowsToFall; i++) {
+                if (this.currentPiece.move(this.board, 0, 1)) {
+                  movedRows++;
+                  this.isGrounded = false;
+                  this.resetLockDelay();
+                } else {
+                  // Piece can't move down anymore
+                  if (!this.isGrounded) {
+                    this.isGrounded = true;
+                    this.lockDelay = this.deltaTime; // Start counting from current delta time
+                    this.currentPiece.playGroundSound(this);
+                  }
+                  break;
+                }
+              }
+              // retain fractional remainder only if we moved; if blocked, drop any accumulated
+              this.gravityAccum = movedRows > 0 ? this.gravityAccum - movedRows : 0;
+            }
           }
         }
       }
@@ -5754,7 +5831,7 @@ class GameScene extends Phaser.Scene {
               : 41 / 60;
           this.areTimer = 0;
 
-          // Now clear lines and play fall sound at the beginning of line ARE
+          // Resolve the actual line clear before the post-999 route decides what to show next.
           this.clearStoredLines();
           if (this.deleteBottomRowRequested && this.board?.deleteBottomRow) {
             this.board.deleteBottomRow();
@@ -5767,6 +5844,8 @@ class GameScene extends Phaser.Scene {
         } else if (this.lineClearPhase) {
           // Line ARE completed
           this.lineClearPhase = false;
+          const pendingStaticEndScreen = this.pendingStaticEndScreen;
+          const pendingCreditsStart = this.pendingCreditsStart;
 
           // Trigger deferred complete sequence if pending (after both line clear delay and line ARE finish)
           if (this.pendingCompleteSequence) {
@@ -5784,6 +5863,18 @@ class GameScene extends Phaser.Scene {
             if (usesStackFadeToCredits) {
               this.startMinoFading();
             }
+            if (pendingCreditsStart) {
+              this.pendingCreditsStart = null;
+              this.areActive = false;
+              this.beginModeCreditsRoll(pendingCreditsStart);
+              continue;
+            }
+            if (pendingStaticEndScreen) {
+              this.pendingStaticEndScreen = null;
+              this.areActive = false;
+              this.showStaticEndScreen(pendingStaticEndScreen.options || {});
+              continue;
+            }
             // If credits are pending (TGM2/TGM3 Master/TGM3 Easy), don't spawn next piece;
             // the fade completion will trigger credits transition.
             if (this.creditsPending) {
@@ -5793,6 +5884,18 @@ class GameScene extends Phaser.Scene {
               this.spawnPiece();
             }
           } else {
+            if (pendingCreditsStart) {
+              this.pendingCreditsStart = null;
+              this.areActive = false;
+              this.beginModeCreditsRoll(pendingCreditsStart);
+              continue;
+            }
+            if (pendingStaticEndScreen) {
+              this.pendingStaticEndScreen = null;
+              this.areActive = false;
+              this.showStaticEndScreen(pendingStaticEndScreen.options || {});
+              continue;
+            }
             this.areActive = false;
             this.spawnPiece();
           }
@@ -5899,6 +6002,9 @@ class GameScene extends Phaser.Scene {
       // End credits after duration
       if (this.creditsTimer >= this.creditsDuration) {
         this.finalizeCreditsRoll();
+        if (this.exitingToMenu) {
+          return;
+        }
       }
     }
 
@@ -6973,7 +7079,7 @@ class GameScene extends Phaser.Scene {
       this.bagDrawCount = 0;
       this.bagDebugSeen = new Set();
     }
-    if (!this.bagDebugSeen) this.bagDebugSeen = new Set();
+    if (!(this.bagDebugSeen instanceof Set)) this.bagDebugSeen = new Set();
 
     const piece = this.bagQueue.shift();
     this.bagDrawCount++;
@@ -7064,14 +7170,20 @@ class GameScene extends Phaser.Scene {
       this.rollFadeLastExpireTime = pieceFadeExpireAt;
     }
 
+    const lockedPiece = this.currentPiece;
+    if (!lockedPiece) {
+      return;
+    }
+    const lockedPieceType = lockedPiece.type ?? null;
+
     // Track placed minos before placing the piece
-    this.lastLockedPieceState = this.capturePieceBackstepState(this.currentPiece);
-    for (let r = 0; r < this.currentPiece.shape.length; r++) {
-      for (let c = 0; c < this.currentPiece.shape[r].length; c++) {
-        if (this.currentPiece.shape[r][c]) {
-          const boardX = this.currentPiece.x + c;
-          const boardY = this.currentPiece.y + r;
-          this.trackPlacedMino(boardX, boardY, this.currentPiece.color);
+    this.lastLockedPieceState = this.capturePieceBackstepState(lockedPiece);
+    for (let r = 0; r < lockedPiece.shape.length; r++) {
+      for (let c = 0; c < lockedPiece.shape[r].length; c++) {
+        if (lockedPiece.shape[r][c]) {
+          const boardX = lockedPiece.x + c;
+          const boardY = lockedPiece.y + r;
+          this.trackPlacedMino(boardX, boardY, lockedPiece.color);
 
           if (
             this.fadingRollActive &&
@@ -7087,27 +7199,27 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.currentPiece?.tgm4MasterPikii && Number.isFinite(this.currentPiece.freezeAfter)) {
-      this.currentPiece.masterPikiiFreezeAt = (this.currentTime || 0) + this.currentPiece.freezeAfter;
+    if (lockedPiece?.tgm4MasterPikii && Number.isFinite(lockedPiece.freezeAfter)) {
+      lockedPiece.masterPikiiFreezeAt = (this.currentTime || 0) + lockedPiece.freezeAfter;
     }
 
     this.board.placePiece(
-      this.currentPiece,
-      this.currentPiece.x,
-      this.currentPiece.y,
+      lockedPiece,
+      lockedPiece.x,
+      lockedPiece.y,
     );
 
     // Mode hook: notify piece lock (e.g., Easy combo reset on no clear)
     if (this.gameMode && typeof this.gameMode.onPieceLock === "function") {
-      this.gameMode.onPieceLock(this.currentPiece, this);
+      this.gameMode.onPieceLock(lockedPiece, this);
     }
 
     // Finesse evaluation on lock (SRS sprint/ultra only)
-    this.evaluateFinesseOnLock(this.currentPiece);
+    this.evaluateFinesseOnLock(lockedPiece);
     this.finesseActiveForPiece = false;
 
     // Check for spin (T: 3-corner, others: immobile)
-    const spinInfo = this.detectSpin(this.currentPiece, this.board);
+    const spinInfo = this.detectSpin(lockedPiece, this.board);
     this.lastSpinInfo = spinInfo;
 
     // Detect cleared lines for animation (don't clear them yet)
@@ -7146,20 +7258,20 @@ class GameScene extends Phaser.Scene {
     // Track pending powerup activation if any part of the powerup piece is cleared
     this.pendingPowerup = null;
     if (
-      this.currentPiece &&
-      this.currentPiece.isPowerup &&
-      this.currentPiece.powerupType &&
+      lockedPiece &&
+      lockedPiece.isPowerup &&
+      lockedPiece.powerupType &&
       linesToClear.length > 0
     ) {
       const positions =
-        typeof this.currentPiece.getPowerupCellPositions === "function"
-          ? this.currentPiece.getPowerupCellPositions()
+        typeof lockedPiece.getPowerupCellPositions === "function"
+          ? lockedPiece.getPowerupCellPositions()
           : [];
       const clearedSet = new Set(linesToClear);
       const hit = positions.some((p) => clearedSet.has(p.boardY));
       if (hit) {
         this.pendingPowerup = {
-          type: this.currentPiece.powerupType,
+          type: lockedPiece.powerupType,
         };
         this.powerupCells.set(this.pendingPowerup.type, positions);
       }
@@ -7189,7 +7301,7 @@ class GameScene extends Phaser.Scene {
     const prevBackToBack = this.backToBack;
     const isAllClearFlag =
       linesToClear.length > 0 && this.isAllClearAfterLines && this.isAllClearAfterLines(linesToClear);
-    this.updateScore(effectiveLinesCleared, this.currentPiece.type, spinInfo, {
+    this.updateScore(effectiveLinesCleared, lockedPieceType, spinInfo, {
       isAllClear: isAllClearFlag,
     });
     if (garbageLinesCleared > 0) {
@@ -7290,7 +7402,7 @@ class GameScene extends Phaser.Scene {
       this.gameMode.handleLineClear(
         this,
         effectiveLinesCleared,
-        this.currentPiece.type,
+        lockedPieceType,
       );
     }
 
@@ -8055,6 +8167,8 @@ class GameScene extends Phaser.Scene {
       this.showClearBanner(clearType, { ...spinInfo, isSpin: true, isTSpin: true }, lines, pieceType);
     }
     this.lastClearType = clearType;
+
+    this.updateGrade();
 
     // Track piece for potential T-spin detection next time
     this.lastPieceType = pieceType;
@@ -9144,6 +9258,13 @@ class GameScene extends Phaser.Scene {
         score: score,
       });
     }
+
+    if (this.gameMode && typeof this.grade === "string" && this.grade.trim() !== "") {
+      this.gameMode.displayedGrade = this.grade;
+    }
+    if (this.gameMode && typeof this.internalGrade === "number") {
+      this.gameMode.internalGrade = this.internalGrade;
+    }
   }
 
   getGradeValue(grade) {
@@ -9385,6 +9506,13 @@ class GameScene extends Phaser.Scene {
     this.pauseStartTime = null;
     this.totalPausedTime = 0;
     this.level999Reached = false; // Reset level 999 flag
+    this.pendingCompleteSequence = false;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
+    this.preserveBoardOnStaticEnd = false;
+    this.gameOverAutoExitDelay = 10;
+    this.exitingToMenu = false;
+    this.creditsSkipArmed = false;
     this.suppressGameplayBgmForImmediateCreditsStart = false;
 
     // Clear game elements
@@ -9504,6 +9632,7 @@ class GameScene extends Phaser.Scene {
 
   goToMenu() {
     // Centralized safe return to menu to avoid stale scenes causing blank screens
+    this.exitingToMenu = true;
     const mgr = this.scene;
     const rootMgr = this.game && this.game.scene ? this.game.scene : mgr;
 
@@ -9590,6 +9719,7 @@ class GameScene extends Phaser.Scene {
     this.creditsActive = true;
     this.creditsTimer = 0;
     this.creditsTopoutLockActive = false;
+    this.creditsSkipArmed = false;
     if (creditsDurationSec != null) {
       this.creditsDuration = creditsDurationSec;
     }
@@ -9733,6 +9863,37 @@ class GameScene extends Phaser.Scene {
     this.gradeLineColor = color;
   }
 
+  beginModeCreditsRoll(options = {}) {
+    const { spawnFirstPiece = true } = options;
+    if (this.creditsActive) {
+      return;
+    }
+
+    this.pendingCreditsStart = null;
+    this.pendingStaticEndScreen = null;
+
+    if (this.gameMode && typeof this.gameMode.onCreditsStart === "function") {
+      this.gameMode.onCreditsStart(this);
+    }
+    const modeCredits =
+      this.gameMode && typeof this.gameMode.getConfig === "function"
+        ? this.gameMode.getConfig()?.specialMechanics?.creditsDuration
+        : undefined;
+    this.startCredits(modeCredits != null ? modeCredits : undefined);
+
+    if (
+      spawnFirstPiece &&
+      !this.currentPiece &&
+      !this.minoFadeActive &&
+      !this.creditsTopoutLockActive &&
+      !this.gameOver
+    ) {
+      this.spawnPiece();
+    }
+
+    this.updateBGM();
+  }
+
   finalizeCreditsRoll() {
     if (this.creditsFinalized) return;
     this.creditsFinalized = true;
@@ -9865,6 +10026,7 @@ class GameScene extends Phaser.Scene {
     this.lineClearDelayActive = false;
     this.lineClearPhase = false;
     this.pendingLineAREDelay = 0;
+    this.pendingCompleteSequence = false;
     this.creditsGameplayEnabled = false;
     this.creditsTopoutLockActive = true;
     this.leftKeyPressed = false;
@@ -10215,12 +10377,15 @@ class GameScene extends Phaser.Scene {
     const {
       showTextImmediately = false,
       playGameOverSfx = false,
+      preserveBoardVisible = false,
+      autoExitDelay = 10,
     } = options;
 
     this.stopAllBGMs?.();
 
     this.gameOver = true;
     this.gameOverTimer = 0;
+    this.gameOverAutoExitDelay = Math.max(0, Number(autoExitDelay) || 10);
     this.currentPiece = null;
     this.isGrounded = false;
     this.lockDelay = 0;
@@ -10236,6 +10401,9 @@ class GameScene extends Phaser.Scene {
     this.fadingComplete = true;
     this.gameOverFadeDoneTime = this.time?.now ?? Date.now();
     this.gameOverStatePrepared = true;
+    this.preserveBoardOnStaticEnd = preserveBoardVisible === true;
+    this.pendingStaticEndScreen = null;
+    this.pendingCreditsStart = null;
     this.creditsPending = false;
     this.creditsActive = false;
     this.creditsTopoutLockActive = false;
@@ -11088,8 +11256,11 @@ class GameScene extends Phaser.Scene {
       // Also keep drawing after a credits fade-in so the revealed stack stays visible.
       if (
         this.gameStarted &&
-        (!this.gameOver || this.minoFadeActive || this.creditsFadeInDone) &&
-        (!this.fadingComplete || this.creditsFadeInDone)
+        (!this.gameOver ||
+          this.minoFadeActive ||
+          this.creditsFadeInDone ||
+          this.preserveBoardOnStaticEnd) &&
+        (!this.fadingComplete || this.creditsFadeInDone || this.preserveBoardOnStaticEnd)
       ) {
         this.board.draw(
           this,
