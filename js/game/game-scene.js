@@ -656,6 +656,7 @@ class GameScene extends Phaser.Scene {
     this.creditsFinalized = false;
     this.creditsBgmStarted = false;
     this.rollFailedDuringRoll = false;
+    this.creditsTopoutLockActive = false;
     this.creditsFinishPending = false;
     this.creditsRevealFinishPending = false;
     this.creditsFadeInDone = false;
@@ -680,6 +681,10 @@ class GameScene extends Phaser.Scene {
     this.gameOverFadeDoneTime = null;
     this.showGameOverText = false;
     this.gameOverMessage = "GAME OVER";
+    this.gameOverSubMessage = "";
+    this.gameOverMessageColor = null;
+    this.gameOverSubMessageColor = null;
+    this.preserveGameOverMessage = false;
 
     this.gameOverTextDelay = 3; // seconds until GAME OVER text appears
     this.gameOverTextTimer = 0;
@@ -3326,10 +3331,16 @@ class GameScene extends Phaser.Scene {
     this.showGameOverText = false;
     this.gameOverTextTimer = 0;
     this.gameOverSfxPlayed = true;
+    this.gameOverMessage = "GAME OVER";
+    this.gameOverSubMessage = "";
+    this.gameOverMessageColor = null;
+    this.gameOverSubMessageColor = null;
+    this.preserveGameOverMessage = false;
     this.creditsPending = false;
     this.creditsActive = false;
     this.creditsTimer = 0;
     this.creditsDuration = 61.6;
+    this.creditsTopoutLockActive = false;
     this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.creditsBgmStarted = false;
     this.creditsTransitionStartTime = null;
@@ -5991,6 +6002,10 @@ class GameScene extends Phaser.Scene {
   spawnPiece() {
     // Block piece spawning while transition fade is running before credits start.
     if (this.minoFadeActive) {
+      return;
+    }
+
+    if (this.creditsTopoutLockActive) {
       return;
     }
 
@@ -9455,22 +9470,34 @@ class GameScene extends Phaser.Scene {
 
     // Pause/resume BGM
     if (this.currentBGM) {
-      if (this.isPaused) {
-        this.currentBGM.pause();
-      } else {
-        this.currentBGM.resume();
+      try {
+        if (this.isPaused) {
+          if (this.currentBGM.isPlaying && typeof this.currentBGM.pause === "function") {
+            this.currentBGM.pause();
+          }
+        } else if (this.currentBGM.isPaused && typeof this.currentBGM.resume === "function") {
+          this.currentBGM.resume();
+        }
+      } catch (error) {
+        console.warn("Current BGM pause/resume failed:", error);
       }
     }
     if (this.creditsBGM) {
-      if (this.isPaused) {
-        this.creditsBGM.pause();
-      } else if (this.creditsActive) {
-        if (!this.creditsBgmStarted && this.currentPiece && this.bgmEnabled) {
-          this.creditsBGM.play();
-          this.creditsBgmStarted = true;
-        } else {
-          this.creditsBGM.resume();
+      try {
+        if (this.isPaused) {
+          if (this.creditsBGM.isPlaying && typeof this.creditsBGM.pause === "function") {
+            this.creditsBGM.pause();
+          }
+        } else if (this.creditsActive) {
+          if (!this.creditsBgmStarted && this.currentPiece && this.bgmEnabled) {
+            this.creditsBGM.play();
+            this.creditsBgmStarted = true;
+          } else if (this.creditsBGM.isPaused && typeof this.creditsBGM.resume === "function") {
+            this.creditsBGM.resume();
+          }
         }
+      } catch (error) {
+        console.warn("Credits BGM pause/resume failed:", error);
       }
     }
   }
@@ -9562,6 +9589,7 @@ class GameScene extends Phaser.Scene {
   startCredits(creditsDurationSec = null) {
     this.creditsActive = true;
     this.creditsTimer = 0;
+    this.creditsTopoutLockActive = false;
     if (creditsDurationSec != null) {
       this.creditsDuration = creditsDurationSec;
     }
@@ -9709,6 +9737,7 @@ class GameScene extends Phaser.Scene {
     if (this.creditsFinalized) return;
     this.creditsFinalized = true;
     this.creditsActive = false;
+    this.creditsTopoutLockActive = false;
 
     // Hide roll bonus counter once credits are done
     if (this.staffRollBonusText) {
@@ -9775,14 +9804,79 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Delegate to mode-specific finish if available
-    if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
+    // Only call the mode finisher when the mode actually overrides BaseMode's noop.
+    if (this.hasCustomCreditRollFinishHandler()) {
       this.gameMode.finishCreditRoll(this);
       return;
     }
 
     // Fallback: end the game normally
     this.showGameOverScreen();
+  }
+
+  hasCustomCreditRollFinishHandler() {
+    if (!this.gameMode || typeof this.gameMode.finishCreditRoll !== "function") {
+      return false;
+    }
+
+    let proto = Object.getPrototypeOf(this.gameMode);
+    while (proto) {
+      if (Object.prototype.hasOwnProperty.call(proto, "finishCreditRoll")) {
+        if (
+          typeof BaseMode !== "undefined" &&
+          BaseMode.prototype &&
+          typeof BaseMode.prototype.finishCreditRoll === "function"
+        ) {
+          return proto.finishCreditRoll !== BaseMode.prototype.finishCreditRoll;
+        }
+        return proto.constructor?.name !== "BaseMode";
+      }
+      proto = Object.getPrototypeOf(proto);
+    }
+
+    return false;
+  }
+
+  shouldContinueCreditsAfterTopout() {
+    if (
+      !this.creditsActive ||
+      this.invisibleStackActive ||
+      this.fadingRollActive ||
+      this.creditsTopoutLockActive
+    ) {
+      return false;
+    }
+
+    return !!(
+      this.gameMode &&
+      typeof this.gameMode.shouldContinueCreditsAfterTopout === "function" &&
+      this.gameMode.shouldContinueCreditsAfterTopout(this)
+    );
+  }
+
+  continueCreditsAfterTopout() {
+    this.currentPiece = null;
+    this.isGrounded = false;
+    this.lockDelay = 0;
+    this.lockResetCount = 0;
+    this.gravityAccum = 0;
+    this.areActive = false;
+    this.areTimer = 0;
+    this.lineClearDelayActive = false;
+    this.lineClearPhase = false;
+    this.pendingLineAREDelay = 0;
+    this.creditsGameplayEnabled = false;
+    this.creditsTopoutLockActive = true;
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = false;
+    this.leftInRepeat = false;
+    this.rightInRepeat = false;
+    this.leftTimer = 0;
+    this.rightTimer = 0;
+    this.kKeyPressed = false;
+    this.spaceKeyPressed = false;
+    this.lKeyPressed = false;
+    this.xKeyPressed = false;
   }
 
   trackPlacedMino(x, y, color) {
@@ -9956,8 +10050,10 @@ class GameScene extends Phaser.Scene {
     if (callOnGameOver && this.gameMode && this.gameMode.onGameOver) {
       this.gameMode.onGameOver(this);
     }
-    if (this.gameMode && typeof this.gameMode.finishCreditRoll === "function") {
+    if (this.hasCustomCreditRollFinishHandler()) {
       this.gameMode.finishCreditRoll(this);
+    } else {
+      this.showGameOverScreen();
     }
   }
 
@@ -10115,7 +10211,67 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  showStaticEndScreen(options = {}) {
+    const {
+      showTextImmediately = false,
+      playGameOverSfx = false,
+    } = options;
+
+    this.stopAllBGMs?.();
+
+    this.gameOver = true;
+    this.gameOverTimer = 0;
+    this.currentPiece = null;
+    this.isGrounded = false;
+    this.lockDelay = 0;
+    this.lockResetCount = 0;
+    this.gravityAccum = 0;
+    this.areActive = false;
+    this.areTimer = 0;
+    this.lineClearDelayActive = false;
+    this.lineClearPhase = false;
+    this.pendingLineAREDelay = 0;
+    this.minoFadeActive = false;
+    this.minoFadeReversed = false;
+    this.fadingComplete = true;
+    this.gameOverFadeDoneTime = this.time?.now ?? Date.now();
+    this.gameOverStatePrepared = true;
+    this.creditsPending = false;
+    this.creditsActive = false;
+    this.creditsTopoutLockActive = false;
+    this.creditsBgmStarted = false;
+    this.showGameOverText = showTextImmediately;
+    this.gameOverTextTimer = showTextImmediately ? this.gameOverTextDelay : 0;
+    this.gameOverSfxPlayed = !playGameOverSfx;
+
+    this.leftKeyPressed = false;
+    this.rightKeyPressed = false;
+    this.leftInRepeat = false;
+    this.rightInRepeat = false;
+    this.leftTimer = 0;
+    this.rightTimer = 0;
+    this.kKeyPressed = false;
+    this.spaceKeyPressed = false;
+    this.lKeyPressed = false;
+    this.xKeyPressed = false;
+
+    this.checkAchievements();
+
+    if (this.gameMode && this.gameMode.hanabi !== undefined) {
+      this.showHanabiSummary(this.gameMode.hanabi);
+    }
+
+    if (this.gameMode && this.gameMode.onGameOver) {
+      this.gameMode.onGameOver(this);
+    }
+  }
+
   showGameOverScreen() {
+    if (this.shouldContinueCreditsAfterTopout()) {
+      this.continueCreditsAfterTopout();
+      return;
+    }
+
     this.stopAllBGMs?.();
 
     // Zen: use custom recover-only flow (no GAME OVER text) and keep matrix visible
@@ -10376,6 +10532,7 @@ class GameScene extends Phaser.Scene {
       this.rollHighestLine = Math.max(this.rollHighestLine, 18);
       this.creditsActive = false;
       this.creditsFinalized = true;
+      this.creditsTopoutLockActive = false;
       this.creditsBgmStarted = false;
       if (this.creditsBGM) {
         this.creditsBGM.stop();
@@ -10389,8 +10546,11 @@ class GameScene extends Phaser.Scene {
     }
     this.gameOver = true;
     this.gameOverTimer = 0; // Start timer for 10 seconds
-    if (!this.torikanFailActive) {
+    if (!this.torikanFailActive && !this.preserveGameOverMessage) {
       this.gameOverMessage = this.sprintCompleted ? "CONGRATULATIONS" : "GAME OVER";
+      this.gameOverSubMessage = "";
+      this.gameOverMessageColor = null;
+      this.gameOverSubMessageColor = null;
     }
     this.finesseActiveForPiece = false;
 
@@ -10569,13 +10729,13 @@ class GameScene extends Phaser.Scene {
       { text: "from phaser.io", type: "content" },
       { text: "TGM mechanics", type: "content" },
       { text: "12 hours of coding a day", type: "content" },
-      { text: "Grade Recognition System", type: "section" },
-      { text: "20G Gravity", type: "content" },
       { text: "", type: "spacer" },
       { text: "Piece Randomizer", type: "section" },
       { text: "TGM History Checking System", type: "content" },
       { text: "Also called IRM", type: "content" },
       { text: "", type: "spacer" },
+      { text: "7-bag system", type: "content" },
+      { text: "The one you know and love", type: "content" },
       { text: "", type: "spacer" },
       { text: "If you have made it this far", type: "closing" },
       { text: "You are pretty good at this game", type: "closing" },
@@ -10585,6 +10745,7 @@ class GameScene extends Phaser.Scene {
     ];
 
     // Per-type styling to keep layout modifiable
+    const extraLineSpacing = 75;
     const lineStyles = {
       title: { fontSize: 36, color: "#ffff00", lineHeight: 44 },
       section: { fontSize: 24, color: "#00ffff", lineHeight: 34 },
@@ -10599,7 +10760,7 @@ class GameScene extends Phaser.Scene {
       return {
         ...entry,
         style,
-        height: style.lineHeight,
+        height: style.lineHeight + extraLineSpacing,
       };
     });
 
@@ -11650,6 +11811,10 @@ class GameScene extends Phaser.Scene {
         48,
         Math.min(72, Math.floor(this.cellSize * 1.5)),
       );
+      const subtitleFontSize = Math.max(
+        18,
+        Math.min(30, Math.floor(gameOverFontSize * 0.42)),
+      );
 
       const centerY = this.windowHeight / 2;
       const centerX = this.windowWidth / 2;
@@ -11657,7 +11822,9 @@ class GameScene extends Phaser.Scene {
       const gameOverText = this.add
         .text(centerX, centerY, this.gameOverMessage || "GAME OVER", {
           fontSize: `${gameOverFontSize}px`,
-          fill: this.sprintCompleted ? "#00ff88" : "#ff0000",
+          fill:
+            this.gameOverMessageColor ||
+            (this.sprintCompleted ? "#00ff88" : "#ff0000"),
           stroke: "#000",
           strokeThickness: 6,
           fontFamily: "Courier New",
@@ -11665,6 +11832,21 @@ class GameScene extends Phaser.Scene {
         })
         .setOrigin(0.5);
       this.gameGroup.add(gameOverText);
+
+      if (this.gameOverSubMessage) {
+        const subtitleText = this.add
+          .text(centerX, centerY + gameOverFontSize * 0.75, this.gameOverSubMessage, {
+            fontSize: `${subtitleFontSize}px`,
+            fill: this.gameOverSubMessageColor || "#ffffff",
+            stroke: "#000",
+            strokeThickness: 4,
+            fontFamily: "Courier New",
+            fontStyle: "bold",
+            align: "center",
+          })
+          .setOrigin(0.5);
+        this.gameGroup.add(subtitleText);
+      }
     }
   }
 }

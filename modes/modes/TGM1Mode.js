@@ -123,6 +123,37 @@ class TGM1Mode extends BaseMode {
         return gmAchieved;
     }
 
+    onReachedMaxLevel(gameScene) {
+        if (!gameScene) {
+            return false;
+        }
+
+        const gmAchieved = this.checkGMRequirements(gameScene);
+        if (gmAchieved) {
+            gameScene.grade = 'GM';
+            if (gameScene.gradeText && typeof gameScene.gradeText.setText === 'function') {
+                gameScene.gradeText.setText('GM');
+            }
+            return false;
+        }
+
+        gameScene.pendingCompleteSequence = false;
+        gameScene.gameOverMessage = 'EXCELLENT';
+        gameScene.gameOverSubMessage = 'Try again to be a grandmaster';
+        gameScene.gameOverMessageColor = '#00ff88';
+        gameScene.gameOverSubMessageColor = '#ffffff';
+        gameScene.preserveGameOverMessage = true;
+        gameScene.showStaticEndScreen({
+            showTextImmediately: true,
+            playGameOverSfx: false
+        });
+        return true;
+    }
+
+    shouldContinueCreditsAfterTopout(gameScene) {
+        return !!gameScene?.creditsActive;
+    }
+
     // Get next grade requirement
     getNextGradeRequirement(currentGrade, currentScore) {
         const config = this.getConfig();

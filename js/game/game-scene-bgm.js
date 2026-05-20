@@ -30,14 +30,61 @@
       return this.cache?.audio?.exists(legacyKey) ? legacyKey : fallbackKey;
     },
 
+    createBgmTrack(logicalKey, opts = {}) {
+      const base = 0.5;
+      const vol = base * this.getMasterVolumeSetting() * this.getBGMVolumeSetting();
+      const assetKey = this.resolveBgmAssetKey(logicalKey);
+      return this.sound.add(assetKey, { loop: false, volume: vol, ...opts });
+    },
+
+    safeStopSound(sound) {
+      if (!sound || typeof sound.stop !== "function") {
+        return;
+      }
+      try {
+        sound.stop();
+      } catch {}
+    },
+
+    safePlayManagedTrack(key, opts = {}) {
+      if (!key) return null;
+      if (!this.bgmTracks) {
+        this.bgmTracks = {};
+      }
+
+      let track = this.bgmTracks[key];
+      if (!track) {
+        try {
+          track = this.createBgmTrack(key, { loop: true });
+          this.bgmTracks[key] = track;
+        } catch (error) {
+          console.warn("Failed to create BGM track:", key, error);
+          return null;
+        }
+      }
+
+      try {
+        track.play({ loop: true, ...opts });
+        return track;
+      } catch (error) {
+        try {
+          this.safeStopSound(track);
+          track.destroy?.();
+        } catch {}
+        try {
+          track = this.createBgmTrack(key, { loop: true });
+          this.bgmTracks[key] = track;
+          track.play({ loop: true, ...opts });
+          return track;
+        } catch (retryError) {
+          console.warn("Failed to play BGM track:", key, retryError || error);
+          return null;
+        }
+      }
+    },
+
     initializeBGM() {
       try {
-        const addTrack = (logicalKey, opts = {}) => {
-          const base = 0.5;
-          const vol = base * this.getMasterVolumeSetting() * this.getBGMVolumeSetting();
-          const assetKey = this.resolveBgmAssetKey(logicalKey);
-          return this.sound.add(assetKey, { loop: false, volume: vol, ...opts });
-        };
         const trackKeys = [
           "mf1_1",
           "mf1_2",
@@ -54,7 +101,7 @@
           "mf_std_3",
         ];
         this.bgmTracks = trackKeys.reduce((tracks, key) => {
-          tracks[key] = addTrack(key, { loop: true });
+          tracks[key] = this.createBgmTrack(key, { loop: true });
           return tracks;
         }, {});
         this.stage1BGM = this.bgmTracks.mf1_1;
@@ -207,19 +254,19 @@
     },
 
     playBgmByKey(key) {
-      if (!key || !this.bgmTracks || !this.bgmTracks[key]) return;
-      const audio = this.bgmTracks[key];
+      if (!key) return;
+      const audio = this.safePlayManagedTrack(key);
+      if (!audio) return;
       if (this.currentBGM && this.currentBGM !== audio) {
-        this.currentBGM.stop();
+        this.safeStopSound(this.currentBGM);
       }
-      audio.play({ loop: true });
       this.currentBGM = audio;
       this.currentBgmKey = key;
     },
 
     stopCurrentBGM() {
       if (this.currentBGM) {
-        this.currentBGM.stop();
+        this.safeStopSound(this.currentBGM);
         this.currentBGM = null;
         this.currentBgmKey = null;
       }
@@ -250,9 +297,7 @@
       ].forEach(registerTrack);
 
       activeTracks.forEach((track) => {
-        try {
-          track.stop();
-        } catch {}
+        this.safeStopSound(track);
       });
 
       this.currentBGM = null;
@@ -369,7 +414,11 @@
         if (!creditsBGMKey) {
           return;
         }
-        this.creditsBGM = this.sound.add(this.resolveBgmAssetKey(creditsBGMKey), {
+        try {
+          this.safeStopSound(this.creditsBGM);
+          this.creditsBGM?.destroy?.();
+        } catch {}
+        this.creditsBGM = this.createBgmTrack(creditsBGMKey, {
           loop: true,
           volume: 0.3,
         });
