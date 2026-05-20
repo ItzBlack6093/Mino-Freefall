@@ -5023,12 +5023,17 @@ class BgmRoomScene extends Phaser.Scene {
     this.trackTextsByPack = {};
     this.selectedTrackIndices = {};
     this.selectedPackKey = BGM_ROOM_PACKS[0].key;
+    this.initialSelectedPackKey = BGM_ROOM_PACKS[0].key;
+    this.initialSelectedTrackIndices = {};
     this.currentTrackKey = null;
     this.currentTrackPackKey = null;
     this.previewSound = null;
     this.previewSeek = 0;
+    this.initialPreviewSeek = 0;
     this.previewStartedAtMs = null;
     this.previewState = "stopped";
+    this.initialPreviewState = "stopped";
+    this.resumePlaybackAfterCreate = false;
     this.trackDurationCache = {};
     this.seekDragActive = false;
   }
@@ -5036,6 +5041,11 @@ class BgmRoomScene extends Phaser.Scene {
   init(data = {}) {
     this.returnSceneKey = data.returnSceneKey || "MenuScene";
     this.returnSceneData = data.returnSceneData || {};
+    this.initialSelectedPackKey = data.selectedPackKey || BGM_ROOM_PACKS[0].key;
+    this.initialSelectedTrackIndices = { ...(data.selectedTrackIndices || {}) };
+    this.initialPreviewSeek = Number.isFinite(data.previewSeek) ? data.previewSeek : 0;
+    this.initialPreviewState = data.previewState || "stopped";
+    this.resumePlaybackAfterCreate = data.resumePlayback === true;
   }
 
   preload() {
@@ -5047,8 +5057,9 @@ class BgmRoomScene extends Phaser.Scene {
   create() {
     this.sound.setVolume(this.getMasterVolume());
     BGM_ROOM_PACKS.forEach((pack) => {
-      this.selectedTrackIndices[pack.key] = 0;
+      this.selectedTrackIndices[pack.key] = this.initialSelectedTrackIndices[pack.key] || 0;
     });
+    this.selectedPackKey = this.getPackByKey(this.initialSelectedPackKey).key;
     this.currentTrackKey = this.getSelectedTrackInfo().track?.key || null;
     this.currentTrackPackKey = this.selectedPackKey;
 
@@ -5225,7 +5236,21 @@ class BgmRoomScene extends Phaser.Scene {
     });
 
     this.setupKeyboardControls();
-    this.selectTrack(this.selectedPackKey, 0, { autoPlay: false });
+    this.selectTrack(
+      this.selectedPackKey,
+      this.selectedTrackIndices[this.selectedPackKey] || 0,
+      { autoPlay: false },
+    );
+    if (this.initialPreviewSeek > 0) {
+      this.previewSeek = this.initialPreviewSeek;
+      this.previewState = this.resumePlaybackAfterCreate ? "paused" : this.initialPreviewState;
+    }
+    if (this.resumePlaybackAfterCreate) {
+      this.playSelectedTrack();
+    } else {
+      this.refreshTrackList();
+      this.updatePlaybackUi();
+    }
     createOrUpdateGlobalOverlay(this, { modeLabel: "BGM Room", modeTypeName: "" });
 
     this.events.once("shutdown", () => {
@@ -5239,6 +5264,10 @@ class BgmRoomScene extends Phaser.Scene {
 
   update() {
     this.updatePlaybackUi();
+  }
+
+  calculateLayout() {
+    this.scene.restart(this.buildRestartData());
   }
 
   createActionButton(x, y, label, color, handler) {
@@ -5368,7 +5397,7 @@ class BgmRoomScene extends Phaser.Scene {
 
   ensureTrackDuration(track) {
     if (!track) return 0;
-    if (this.trackDurationCache[track.key]) {
+    if (Object.prototype.hasOwnProperty.call(this.trackDurationCache, track.key)) {
       return this.trackDurationCache[track.key];
     }
     let duration = 0;
@@ -5384,6 +5413,7 @@ class BgmRoomScene extends Phaser.Scene {
     if (duration > 0) {
       this.trackDurationCache[track.key] = duration;
     }
+    this.trackDurationCache[track.key] = duration;
     return duration;
   }
 
@@ -5597,6 +5627,19 @@ class BgmRoomScene extends Phaser.Scene {
   returnToPreviousScene() {
     this.stopPreviewSound();
     this.scene.start(this.returnSceneKey, this.returnSceneData);
+  }
+
+  buildRestartData() {
+    return {
+      returnSceneKey: this.returnSceneKey,
+      returnSceneData: this.returnSceneData,
+      selectedPackKey: this.selectedPackKey,
+      selectedTrackIndices: { ...this.selectedTrackIndices },
+      previewSeek:
+        this.previewState === "playing" ? this.getCurrentPreviewPosition() : this.previewSeek,
+      previewState: this.previewState === "playing" ? "paused" : this.previewState,
+      resumePlayback: this.previewState === "playing",
+    };
   }
 }
 
