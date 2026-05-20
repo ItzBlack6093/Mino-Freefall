@@ -331,6 +331,7 @@ class MenuScene extends Phaser.Scene {
     this.startingLevelPromptRoundsMedalValueText = null;
     this.startingLevelPromptRoundsMedalLeftArrow = null;
     this.startingLevelPromptRoundsMedalRightArrow = null;
+    this.profileOverlayElement = null;
   }
 
   getModeTypesFromManager() {
@@ -356,6 +357,7 @@ class MenuScene extends Phaser.Scene {
     this.events.once("shutdown", () => {
       this.events.off("wake", this.handleMenuWake, this);
       this.events.off("resume", this.handleMenuWake, this);
+      this.hideAchievementOverlay();
       if (this.input && this.input.keyboard && this.input.keyboard.removeAllListeners) {
         this.input.keyboard.removeAllListeners();
       }
@@ -581,113 +583,642 @@ class MenuScene extends Phaser.Scene {
     this.profileBadgeRating.setText(`AR ${rating}`);
   }
 
-  showAchievementOverlay() {
-    if (typeof window.achievementSystem === "undefined") return;
+  applyInlineStyles(element, styles) {
+    Object.assign(element.style, styles);
+    return element;
+  }
 
-    const centerX = this.cameras.main.centerX;
-    const centerY = this.cameras.main.centerY;
+  getProfileModeTypes() {
+    const sourceModeTypes =
+      Array.isArray(this.modeTypes) && this.modeTypes.length > 0
+        ? this.modeTypes
+        : this.getModeTypesFromManager();
+    return sourceModeTypes.filter(
+      (modeType) => String(modeType.name || "").toUpperCase() !== "VERSUS",
+    );
+  }
 
-    // Dark overlay background
-    this.achievementOverlayBg = this.add.graphics();
-    this.achievementOverlayBg.fillStyle(0x000000, 0.85);
-    this.achievementOverlayBg.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
-    this.achievementOverlayBg.setDepth(10000);
+  getBestLeaderboardEntry(modeId) {
+    const leaderboard = this.getLeaderboard(modeId);
+    return Array.isArray(leaderboard) && leaderboard.length > 0
+      ? leaderboard[0]
+      : null;
+  }
 
-    // Overlay container
-    this.achievementOverlayContainer = this.add.container(centerX, centerY);
-    this.achievementOverlayContainer.setDepth(10001);
-
-    // Title
-    this.achievementOverlayTitle = this.add.text(0, -280, "ACHIEVEMENTS", {
-      fontSize: "32px",
-      fill: "#ffffff",
-      fontFamily: "Courier New",
-      fontStyle: "bold",
-    }).setOrigin(0.5);
-    this.achievementOverlayContainer.add(this.achievementOverlayTitle);
-
-    // Close button (X)
-    this.achievementCloseButton = this.add.text(280, -280, "X", {
-      fontSize: "24px",
-      fill: "#ff0000",
-      fontFamily: "Courier New",
-      fontStyle: "bold",
-    }).setOrigin(0.5).setInteractive();
-    this.achievementCloseButton.on("pointerdown", () => this.hideAchievementOverlay());
-    this.achievementCloseButton.on("pointerover", () => this.achievementCloseButton.setStyle({ fill: "#ffff00" }));
-    this.achievementCloseButton.on("pointerout", () => this.achievementCloseButton.setStyle({ fill: "#ff0000" }));
-    this.achievementOverlayContainer.add(this.achievementCloseButton);
-
-    // Scrollable achievement list
-    this.achievementScrollContainer = this.add.container(0, 0);
-    this.achievementOverlayContainer.add(this.achievementScrollContainer);
-
-    const groupedAchievements = window.achievementSystem.getAllByGroup();
-    let yOffset = -240;
-
-    for (const [game, achievements] of Object.entries(groupedAchievements)) {
-      // Group header
-      const header = this.add.text(0, yOffset, game, {
-        fontSize: "20px",
-        fill: "#ffff00",
-        fontFamily: "Courier New",
-        fontStyle: "bold",
-      }).setOrigin(0.5);
-      this.achievementScrollContainer.add(header);
-      yOffset += 30;
-
-      // Achievement rows
-      achievements.forEach((achievement) => {
-        const isCompleted = window.achievementSystem.isCompleted(achievement.id);
-
-        // Checkmark
-        const checkmark = this.add.text(-180, yOffset, isCompleted ? "✓" : " ", {
-          fontSize: "16px",
-          fill: isCompleted ? "#55ff55" : "#666666",
-          fontFamily: "Courier New",
-          fontStyle: "bold",
-        }).setOrigin(0, 0.5);
-        this.achievementScrollContainer.add(checkmark);
-
-        // Description
-        const desc = this.add.text(0, yOffset, achievement.description, {
-          fontSize: "14px",
-          fill: isCompleted ? "#ffffff" : "#aaaaaa",
-          fontFamily: "Courier New",
-          wordWrap: { width: 300 },
-        }).setOrigin(0, 0.5);
-        this.achievementScrollContainer.add(desc);
-
-        // Points
-        const points = this.add.text(180, yOffset, achievement.points.toString(), {
-          fontSize: "14px",
-          fill: "#ffcc00",
-          fontFamily: "Courier New",
-        }).setOrigin(1, 0.5);
-        this.achievementScrollContainer.add(points);
-
-        yOffset += 22;
-      });
-
-      yOffset += 15; // Extra spacing between groups
+  getProfileModeCardSummary(modeId) {
+    if (modeId === "zen") {
+      return {
+        primary: "SANDBOX",
+        secondary: "No leaderboard",
+      };
     }
 
-    // Escape key to close
-    this.achievementEscapeKey = this.input.keyboard.on("keydown-ESC", () => this.hideAchievementOverlay());
+    const entry = this.getBestLeaderboardEntry(modeId);
+    if (!entry) {
+      return {
+        primary: "NO DATA",
+        secondary: "Play a run",
+      };
+    }
+
+    if (modeId === "tgm3_sakura") {
+      const stage = entry.stage != null ? `ST ${entry.stage}` : "ST --";
+      const completion =
+        entry.completionRate != null ? `${entry.completionRate}%` : "--%";
+      return {
+        primary: stage,
+        secondary: `${completion} / ${entry.time || "--:--.--"}`,
+      };
+    }
+
+    const formatted = this.formatLeaderboardEntry(modeId, entry);
+    const primary = formatted.left && formatted.left !== "—" ? formatted.left : "NO DATA";
+    const secondaryParts = [formatted.middle, formatted.right].filter(
+      (value) => value && value !== "—",
+    );
+
+    return {
+      primary,
+      secondary: secondaryParts.length > 0 ? secondaryParts.join(" / ") : "Best record",
+    };
+  }
+
+  getKonohaIllustrationProgress() {
+    const easyEntry = this.getBestLeaderboardEntry("konoha_easy");
+    const hardEntry = this.getBestLeaderboardEntry("konoha_hard");
+    const easyCount = Math.max(0, Number(easyEntry && easyEntry.allClears) || 0);
+    const hardCount = Math.max(0, Number(hardEntry && hardEntry.allClears) || 0);
+    const total = 50;
+
+    return {
+      total,
+      unlocked: Math.min(total, easyCount + hardCount),
+      easyCount,
+      hardCount,
+    };
+  }
+
+  showAchievementOverlay() {
+    if (typeof window.achievementSystem === "undefined" || this.profileOverlayElement) return;
+
+    const playerName = window.achievementSystem.getPlayerName() || "Player";
+    const rating = window.achievementSystem.getScore();
+    const groupedAchievements = window.achievementSystem.getAllByGroup();
+    const allAchievements = Object.values(groupedAchievements).flat();
+    const completedCount = allAchievements.filter((achievement) =>
+      window.achievementSystem.isCompleted(achievement.id),
+    ).length;
+    const illustrationProgress = this.getKonohaIllustrationProgress();
+    const modeTypes = this.getProfileModeTypes();
+    const palette = {
+      overlay: "rgba(0, 0, 0, 0.92)",
+      panel: "#101010",
+      panelAlt: "#181818",
+      surface: "#232323",
+      surfaceAlt: "#0c0c0c",
+      border: "#3a3a3a",
+      borderBright: "#f2f2f2",
+      text: "#f8f8f8",
+      muted: "#9a9a9a",
+      minoI: "#00ffff",
+      minoJ: "#0048ff",
+      minoL: "#ff9a00",
+      minoO: "#ffff00",
+      minoS: "#00ff00",
+      minoT: "#ff00ff",
+      minoZ: "#ff4040",
+    };
+    const tabThemes = {
+      scores: {
+        accent: palette.minoI,
+        frame: "#08262b",
+        surface: "#111c1f",
+      },
+      illustrations: {
+        accent: palette.minoT,
+        frame: "#290825",
+        surface: "#1d111b",
+      },
+      achievements: {
+        accent: palette.minoS,
+        frame: "#08260c",
+        surface: "#111b12",
+      },
+    };
+
+    const overlay = this.applyInlineStyles(document.createElement("div"), {
+      position: "fixed",
+      inset: "0",
+      zIndex: "10003",
+      background: palette.overlay,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "12px",
+      fontFamily: "'Courier New', monospace",
+    });
+
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        this.hideAchievementOverlay();
+      }
+    });
+
+    const panel = this.applyInlineStyles(document.createElement("div"), {
+      width: "min(1180px, calc(100vw - 24px))",
+      maxHeight: "min(760px, calc(100vh - 24px))",
+      display: "flex",
+      flexDirection: "column",
+      gap: "12px",
+      padding: "18px",
+      border: `2px solid ${palette.borderBright}`,
+      background: palette.panel,
+      color: palette.text,
+      borderRadius: "0",
+      overflow: "hidden",
+    });
+    overlay.appendChild(panel);
+
+    const header = this.applyInlineStyles(document.createElement("div"), {
+      display: "flex",
+      alignItems: "flex-start",
+      justifyContent: "space-between",
+      gap: "12px",
+    });
+    panel.appendChild(header);
+
+    const titleGroup = this.applyInlineStyles(document.createElement("div"), {
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px",
+      minWidth: "0",
+    });
+    header.appendChild(titleGroup);
+
+    const title = this.applyInlineStyles(document.createElement("div"), {
+      fontSize: "30px",
+      fontWeight: "700",
+      letterSpacing: "0.08em",
+      color: palette.text,
+    });
+    title.textContent = "PLAYER PROFILE";
+    titleGroup.appendChild(title);
+
+    const subtitle = this.applyInlineStyles(document.createElement("div"), {
+      fontSize: "14px",
+      lineHeight: "1.45",
+      color: palette.muted,
+    });
+    subtitle.textContent =
+      "Detailed run history, Konoha illustration unlocks, and achievement progress in three tabs.";
+    titleGroup.appendChild(subtitle);
+
+    const closeButton = this.applyInlineStyles(document.createElement("button"), {
+      border: `2px solid ${palette.minoZ}`,
+      background: palette.surfaceAlt,
+      color: palette.minoZ,
+      cursor: "pointer",
+      fontFamily: "'Courier New', monospace",
+      fontSize: "16px",
+      fontWeight: "700",
+      padding: "8px 12px",
+      flex: "0 0 auto",
+      borderRadius: "0",
+      appearance: "none",
+      boxShadow: "none",
+    });
+    closeButton.textContent = "CLOSE";
+    closeButton.addEventListener("click", () => this.hideAchievementOverlay());
+    header.appendChild(closeButton);
+
+    const summaryRow = this.applyInlineStyles(document.createElement("div"), {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+      gap: "8px",
+      flex: "0 0 auto",
+    });
+    panel.appendChild(summaryRow);
+
+    [
+      {
+        label: "Player",
+        value: playerName,
+        accent: palette.minoJ,
+        surface: "#061432",
+      },
+      {
+        label: "AR",
+        value: rating.toString(),
+        accent: palette.minoO,
+        surface: "#2a2400",
+      },
+      {
+        label: "Achievements",
+        value: `${completedCount}/${allAchievements.length}`,
+        accent: palette.minoS,
+        surface: "#0b240d",
+      },
+      {
+        label: "Illustrations",
+        value: `${illustrationProgress.unlocked}/${illustrationProgress.total}`,
+        accent: palette.minoT,
+        surface: "#26061f",
+      },
+    ].forEach((item) => {
+      const card = this.applyInlineStyles(document.createElement("div"), {
+        minWidth: "0",
+        padding: "10px 12px",
+        border: `2px solid ${item.accent}`,
+        background: item.surface,
+        display: "flex",
+        flexDirection: "column",
+        gap: "4px",
+        borderRadius: "0",
+      });
+
+      const label = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "11px",
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: item.accent,
+      });
+      label.textContent = item.label;
+      card.appendChild(label);
+
+      const value = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "22px",
+        fontWeight: "700",
+        color: palette.text,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      });
+      value.textContent = item.value;
+      card.appendChild(value);
+
+      summaryRow.appendChild(card);
+    });
+
+    const tabRow = this.applyInlineStyles(document.createElement("div"), {
+      display: "grid",
+      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+      gap: "8px",
+      flex: "0 0 auto",
+    });
+    panel.appendChild(tabRow);
+
+    const contentFrame = this.applyInlineStyles(document.createElement("div"), {
+      minHeight: "0",
+      flex: "1 1 auto",
+      display: "flex",
+      flexDirection: "column",
+      border: `1px solid ${palette.borderBright}`,
+      background: tabThemes.scores.frame,
+      padding: "12px",
+      overflow: "hidden",
+      borderRadius: "0",
+    });
+    panel.appendChild(contentFrame);
+
+    const tabButtons = {};
+    const tabPanes = {};
+
+    const setTabActive = (tabId) => {
+      Object.entries(tabButtons).forEach(([id, info]) => {
+        const isActive = id === tabId;
+        info.button.style.background = isActive ? info.accent : palette.surfaceAlt;
+        info.button.style.color = isActive ? palette.surfaceAlt : info.accent;
+        info.button.style.borderColor = info.accent;
+        info.button.style.outline = "none";
+      });
+      Object.entries(tabPanes).forEach(([id, pane]) => {
+        pane.style.display = id === tabId ? "flex" : "none";
+      });
+      if (tabThemes[tabId]) {
+        contentFrame.style.borderColor = tabThemes[tabId].accent;
+        contentFrame.style.background = tabThemes[tabId].frame;
+      }
+    };
+
+    const createTab = (tabId, label, accent) => {
+      const button = this.applyInlineStyles(document.createElement("button"), {
+        border: `2px solid ${accent}`,
+        background: palette.surfaceAlt,
+        color: accent,
+        cursor: "pointer",
+        fontFamily: "'Courier New', monospace",
+        fontSize: "14px",
+        fontWeight: "700",
+        letterSpacing: "0.04em",
+        padding: "8px 12px",
+        width: "100%",
+        borderRadius: "0",
+        appearance: "none",
+        boxShadow: "none",
+      });
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", () => setTabActive(tabId));
+      tabButtons[tabId] = { button, accent };
+      tabRow.appendChild(button);
+    };
+
+    const createPane = (tabId, titleText, accent, noteText) => {
+      const pane = this.applyInlineStyles(document.createElement("div"), {
+        minHeight: "0",
+        flex: "1 1 auto",
+        display: "none",
+        flexDirection: "column",
+        gap: "10px",
+        overflowY: "auto",
+        paddingRight: "4px",
+      });
+      contentFrame.appendChild(pane);
+
+      const paneTitle = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "18px",
+        fontWeight: "700",
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: accent,
+      });
+      paneTitle.textContent = titleText;
+      pane.appendChild(paneTitle);
+
+      const note = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "12px",
+        lineHeight: "1.4",
+        color: palette.muted,
+      });
+      note.textContent = noteText;
+      pane.appendChild(note);
+
+      const body = this.applyInlineStyles(document.createElement("div"), {
+        minHeight: "0",
+        flex: "0 0 auto",
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      });
+      pane.appendChild(body);
+
+      tabPanes[tabId] = pane;
+      return body;
+    };
+
+    createTab("scores", "BEST SCORES", tabThemes.scores.accent);
+    createTab("illustrations", "ILLUSTRATIONS", tabThemes.illustrations.accent);
+    createTab("achievements", "ACHIEVEMENTS", tabThemes.achievements.accent);
+
+    const scorePane = createPane(
+      "scores",
+      "Best Scores",
+      tabThemes.scores.accent,
+      "One row per mode type, with each mode split into its own best-record card.",
+    );
+
+    modeTypes.forEach((modeType) => {
+      const row = this.applyInlineStyles(document.createElement("div"), {
+        display: "grid",
+        gridTemplateColumns: "90px minmax(0, 1fr)",
+        gap: "8px",
+        alignItems: "stretch",
+        border: `1px solid ${tabThemes.scores.accent}`,
+        background: tabThemes.scores.surface,
+        padding: "8px",
+      });
+
+      const typeLabel = this.applyInlineStyles(document.createElement("div"), {
+        padding: "10px 8px",
+        border: `1px solid ${tabThemes.scores.accent}`,
+        background: palette.surfaceAlt,
+        color: this.getDifficultyColor(modeType.name),
+        fontSize: "12px",
+        fontWeight: "700",
+        letterSpacing: "0.06em",
+        textTransform: "uppercase",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        textAlign: "center",
+      });
+      typeLabel.textContent = modeType.name;
+      row.appendChild(typeLabel);
+
+      const cards = this.applyInlineStyles(document.createElement("div"), {
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))",
+        gap: "8px",
+        minWidth: "0",
+      });
+      row.appendChild(cards);
+
+      modeType.modes.forEach((mode) => {
+        const summary = this.getProfileModeCardSummary(mode.id);
+        const card = this.applyInlineStyles(document.createElement("div"), {
+          minWidth: "0",
+          padding: "10px 8px",
+          border: `1px solid ${palette.border}`,
+          background: palette.surfaceAlt,
+          display: "flex",
+          flexDirection: "column",
+          gap: "4px",
+          justifyContent: "space-between",
+        });
+
+        const name = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "11px",
+          color: palette.muted,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        });
+        name.textContent = mode.name;
+        card.appendChild(name);
+
+        const primary = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "15px",
+          fontWeight: "700",
+          color: palette.text,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        });
+        primary.textContent = summary.primary;
+        card.appendChild(primary);
+
+        const secondary = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "10px",
+          lineHeight: "1.35",
+          color: tabThemes.scores.accent,
+          minHeight: "2.7em",
+          overflow: "hidden",
+        });
+        secondary.textContent = summary.secondary;
+        card.appendChild(secondary);
+
+        cards.appendChild(card);
+      });
+
+      scorePane.appendChild(row);
+    });
+
+    const illustrationPane = createPane(
+      "illustrations",
+      "Illustrations",
+      tabThemes.illustrations.accent,
+      `Placeholder gallery: ${illustrationProgress.easyCount} Konoha Easy + ${illustrationProgress.hardCount} Konoha Hard all clears unlock up to ${illustrationProgress.total} slots.`,
+    );
+
+    const illustrationInfo = this.applyInlineStyles(document.createElement("div"), {
+      fontSize: "12px",
+      lineHeight: "1.45",
+      color: palette.text,
+      border: `1px solid ${tabThemes.illustrations.accent}`,
+      background: tabThemes.illustrations.surface,
+      padding: "8px",
+    });
+    illustrationInfo.textContent =
+      `Unlocked now: ${illustrationProgress.unlocked}/${illustrationProgress.total}. Placeholders remain until art is added.`;
+    illustrationPane.appendChild(illustrationInfo);
+
+    const illustrationGrid = this.applyInlineStyles(document.createElement("div"), {
+      display: "grid",
+      gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+      gap: "8px",
+      alignContent: "start",
+    });
+    illustrationPane.appendChild(illustrationGrid);
+
+    for (let index = 0; index < illustrationProgress.total; index += 1) {
+      const unlocked = index < illustrationProgress.unlocked;
+      const cell = this.applyInlineStyles(document.createElement("div"), {
+        aspectRatio: "1 / 1",
+        border: `1px solid ${unlocked ? tabThemes.illustrations.accent : palette.border}`,
+        background: unlocked ? "#2b1026" : palette.surfaceAlt,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: "4px",
+        textAlign: "center",
+        padding: "4px",
+      });
+
+      const slotNumber = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "10px",
+        color: unlocked ? tabThemes.illustrations.accent : palette.muted,
+      });
+      slotNumber.textContent = `ILL ${String(index + 1).padStart(2, "0")}`;
+      cell.appendChild(slotNumber);
+
+      const slotState = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "11px",
+        fontWeight: "700",
+        color: unlocked ? palette.text : palette.muted,
+      });
+      slotState.textContent = unlocked ? "OPEN" : "LOCK";
+      cell.appendChild(slotState);
+
+      illustrationGrid.appendChild(cell);
+    }
+
+    const achievementPane = createPane(
+      "achievements",
+      "Achievements",
+      tabThemes.achievements.accent,
+      `${completedCount} completed for ${rating} AR total. Scroll for the full list.`,
+    );
+
+    const achievementInfo = this.applyInlineStyles(document.createElement("div"), {
+      fontSize: "12px",
+      lineHeight: "1.45",
+      color: palette.text,
+      border: `1px solid ${tabThemes.achievements.accent}`,
+      background: tabThemes.achievements.surface,
+      padding: "8px",
+    });
+    achievementInfo.textContent = `${completedCount} completed for ${rating} AR total.`;
+    achievementPane.appendChild(achievementInfo);
+
+    const achievementList = this.applyInlineStyles(document.createElement("div"), {
+      display: "flex",
+      flexDirection: "column",
+      gap: "8px",
+    });
+    achievementPane.appendChild(achievementList);
+
+    Object.entries(groupedAchievements).forEach(([game, achievements]) => {
+      const group = this.applyInlineStyles(document.createElement("div"), {
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+      });
+
+      const groupTitle = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "13px",
+        fontWeight: "700",
+        letterSpacing: "0.08em",
+        textTransform: "uppercase",
+        color: palette.minoO,
+      });
+      groupTitle.textContent = game;
+      group.appendChild(groupTitle);
+
+      achievements.forEach((achievement) => {
+        const completed = window.achievementSystem.isCompleted(achievement.id);
+        const row = this.applyInlineStyles(document.createElement("div"), {
+          display: "grid",
+          gridTemplateColumns: "18px minmax(0, 1fr) auto",
+          gap: "8px",
+          alignItems: "start",
+          padding: "8px",
+          background: completed ? "#102410" : palette.surfaceAlt,
+          border: `1px solid ${completed ? tabThemes.achievements.accent : palette.border}`,
+        });
+
+        const marker = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "14px",
+          fontWeight: "700",
+          color: completed ? tabThemes.achievements.accent : palette.muted,
+          lineHeight: "1.2",
+        });
+        marker.textContent = completed ? "Y" : "-";
+        row.appendChild(marker);
+
+        const desc = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "12px",
+          lineHeight: "1.4",
+          color: completed ? palette.text : palette.muted,
+        });
+        desc.textContent = achievement.description;
+        row.appendChild(desc);
+
+        const points = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "12px",
+          fontWeight: "700",
+          color: palette.minoO,
+          whiteSpace: "nowrap",
+        });
+        points.textContent = `+${achievement.points}`;
+        row.appendChild(points);
+
+        group.appendChild(row);
+      });
+
+      achievementList.appendChild(group);
+    });
+
+    setTabActive("scores");
+    document.body.appendChild(overlay);
+    this.profileOverlayElement = overlay;
   }
 
   hideAchievementOverlay() {
-    if (this.achievementOverlayBg) {
-      this.achievementOverlayBg.destroy();
-      this.achievementOverlayBg = null;
+    if (this.profileOverlayElement && this.profileOverlayElement.parentNode) {
+      this.profileOverlayElement.parentNode.removeChild(this.profileOverlayElement);
     }
-    if (this.achievementEscapeKey) {
-      this.input.keyboard.off("keydown-ESC");
-      this.achievementEscapeKey = null;
-    }
-    if (this.achievementOverlayContainer) {
-      this.achievementOverlayContainer.destroy();
-    }
+    this.profileOverlayElement = null;
   }
 
   createMenuUI() {
@@ -1063,6 +1594,10 @@ class MenuScene extends Phaser.Scene {
         this.hideStartingLevelPrompt();
         return;
       }
+      if (this.profileOverlayElement) {
+        this.hideAchievementOverlay();
+        return;
+      }
       if (this.hasBlockingOverlay()) return;
       this.scene.start("SettingsScene");
     });
@@ -1074,7 +1609,7 @@ class MenuScene extends Phaser.Scene {
   }
 
   hasBlockingOverlay() {
-    return Boolean(this.namePromptActive || this.achievementOverlayContainer);
+    return Boolean(this.namePromptActive || this.profileOverlayElement);
   }
 
   shouldSkipStartingLevelPrompt(modeTypeName) {
