@@ -281,6 +281,22 @@ function getModeInfoId(gameMode, selectedMode = "") {
 }
 
 function getUserAgentText() {
+  const desktopRuntime =
+    typeof window !== "undefined" ? window.minoDesktop : null;
+  if (desktopRuntime?.isDesktop) {
+    const platformLabels = {
+      darwin: "macOS",
+      linux: "Linux",
+      win32: "Windows",
+    };
+    const platformName =
+      platformLabels[desktopRuntime.platform] || desktopRuntime.platform || "Desktop";
+    const electronVersion = desktopRuntime.versions?.electron;
+    return electronVersion
+      ? `OS: ${platformName} (Electron ${electronVersion})`
+      : `OS: ${platformName}`;
+  }
+
   const ua = navigator?.userAgent || "";
   const uaData = navigator?.userAgentData;
 
@@ -1242,6 +1258,9 @@ function ensureMonochromeMinoTextures(scene) {
     rt.setVisible(false);
     rt.fill(0xffffff, 0);
     rt.draw(sourceKey, 32, 32);
+    if (typeof rt.render === "function") {
+      rt.render();
+    }
     rt.saveTexture(targetKey);
     rt.destroy();
   });

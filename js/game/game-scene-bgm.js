@@ -18,6 +18,7 @@
         mf2_4: "legacy_mf2_4",
         mf3_4: "legacy_mf3_4",
         mf3_6: "legacy_mf3_6",
+        mf_zen: "legacy_mf_std_1",
         mf_std_1: "legacy_mf_std_1",
         mf_std_2: "legacy_mf_std_2",
         mf_std_3: "legacy_mf_std_3",
@@ -99,6 +100,9 @@
           "mf_std_1",
           "mf_std_2",
           "mf_std_3",
+          "mf_konohaez",
+          "mf_konohahard",
+          "mf_konohahard2",
         ];
         this.bgmTracks = trackKeys.reduce((tracks, key) => {
           tracks[key] = this.createBgmTrack(key, { loop: true });
@@ -124,6 +128,10 @@
 
     updateBGM() {
       if (!this.bgmEnabled || !this.bgmStarted) return;
+      if (this.gameOver && !this.creditsActive) {
+        this.stopAllBGMs?.();
+        return;
+      }
       this.updateModeBGM();
     },
 

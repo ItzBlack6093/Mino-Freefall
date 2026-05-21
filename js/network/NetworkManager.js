@@ -68,7 +68,9 @@ class NetworkManager {
   // Connection
   // -----------------------------------------------------------------------
   connect(url) {
-    this.serverUrl = url || "ws://localhost:8080";
+    const desktopUrl =
+      typeof window !== "undefined" ? window.minoDesktop?.versusServerUrl : null;
+    this.serverUrl = url || desktopUrl || "ws://localhost:8080";
     this._doConnect();
   }
 

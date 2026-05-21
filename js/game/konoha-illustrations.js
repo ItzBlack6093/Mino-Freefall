@@ -52,7 +52,12 @@
     "watame",
   ];
 
+  const EASY_POOL_SIZE = 37;
+  const EASY_CHARACTER_IDS = CHARACTER_IDS.slice(0, EASY_POOL_SIZE);
+  const HARD_LATE_CHARACTER_IDS = CHARACTER_IDS.slice(EASY_POOL_SIZE);
+  const EASY_RUN_ILLUSTRATION_TOTAL = EASY_CHARACTER_IDS.length;
   const TOTAL_ILLUSTRATIONS = CHARACTER_IDS.length;
+  const HARD_LATE_SLOT_START = EASY_RUN_ILLUSTRATION_TOTAL;
   const STATES = {
     locked: "locked",
     partial: "partial",
@@ -60,6 +65,10 @@
   };
   const STEPS_PER_ILLUSTRATION = 3;
   const MAX_PROGRESS_STEPS = TOTAL_ILLUSTRATIONS * STEPS_PER_ILLUSTRATION - 1;
+  const CHARACTER_WEIGHTS = CHARACTER_IDS.reduce((weights, characterId, index) => {
+    weights[characterId] = CHARACTER_IDS.length - index;
+    return weights;
+  }, {});
   const GRADIENT_ASSETS = {
     locked: {
       egm: {
@@ -84,31 +93,44 @@
   };
   const DOM_IMAGE_CACHE = new Map();
 
-  function clampSlotIndex(slotIndex) {
+  function clampIllustrationTotal(total) {
+    const numeric = Number(total);
+    if (!Number.isFinite(numeric)) return TOTAL_ILLUSTRATIONS;
+    return Math.max(1, Math.min(TOTAL_ILLUSTRATIONS, Math.floor(numeric)));
+  }
+
+  function getMaxProgressSteps(total = TOTAL_ILLUSTRATIONS) {
+    return clampIllustrationTotal(total) * STEPS_PER_ILLUSTRATION - 1;
+  }
+
+  function clampSlotIndex(slotIndex, total = TOTAL_ILLUSTRATIONS) {
     const numeric = Number(slotIndex);
+    const clampedTotal = clampIllustrationTotal(total);
     if (!Number.isFinite(numeric)) return 0;
-    return Math.max(0, Math.min(TOTAL_ILLUSTRATIONS - 1, Math.floor(numeric)));
+    return Math.max(0, Math.min(clampedTotal - 1, Math.floor(numeric)));
   }
 
-  function clampProgressSteps(value) {
+  function clampProgressSteps(value, total = TOTAL_ILLUSTRATIONS) {
     const numeric = Number(value);
+    const maxSteps = getMaxProgressSteps(total);
     if (!Number.isFinite(numeric)) return 0;
-    return Math.max(0, Math.min(MAX_PROGRESS_STEPS, Math.floor(numeric)));
+    return Math.max(0, Math.min(maxSteps, Math.floor(numeric)));
   }
 
-  function getCharacterId(slotIndex) {
-    return CHARACTER_IDS[clampSlotIndex(slotIndex)] || CHARACTER_IDS[0];
+  function getCharacterId(slotIndex, characterIds = CHARACTER_IDS) {
+    const list = Array.isArray(characterIds) && characterIds.length > 0 ? characterIds : CHARACTER_IDS;
+    return list[clampSlotIndex(slotIndex, list.length)] || list[0] || CHARACTER_IDS[0];
   }
 
-  function getBaseAssetDescriptor(slotIndex, kind) {
-    const characterId = getCharacterId(slotIndex);
+  function getBaseAssetDescriptor(slotIndex, kind, characterId = null) {
+    const resolvedCharacterId = characterId || getCharacterId(slotIndex);
     const isIcon = kind === "icon";
     return {
       slotIndex: clampSlotIndex(slotIndex),
-      characterId,
+      characterId: resolvedCharacterId,
       kind,
-      key: `konoha_${isIcon ? "icon" : "egm"}_${characterId}`,
-      url: `characters/chars/${characterId}/${isIcon ? "thumb.png" : "egm.png"}`,
+      key: `konoha_${isIcon ? "icon" : "egm"}_${resolvedCharacterId}`,
+      url: `characters/chars/${resolvedCharacterId}/${isIcon ? "thumb.png" : "egm.png"}`,
     };
   }
 
@@ -126,9 +148,9 @@
     return getGradientAssetDescriptor(state, kind);
   }
 
-  function getCompositeTextureKey(slotIndex, kind, state) {
-    const characterId = getCharacterId(slotIndex);
-    return `konoha_${kind}_${characterId}_${state}`;
+  function getCompositeTextureKey(slotIndex, kind, state, characterId = null) {
+    const resolvedCharacterId = characterId || getCharacterId(slotIndex);
+    return `konoha_${kind}_${resolvedCharacterId}_${state}`;
   }
 
   function getStateLabel(state) {
@@ -146,32 +168,38 @@
     ];
   }
 
-  function getSlotState(index, steps) {
-    const offset = clampProgressSteps(steps) - clampSlotIndex(index) * STEPS_PER_ILLUSTRATION;
+  function getSlotState(index, steps, total = TOTAL_ILLUSTRATIONS) {
+    const offset =
+      clampProgressSteps(steps, total) - clampSlotIndex(index, total) * STEPS_PER_ILLUSTRATION;
     if (offset >= 2) return STATES.unlocked;
     if (offset >= 1) return STATES.partial;
     return STATES.locked;
   }
 
-  function buildProgressFromSteps(rawSteps) {
-    const steps = clampProgressSteps(rawSteps);
-    const slots = Array.from({ length: TOTAL_ILLUSTRATIONS }, (_, index) => ({
+  function buildProgressFromSteps(rawSteps, { total = TOTAL_ILLUSTRATIONS, characterIds = CHARACTER_IDS } = {}) {
+    const clampedTotal = clampIllustrationTotal(total);
+    const normalizedCharacterIds =
+      Array.isArray(characterIds) && characterIds.length >= clampedTotal
+        ? characterIds
+        : CHARACTER_IDS;
+    const steps = clampProgressSteps(rawSteps, clampedTotal);
+    const slots = Array.from({ length: clampedTotal }, (_, index) => ({
       index,
       number: index + 1,
-      characterId: getCharacterId(index),
-      state: getSlotState(index, steps),
+      characterId: getCharacterId(index, normalizedCharacterIds),
+      state: getSlotState(index, steps, clampedTotal),
     }));
-    const unlocked = Math.min(TOTAL_ILLUSTRATIONS, Math.floor((steps + 1) / STEPS_PER_ILLUSTRATION));
+    const unlocked = Math.min(clampedTotal, Math.floor((steps + 1) / STEPS_PER_ILLUSTRATION));
     const partialUnlocked = steps % STEPS_PER_ILLUSTRATION === 1 ? 1 : 0;
-    const activeSlotIndex = Math.min(TOTAL_ILLUSTRATIONS - 1, Math.floor(steps / STEPS_PER_ILLUSTRATION));
+    const activeSlotIndex = Math.min(clampedTotal - 1, Math.floor(steps / STEPS_PER_ILLUSTRATION));
 
     return {
-      total: TOTAL_ILLUSTRATIONS,
+      total: clampedTotal,
       steps,
-      maxSteps: MAX_PROGRESS_STEPS,
+      maxSteps: getMaxProgressSteps(clampedTotal),
       unlocked,
       partialUnlocked,
-      lockedCount: Math.max(0, TOTAL_ILLUSTRATIONS - unlocked - partialUnlocked),
+      lockedCount: Math.max(0, clampedTotal - unlocked - partialUnlocked),
       activeSlotIndex,
       slots,
     };
@@ -198,10 +226,122 @@
     );
   }
 
-  function getStoredProgress() {
-    return buildProgressFromSteps(
-      getBestAllClears("konoha_easy") + getBestAllClears("konoha_hard"),
+  function hasStoredAssignments(entry) {
+    return (
+      Array.isArray(entry?.illustrationAssignments) &&
+      entry.illustrationAssignments.some((characterId) => typeof characterId === "string" && characterId)
     );
+  }
+
+  function parseStoredEntryTime(entry) {
+    const time = typeof entry?.time === "string" ? entry.time : "";
+    const parts = time.split(":");
+    if (parts.length !== 2) return Number.POSITIVE_INFINITY;
+    const minutes = Number(parts[0]);
+    const seconds = Number(parts[1]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) return Number.POSITIVE_INFINITY;
+    return minutes * 60 + seconds;
+  }
+
+  function getBestLeaderboardEntry(modeId) {
+    return readLeaderboard(modeId).reduce((best, entry) => {
+      if (!entry) return best;
+      if (!best) return entry;
+      const bestAllClears = Math.floor(Number(best?.allClears) || 0);
+      const entryAllClears = Math.floor(Number(entry?.allClears) || 0);
+      if (entryAllClears !== bestAllClears) {
+        return entryAllClears > bestAllClears ? entry : best;
+      }
+
+      const bestTime = parseStoredEntryTime(best);
+      const entryTime = parseStoredEntryTime(entry);
+      if (entryTime !== bestTime) {
+        return entryTime < bestTime ? entry : best;
+      }
+
+      const bestHasAssignments = hasStoredAssignments(best);
+      const entryHasAssignments = hasStoredAssignments(entry);
+      if (entryHasAssignments !== bestHasAssignments) {
+        return entryHasAssignments ? entry : best;
+      }
+
+      return best;
+    }, null);
+  }
+
+  function getStoredAssignmentList(entry) {
+    return Array.isArray(entry?.illustrationAssignments)
+      ? entry.illustrationAssignments.map((characterId) =>
+          typeof characterId === "string" && characterId ? characterId : null,
+        )
+      : [];
+  }
+
+  function getStoredModeProgress(modeId) {
+    const hard = modeId === "konoha_hard";
+    const total = hard ? TOTAL_ILLUSTRATIONS : EASY_RUN_ILLUSTRATION_TOTAL;
+    const characterIds = hard ? CHARACTER_IDS : EASY_CHARACTER_IDS;
+    const entry = getBestLeaderboardEntry(modeId);
+    return {
+      total,
+      steps: clampProgressSteps(entry?.allClears ?? 0, total),
+      characterIds,
+      assignments: getStoredAssignmentList(entry),
+    };
+  }
+
+  function getStatePriority(state) {
+    if (state === STATES.unlocked) return 2;
+    if (state === STATES.partial) return 1;
+    return 0;
+  }
+
+  function recordStoredCharacterStates(progress, stateByCharacterId) {
+    if (!progress || !(stateByCharacterId instanceof Map)) return;
+    const total = clampIllustrationTotal(progress.total || progress.characterIds?.length || TOTAL_ILLUSTRATIONS);
+    for (let slotIndex = 0; slotIndex < total; slotIndex += 1) {
+      const state = getSlotState(slotIndex, progress.steps, total);
+      if (state === STATES.locked) continue;
+      const characterId = progress.assignments[slotIndex] || getCharacterId(slotIndex, progress.characterIds);
+      const previousState = stateByCharacterId.get(characterId) || STATES.locked;
+      if (getStatePriority(state) > getStatePriority(previousState)) {
+        stateByCharacterId.set(characterId, state);
+      }
+    }
+  }
+
+  function getStoredProgress() {
+    const easyProgress = getStoredModeProgress("konoha_easy");
+    const hardProgress = getStoredModeProgress("konoha_hard");
+    const steps = clampProgressSteps(easyProgress.steps + hardProgress.steps);
+    const stateByCharacterId = new Map();
+    recordStoredCharacterStates(easyProgress, stateByCharacterId);
+    recordStoredCharacterStates(hardProgress, stateByCharacterId);
+    const slots = Array.from({ length: TOTAL_ILLUSTRATIONS }, (_, index) => {
+      const characterId = getCharacterId(index, CHARACTER_IDS);
+      const state = stateByCharacterId.get(characterId) || STATES.locked;
+      return {
+        index,
+        number: index + 1,
+        characterId,
+        state,
+      };
+    });
+    const unlocked = slots.filter((slot) => slot.state === STATES.unlocked).length;
+    const partialUnlocked = slots.filter((slot) => slot.state === STATES.partial).length;
+    const firstIncompleteSlotIndex = slots.findIndex((slot) => slot.state !== STATES.unlocked);
+
+    return {
+      total: TOTAL_ILLUSTRATIONS,
+      steps,
+      maxSteps: MAX_PROGRESS_STEPS,
+      unlocked,
+      partialUnlocked,
+      lockedCount: Math.max(0, TOTAL_ILLUSTRATIONS - unlocked - partialUnlocked),
+      activeSlotIndex:
+        firstIncompleteSlotIndex >= 0 ? firstIncompleteSlotIndex : Math.max(0, TOTAL_ILLUSTRATIONS - 1),
+      slots,
+    };
   }
 
   function isKonohaModeId(modeId) {
@@ -214,16 +354,141 @@
       : scene?.selectedMode || "";
   }
 
-  function getProgressForScene(scene) {
-    return buildProgressFromSteps(scene?.gameMode?.bravoCount ?? scene?.bravoCount ?? 0);
+  function getSceneVariant(scene) {
+    const variant = scene?.gameMode?.variant;
+    if (variant === "easy" || variant === "hard") return variant;
+    const modeId = getModeIdFromScene(scene);
+    return modeId.includes("hard") ? "hard" : "easy";
   }
 
-  function getSceneDisplay(progress) {
-    const slotIndex = clampSlotIndex(progress?.activeSlotIndex ?? 0);
-    const slot = progress?.slots?.[slotIndex] || {
+  function getSceneIllustrationTotal(scene) {
+    return getSceneVariant(scene) === "hard" ? TOTAL_ILLUSTRATIONS : EASY_RUN_ILLUSTRATION_TOTAL;
+  }
+
+  function getSceneCharacterIds(scene) {
+    return getSceneVariant(scene) === "hard" ? CHARACTER_IDS : EASY_CHARACTER_IDS;
+  }
+
+  function getSceneSteps(scene) {
+    return clampProgressSteps(
+      scene?.gameMode?.bravoCount ?? scene?.bravoCount ?? 0,
+      getSceneIllustrationTotal(scene),
+    );
+  }
+
+  function initializeSceneCharacterPools(runtime) {
+    if (!runtime) return;
+    runtime.slotAssignments = new Map();
+    runtime.baseCharacterPool = [...EASY_CHARACTER_IDS];
+    runtime.lateCharacterPool = [...HARD_LATE_CHARACTER_IDS];
+  }
+
+  function removeCharacterFromPool(pool, characterId) {
+    if (!Array.isArray(pool)) return false;
+    const index = pool.indexOf(characterId);
+    if (index < 0) return false;
+    pool.splice(index, 1);
+    return true;
+  }
+
+  function drawWeightedCharacterId(characterIds) {
+    if (!Array.isArray(characterIds) || characterIds.length === 0) return null;
+    const totalWeight = characterIds.reduce(
+      (sum, characterId) => sum + (CHARACTER_WEIGHTS[characterId] || 1),
+      0,
+    );
+    if (totalWeight <= 0) return characterIds[0] || null;
+    let roll = Math.random() * totalWeight;
+    for (const characterId of characterIds) {
+      roll -= CHARACTER_WEIGHTS[characterId] || 1;
+      if (roll <= 0) return characterId;
+    }
+    return characterIds[characterIds.length - 1] || null;
+  }
+
+  function getSceneAssignmentPool(runtime, slotIndex) {
+    if (!runtime) return [];
+    return slotIndex >= HARD_LATE_SLOT_START ? runtime.lateCharacterPool : runtime.baseCharacterPool;
+  }
+
+  function getSceneAssignmentFallback(slotIndex) {
+    if (slotIndex >= HARD_LATE_SLOT_START) {
+      return getCharacterId(slotIndex - HARD_LATE_SLOT_START, HARD_LATE_CHARACTER_IDS);
+    }
+    return getCharacterId(slotIndex, EASY_CHARACTER_IDS);
+  }
+
+  function isHardLatePhase(scene, slotIndex) {
+    if (getSceneVariant(scene) !== "hard") return false;
+    return (
+      clampSlotIndex(slotIndex, getSceneIllustrationTotal(scene)) >= HARD_LATE_SLOT_START ||
+      Math.floor(Number(scene?.level) || 0) >= 1000
+    );
+  }
+
+  function resolveSceneSlotCharacterId(scene, slotIndex) {
+    const total = getSceneIllustrationTotal(scene);
+    const clampedSlotIndex = clampSlotIndex(slotIndex, total);
+    const runtime = ensureRuntime(scene);
+    const assignedCharacterId = runtime?.slotAssignments?.get(clampedSlotIndex);
+    if (assignedCharacterId) {
+      return assignedCharacterId;
+    }
+
+    const assignmentPool = getSceneAssignmentPool(runtime, clampedSlotIndex);
+    let characterId = drawWeightedCharacterId(assignmentPool);
+    if (characterId) {
+      removeCharacterFromPool(assignmentPool, characterId);
+    } else {
+      characterId = getSceneAssignmentFallback(clampedSlotIndex);
+    }
+
+    runtime?.slotAssignments?.set(clampedSlotIndex, characterId);
+    return characterId || getCharacterId(clampedSlotIndex, getSceneCharacterIds(scene));
+  }
+
+  function getSceneAssignmentSnapshot(scene) {
+    const runtime = ensureRuntime(scene);
+    const assignments = runtime?.slotAssignments;
+    if (!(assignments instanceof Map) || assignments.size <= 0) return [];
+    const lastAssignedSlot = Math.max(...assignments.keys());
+    return Array.from({ length: lastAssignedSlot + 1 }, (_, index) => assignments.get(index) || null);
+  }
+
+  function getProgressForScene(scene) {
+    const total = getSceneIllustrationTotal(scene);
+    const steps = getSceneSteps(scene);
+    const unlocked = Math.min(total, Math.floor((steps + 1) / STEPS_PER_ILLUSTRATION));
+    const partialUnlocked = steps % STEPS_PER_ILLUSTRATION === 1 ? 1 : 0;
+    const activeSlotIndex = Math.min(total - 1, Math.floor(steps / STEPS_PER_ILLUSTRATION));
+
+    return {
+      total,
+      steps,
+      maxSteps: getMaxProgressSteps(total),
+      unlocked,
+      partialUnlocked,
+      lockedCount: Math.max(0, total - unlocked - partialUnlocked),
+      activeSlotIndex,
+      getSlot(slotIndex) {
+        const resolvedSlotIndex = clampSlotIndex(slotIndex, total);
+        return {
+          index: resolvedSlotIndex,
+          number: resolvedSlotIndex + 1,
+          characterId: resolveSceneSlotCharacterId(scene, resolvedSlotIndex),
+          state: getSlotState(resolvedSlotIndex, steps, total),
+        };
+      },
+    };
+  }
+
+  function getSceneDisplay(scene, progress = getProgressForScene(scene)) {
+    const total = progress?.total || getSceneIllustrationTotal(scene);
+    const slotIndex = clampSlotIndex(progress?.activeSlotIndex ?? 0, total);
+    const slot = progress?.getSlot?.(slotIndex) || {
       index: slotIndex,
       number: slotIndex + 1,
-      characterId: getCharacterId(slotIndex),
+      characterId: resolveSceneSlotCharacterId(scene, slotIndex),
       state: STATES.locked,
     };
     return {
@@ -244,7 +509,11 @@
         loaderHooked: false,
         trackedBaseTextures: new Map(),
         trackedCompositeTextures: new Map(),
+        slotAssignments: new Map(),
+        baseCharacterPool: [],
+        lateCharacterPool: [],
       };
+      initializeSceneCharacterPools(scene.konohaIllustrationRuntime);
     }
     return scene.konohaIllustrationRuntime;
   }
@@ -280,18 +549,18 @@
     return false;
   }
 
-  function getRetainedSlots(activeSlotIndex) {
-    const active = clampSlotIndex(activeSlotIndex);
+  function getRetainedSlots(activeSlotIndex, total = TOTAL_ILLUSTRATIONS) {
+    const active = clampSlotIndex(activeSlotIndex, total);
     const retained = new Set([active]);
     if (active > 0) retained.add(active - 1);
-    if (active < TOTAL_ILLUSTRATIONS - 1) retained.add(active + 1);
+    if (active < clampIllustrationTotal(total) - 1) retained.add(active + 1);
     return retained;
   }
 
-  function pruneTextureCache(scene, activeSlotIndex) {
+  function pruneTextureCache(scene, activeSlotIndex, total = TOTAL_ILLUSTRATIONS) {
     const runtime = ensureRuntime(scene);
     if (!runtime || !scene?.textures) return;
-    const retainedSlots = getRetainedSlots(activeSlotIndex);
+    const retainedSlots = getRetainedSlots(activeSlotIndex, total);
 
     for (const [key, slotIndex] of [...runtime.trackedBaseTextures.entries()]) {
       if (retainedSlots.has(slotIndex)) continue;
@@ -315,7 +584,7 @@
     return texture?.source?.[0]?.image || null;
   }
 
-  function buildCompositeDataUrl(scene, baseKey, gradientKey) {
+  function buildCompositeCanvas(scene, baseKey, gradientKey) {
     const baseImage = getTextureSourceImage(scene, baseKey);
     const gradientImage = getTextureSourceImage(scene, gradientKey);
     if (!baseImage || !gradientImage) return null;
@@ -337,13 +606,25 @@
     context.globalCompositeOperation = "source-atop";
     context.drawImage(gradientImage, 0, 0, width, height);
     context.globalCompositeOperation = "source-over";
-    return canvas.toDataURL("image/png");
+    return canvas;
+  }
+
+  function getSceneBaseAssetDescriptor(scene, slotIndex, kind) {
+    const total = getSceneIllustrationTotal(scene);
+    const clampedSlotIndex = clampSlotIndex(slotIndex, total);
+    return getBaseAssetDescriptor(
+      clampedSlotIndex,
+      kind,
+      resolveSceneSlotCharacterId(scene, clampedSlotIndex),
+    );
   }
 
   function ensureDisplayTexture(scene, slotIndex, kind, state) {
     const runtime = ensureRuntime(scene);
-    const clampedSlotIndex = clampSlotIndex(slotIndex);
-    const baseDescriptor = getBaseAssetDescriptor(clampedSlotIndex, kind);
+    const total = getSceneIllustrationTotal(scene);
+    const clampedSlotIndex = clampSlotIndex(slotIndex, total);
+    const characterId = resolveSceneSlotCharacterId(scene, clampedSlotIndex);
+    const baseDescriptor = getBaseAssetDescriptor(clampedSlotIndex, kind, characterId);
     if (!queueTextureLoad(scene, baseDescriptor, runtime?.trackedBaseTextures, clampedSlotIndex)) {
       return null;
     }
@@ -360,7 +641,7 @@
       return null;
     }
 
-    const compositeKey = getCompositeTextureKey(clampedSlotIndex, kind, state);
+    const compositeKey = getCompositeTextureKey(clampedSlotIndex, kind, state, characterId);
     runtime?.trackedCompositeTextures.set(compositeKey, {
       slotIndex: clampedSlotIndex,
       kind,
@@ -369,34 +650,25 @@
     if (scene.textures?.exists(compositeKey)) {
       return compositeKey;
     }
-    if (runtime?.loadingKeys?.has(compositeKey)) {
+    const compositeCanvas = buildCompositeCanvas(scene, baseDescriptor.key, gradientDescriptor.key);
+    if (!compositeCanvas) {
       return null;
     }
-
-    const compositeDataUrl = buildCompositeDataUrl(scene, baseDescriptor.key, gradientDescriptor.key);
-    if (!compositeDataUrl) {
-      return null;
-    }
-
-    runtime?.loadingKeys?.add(compositeKey);
-    scene.load.image(compositeKey, compositeDataUrl);
-    try {
-      scene.load.start();
-    } catch {}
-    return null;
+    scene.textures.addCanvas(compositeKey, compositeCanvas);
+    return scene.textures?.exists(compositeKey) ? compositeKey : null;
   }
 
   function prefetchSceneAssets(scene) {
     if (!scene) return;
     const progress = getProgressForScene(scene);
-    const activeSlotIndex = clampSlotIndex(progress.activeSlotIndex);
-    pruneTextureCache(scene, activeSlotIndex);
+    const activeSlotIndex = clampSlotIndex(progress.activeSlotIndex, progress.total);
+    pruneTextureCache(scene, activeSlotIndex, progress.total);
 
-    const currentState = progress.slots?.[activeSlotIndex]?.state || STATES.locked;
+    const currentState = progress.getSlot(activeSlotIndex)?.state || STATES.locked;
     ensureDisplayTexture(scene, activeSlotIndex, "egm", currentState);
     ensureDisplayTexture(scene, activeSlotIndex, "icon", currentState);
 
-    const nextSlotIndex = Math.min(TOTAL_ILLUSTRATIONS - 1, activeSlotIndex + 1);
+    const nextSlotIndex = Math.min(progress.total - 1, activeSlotIndex + 1);
     if (nextSlotIndex !== activeSlotIndex) {
       ensureDisplayTexture(scene, nextSlotIndex, "egm", STATES.locked);
       ensureDisplayTexture(scene, nextSlotIndex, "icon", STATES.locked);
@@ -406,6 +678,7 @@
   function resetScene(scene) {
     const runtime = ensureRuntime(scene);
     if (!runtime) return;
+    initializeSceneCharacterPools(runtime);
     runtime.lastPopAt = 0;
     runtime.revealFullDuringAre = false;
     prefetchSceneAssets(scene);
@@ -472,8 +745,8 @@
 
     const runtime = ensureRuntime(scene);
     const progress = getProgressForScene(scene);
-    const display = getSceneDisplay(progress);
-    const baseDescriptor = getBaseAssetDescriptor(display.slotIndex, "egm");
+    const display = getSceneDisplay(scene, progress);
+    const baseDescriptor = getSceneBaseAssetDescriptor(scene, display.slotIndex, "egm");
     if (!queueTextureLoad(scene, baseDescriptor, runtime?.trackedBaseTextures, display.slotIndex)) {
       return;
     }
@@ -518,7 +791,7 @@
     if (!isKonohaModeId(modeId)) return;
 
     const progress = getProgressForScene(scene);
-    const display = getSceneDisplay(progress);
+    const display = getSceneDisplay(scene, progress);
     const textureKey = ensureDisplayTexture(scene, display.slotIndex, "icon", display.state);
     if (!textureKey) return;
 
@@ -570,10 +843,10 @@
     entry.listeners.push(callback);
   }
 
-  function redrawProfileCanvas(canvas, slotIndex, state) {
+  function redrawProfileCanvas(canvas, slotIndex, state, kind = "icon", characterId = null) {
     if (!canvas) return;
-    const baseDescriptor = getBaseAssetDescriptor(slotIndex, "icon");
-    const gradientDescriptor = getGradientAssetDescriptor(state, "icon");
+    const baseDescriptor = getBaseAssetDescriptor(slotIndex, kind, characterId);
+    const gradientDescriptor = getGradientAssetDescriptor(state, kind);
 
     const draw = () => {
       const baseEntry = getDomImageEntry(baseDescriptor.url);
@@ -607,22 +880,29 @@
     draw();
   }
 
-  function createProfileIllustrationNode(slot, { size = 44 } = {}) {
+  function createProfileIllustrationNode(slot, { size = 44, kind = "icon" } = {}) {
     const slotIndex = clampSlotIndex(slot?.index ?? 0);
     const state = slot?.state || STATES.locked;
+    const characterId = typeof slot?.characterId === "string" ? slot.characterId : null;
     const canvas = document.createElement("canvas");
     canvas.width = 340;
     canvas.height = 340;
-    canvas.style.width = `${size}px`;
-    canvas.style.height = `${size}px`;
+    if (Number.isFinite(size) && size > 0) {
+      canvas.style.width = `${size}px`;
+      canvas.style.height = `${size}px`;
+    }
     canvas.style.display = "block";
     canvas.style.imageRendering = "pixelated";
-    redrawProfileCanvas(canvas, slotIndex, state);
+    redrawProfileCanvas(canvas, slotIndex, state, kind, characterId);
     return canvas;
   }
 
   const api = {
     CHARACTER_IDS,
+    EASY_CHARACTER_IDS,
+    HARD_LATE_CHARACTER_IDS,
+    EASY_RUN_ILLUSTRATION_TOTAL,
+    HARD_LATE_SLOT_START,
     TOTAL_ILLUSTRATIONS,
     STATES,
     STEPS_PER_ILLUSTRATION,
@@ -636,6 +916,10 @@
     getProgress: buildProgressFromSteps,
     getProgressForScene,
     getSceneDisplay,
+    getSceneVariant,
+    getSceneIllustrationTotal,
+    resolveSceneSlotCharacterId,
+    getSceneAssignmentSnapshot,
     isKonohaModeId,
     resetScene,
     onBravo,

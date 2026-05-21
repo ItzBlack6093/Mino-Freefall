@@ -16,8 +16,11 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerFirstPiece = true;
         this.minosa = null;
         this.minosaStatus = 'possible';
+        this.minosaPath = [];
         this.minosaHint = null;
         this.minosaSignature = null;
+        this.minosaPieceBudget = this.getMinosaPieceBudget();
+        this.minosaTargetRows = variant === 'easy' ? 4 : null;
     }
 
     getModeConfig() {
@@ -33,6 +36,7 @@ class TGM4KonohaMode extends BaseMode {
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
+            hasGrading: false,
             levelUpType: 'lines',
             lineClearBonus: 1,
             gravityLevelCap: 9999,
@@ -47,6 +51,31 @@ class TGM4KonohaMode extends BaseMode {
                 konohaEasyGoalBravoes: 110,
                 konohaMasterBravoes: 110
             }
+        };
+    }
+
+    getBgmConfig() {
+        if (this.variant === 'hard') {
+            return {
+                progressSource: 'level',
+                stopSource: 'bgmStopLevelOrProgress',
+                useStopBuffer: false,
+                transitionStopOffset: 9,
+                segments: [
+                    { end: 999, key: 'mf_konohahard' },
+                    { key: 'mf_konohahard2' }
+                ]
+            };
+        }
+
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [
+                { key: 'mf_konohaez' }
+            ]
         };
     }
 
@@ -86,23 +115,31 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
         this.randomizerFirstPiece = true;
         this.minosaStatus = 'possible';
+        this.minosaPath = [];
         this.minosaHint = null;
         this.minosaSignature = null;
+        this.minosaPieceBudget = this.getMinosaPieceBudget();
+        this.minosaTargetRows = this.variant === 'easy' ? 4 : null;
         gameScene.bravoCount = 0;
         gameScene.konohaMinosaRevision = 0;
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = [];
         gameScene.minosaHint = null;
+        gameScene.minosaPieceBudget = this.minosaPieceBudget;
+        gameScene.minosaTargetRows = this.minosaTargetRows;
+        gameScene.konohaMinosaSuppressDisplay = false;
+        gameScene.konohaBravoKitaTickActive = false;
+        gameScene.konohaHideImpossibleAfterBravoSpawn = false;
         if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.resetScene === 'function') {
             KonohaIllustrationSystem.resetScene(gameScene);
         }
 
-        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
-            this.minosa = getMinosaModuleInstance();
-        } else if (!this.minosa && typeof MinosaModule !== 'undefined') {
-            this.minosa = MinosaModule.getSharedInstance
-                ? MinosaModule.getSharedInstance()
-                : new MinosaModule();
+        if (!this.minosa && typeof getMinosaKonohaInstance === 'function') {
+            this.minosa = getMinosaKonohaInstance();
+        } else if (!this.minosa && typeof MinosaKonoha !== 'undefined') {
+            this.minosa = MinosaKonoha.getSharedInstance
+                ? MinosaKonoha.getSharedInstance()
+                : new MinosaKonoha();
         }
 
         // Initialize big mode for Konoha with shared module instance.
@@ -200,14 +237,15 @@ class TGM4KonohaMode extends BaseMode {
     }
 
     handleLineClear(gameScene, linesCleared) {
-        const isBravo = gameScene?.bravoActive ||
-            gameScene?.lastClearType === 'bravo' ||
-            (typeof gameScene?.lastClearType === 'string' && gameScene.lastClearType.includes('all clear'));
+        const isBravo = this.isBravoLineClear(gameScene, linesCleared);
 
         if (isBravo && linesCleared > 0) {
             this.bravoCount += 1;
             if (gameScene) {
                 gameScene.bravoCount = this.bravoCount;
+                if (typeof gameScene.showBravoBanner === 'function') {
+                    gameScene.showBravoBanner(this.bravoCount);
+                }
                 if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.onBravo === 'function') {
                     KonohaIllustrationSystem.onBravo(gameScene);
                 }
@@ -235,38 +273,67 @@ class TGM4KonohaMode extends BaseMode {
         return `${this.bravoCount} Bravoes`;
     }
 
+    getMinosaPieceBudget() {
+        return this.variant === 'easy' ? 5 : 7;
+    }
+
+    isBravoLineClear(gameScene, linesCleared = 0) {
+        if (!gameScene || linesCleared <= 0) return false;
+        if (gameScene.lastLineClearWasBravo === true) return true;
+        const lastClearType = typeof gameScene.lastClearType === 'string'
+            ? gameScene.lastClearType.toLowerCase()
+            : '';
+        return lastClearType.includes('bravo') || lastClearType.includes('all clear');
+    }
+
+    hasAchievedAllClear(gameScene) {
+        return Boolean(
+            gameScene?.piecesPlaced > 0 &&
+            Array.isArray(gameScene?.board?.grid) &&
+            gameScene.board.grid.every(row => Array.isArray(row) && row.every(cell => !cell))
+        );
+    }
+
     updateMinosaStatus(gameScene) {
         if (!gameScene) return this.minosaStatus;
         const signature = this.getMinosaSignature(gameScene);
         if (signature && signature === this.minosaSignature) return this.minosaStatus;
         this.minosaSignature = signature;
-        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
-            this.minosa = getMinosaModuleInstance();
+        if (!this.minosa && typeof getMinosaKonohaInstance === 'function') {
+            this.minosa = getMinosaKonohaInstance();
         }
         const result = this.minosa && typeof this.minosa.evaluateGameScene === 'function'
             ? this.minosa.evaluateGameScene(gameScene)
             : { status: 'impossible' };
         this.minosaStatus = result.status || 'impossible';
         const path = Array.isArray(result.path) ? result.path : [];
+        this.minosaPath = path;
         this.minosaHint = path.length > 0 ? path[0] : null;
+        this.minosaPieceBudget = Number.isInteger(result.pieceBudget) && result.pieceBudget > 0
+            ? result.pieceBudget
+            : this.getMinosaPieceBudget();
+        this.minosaTargetRows = Number.isInteger(result.targetRows) && result.targetRows > 0
+            ? result.targetRows
+            : (this.variant === 'easy' ? 4 : null);
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = path;
         gameScene.minosaHint = this.minosaHint;
+        gameScene.minosaPieceBudget = this.minosaPieceBudget;
+        gameScene.minosaTargetRows = this.minosaTargetRows;
         return this.minosaStatus;
     }
 
     getMinosaSignature(gameScene) {
         if (!gameScene?.board?.grid) return '';
+        const pieceBudget = this.getMinosaPieceBudget();
         const currentType = this.normalizeMinosaPiece(gameScene.currentPiece);
         const queue = (Array.isArray(gameScene.nextPieces) ? gameScene.nextPieces : [])
             .map(piece => this.normalizeMinosaPiece(piece))
             .filter(piece => piece)
+            .slice(0, pieceBudget)
             .join('');
         const holdType = this.normalizeMinosaPiece(gameScene.holdPiece) || '';
-        const achieved = gameScene.bravoActive ||
-            gameScene.lastClearType === 'bravo' ||
-            (typeof gameScene.lastClearType === 'string' && gameScene.lastClearType.includes('all clear')) ||
-            (gameScene.piecesPlaced > 0 && gameScene.board.grid.every(row => row.every(cell => !cell)));
+        const achieved = this.hasAchievedAllClear(gameScene);
         return [
             gameScene.board.rows,
             gameScene.board.cols,
@@ -276,6 +343,8 @@ class TGM4KonohaMode extends BaseMode {
             holdType,
             gameScene.canHold !== false ? '1' : '0',
             achieved ? '1' : '0',
+            this.variant,
+            pieceBudget,
         ].join('|');
     }
 
@@ -292,7 +361,6 @@ class TGM4KonohaMode extends BaseMode {
 
     update(gameScene) {
         if (!gameScene || gameScene.gameOver) return;
-        this.updateMinosaStatus(gameScene);
         if (!this.timerStarted && gameScene.currentPiece) {
             this.timerStarted = true;
             this.lastTimerTime = gameScene.currentTime || 0;
@@ -310,15 +378,23 @@ class TGM4KonohaMode extends BaseMode {
     }
 
     onGameOver(gameScene) {
-        if (!gameScene || typeof gameScene.saveLeaderboardEntry !== 'function') return;
+        if (!gameScene) return;
+        if (typeof gameScene.stopAllBGMs === 'function') {
+            gameScene.stopAllBGMs();
+        }
+        if (typeof gameScene.saveLeaderboardEntry !== 'function') return;
         const time = `${Math.floor(gameScene.currentTime / 60)}:${Math.floor(gameScene.currentTime % 60).toString().padStart(2, '0')}.${Math.floor((gameScene.currentTime % 1) * 100).toString().padStart(2, '0')}`;
-        gameScene.saveLeaderboardEntry(gameScene.selectedMode, {
+        const entry = {
             allClears: this.bravoCount,
             level: gameScene.level,
             grade: this.getDisplayedGrade(),
             time,
             pps: gameScene.conventionalPPS != null ? Number(gameScene.conventionalPPS.toFixed(2)) : undefined
-        });
+        };
+        if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.getSceneAssignmentSnapshot === 'function') {
+            entry.illustrationAssignments = KonohaIllustrationSystem.getSceneAssignmentSnapshot(gameScene);
+        }
+        gameScene.saveLeaderboardEntry(gameScene.selectedMode, entry);
         gameScene.leaderboardSaved = true;
     }
 }
