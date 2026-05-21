@@ -42,7 +42,12 @@ class GameScene extends Phaser.Scene {
     this.minosaStatus = "possible";
     this.minosaPath = [];
     this.minosaHint = null;
+    this.minosaPieceBudget = 0;
+    this.minosaTargetRows = null;
     this.konohaMinosaRevision = 0;
+    this.hintPlacements = [];
+    this.hintColor = 0xffff66;
+    this.hintColorHex = "#ffff66";
     this.nextGradeText = null;
     this.levelDisplay = null;
     this.rollBonus = 0;
@@ -61,6 +66,7 @@ class GameScene extends Phaser.Scene {
     this.coolRegretHideEvent = null;
     this.bravoText = null;
     this.bravoHideEvent = null;
+    this.bravoTween = null;
     this.bravoActive = false;
     this.sectionPerfTexts = [];
     this.sectionTimes = [];
@@ -1400,14 +1406,44 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  getHintModeId() {
+    return (
+      (this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode) || ""
+    );
+  }
+
+  isKonohaHintMode(modeId = this.getHintModeId()) {
+    return typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+  }
+
+  getPrimaryMinosaHint(modeId = this.getHintModeId()) {
+    if (!this.isKonohaHintMode(modeId)) return null;
+    const minosaStatus = this.gameMode?.minosaStatus || this.minosaStatus || "";
+    if (minosaStatus !== "possible") return null;
+    const sceneMinosaPath = this.gameMode?.minosaPath || this.minosaPath || [];
+    const path = Array.isArray(sceneMinosaPath)
+      ? sceneMinosaPath.filter(
+          (step) =>
+            step &&
+            typeof step.piece === "string" &&
+            Number.isFinite(step.x) &&
+            Number.isFinite(step.y),
+        )
+      : [];
+    if (path.length > 0) return path[0];
+    const sceneMinosaHint = this.gameMode?.minosaHint || this.minosaHint || null;
+    return sceneMinosaHint && typeof sceneMinosaHint.piece === "string"
+      ? sceneMinosaHint
+      : null;
+  }
+
   updatePlacementHint() {
     if (!this.hintGraphics) return;
     this.hintGraphics.clear();
-    const modeId =
-      (this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode) || "";
-    const isKonohaMode = typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+    const modeId = this.getHintModeId();
+    const isKonohaMode = this.isKonohaHintMode(modeId);
     if (
       !this.currentPiece ||
       this.areActive ||
@@ -1418,19 +1454,12 @@ class GameScene extends Phaser.Scene {
       !(this.isNormalOrEasyMode() || isKonohaMode)
     ) {
       this.hintPlacement = null;
+      this.hintPlacements = [];
       this.hintSignature = null;
       return;
     }
 
-    const minosaStatus = this.gameMode?.minosaStatus || this.minosaStatus || "";
-    const sceneMinosaHint = this.gameMode?.minosaHint || this.minosaHint || null;
-    const minosaHint =
-      isKonohaMode &&
-      minosaStatus === "possible" &&
-      sceneMinosaHint &&
-      typeof sceneMinosaHint.piece === "string"
-        ? sceneMinosaHint
-        : null;
+    const minosaHint = this.getPrimaryMinosaHint(modeId);
     const hintPieceType = minosaHint ? minosaHint.piece : this.currentPiece.type;
 
     const rows = this.board.rows;
@@ -1455,6 +1484,7 @@ class GameScene extends Phaser.Scene {
         hintPiece.x = minosaHint.x;
         hintPiece.y = minosaHint.y;
         this.hintPlacement = hintPiece;
+        this.hintPlacements = [hintPiece];
         this.hintSignature = hintSignature;
       } else {
       const makeGridWithPiece = (piece) => {
@@ -1565,27 +1595,29 @@ class GameScene extends Phaser.Scene {
 
       if (!placements.length) {
         this.hintPlacement = null;
+        this.hintPlacements = [];
         this.hintSignature = hintSignature;
         return;
       }
       placements.sort((a, b) => a.score - b.score);
       this.hintPlacement = placements[0].piece;
+      this.hintPlacements = [placements[0].piece];
       this.hintSignature = hintSignature;
       }
     }
 
-    if (!this.hintPlacement) return;
-    const hintColor = this.hintPlacement.color || 0x00e0ff;
+    const hintPlacement = this.hintPlacement || null;
+    if (!hintPlacement) return;
     const startRow = 2;
     const cell = this.cellSize;
     const offX = this.matrixOffsetX;
     const offY = this.matrixOffsetY;
-    this.hintGraphics.lineStyle(2, hintColor, 0.4);
-    for (let r = 0; r < this.hintPlacement.shape.length; r++) {
-      for (let c = 0; c < this.hintPlacement.shape[r].length; c++) {
-        if (!this.hintPlacement.shape[r][c]) continue;
-        const x = this.hintPlacement.x + c;
-        const y = this.hintPlacement.y + r;
+    this.hintGraphics.lineStyle(4, this.hintColor, 0.95);
+    for (let r = 0; r < hintPlacement.shape.length; r++) {
+      for (let c = 0; c < hintPlacement.shape[r].length; c++) {
+        if (!hintPlacement.shape[r][c]) continue;
+        const x = hintPlacement.x + c;
+        const y = hintPlacement.y + r;
         const drawY = y - startRow;
         if (drawY < 0) continue;
         this.hintGraphics.strokeRect(
@@ -1600,8 +1632,12 @@ class GameScene extends Phaser.Scene {
     // Apply smooth blink (alpha oscillation)
     const blinkSpeed = 2; // Hz
     const t = this.time.now / 1000;
-    const alpha = 0.3 + 0.2 * (1 + Math.sin(2 * Math.PI * blinkSpeed * t));
+    const alpha = 0.55 + 0.15 * (1 + Math.sin(2 * Math.PI * blinkSpeed * t));
     this.hintGraphics.setAlpha(Math.min(1, Math.max(0, alpha)));
+    if (isKonohaMode) {
+      this.hintGraphics.setDepth(9500);
+      this.children.bringToTop(this.hintGraphics);
+    }
   }
 
   preload() {
@@ -1682,6 +1718,130 @@ class GameScene extends Phaser.Scene {
     const powerupLabelSize = Math.max(12, Math.floor(this.cellSize * 0.6));
     this.powerupStatusText.setPosition(this.borderOffsetX, this.borderOffsetY - 28);
     this.powerupStatusText.setStyle({ fontSize: `${powerupLabelSize}px` });
+  }
+
+  destroyResponsiveUi() {
+    const destroyRef = (key) => {
+      const target = this[key];
+      if (target && typeof target.destroy === "function") {
+        try {
+          target.destroy();
+        } catch (error) {
+        }
+      }
+      this[key] = null;
+    };
+
+    const destroyTextGroup = (items) => {
+      items.forEach((item) => {
+        if (item && typeof item.destroy === "function") {
+          try {
+            item.destroy();
+          } catch (error) {
+          }
+        }
+      });
+    };
+
+    if (this.clearBannerHideEvent) {
+      this.clearBannerHideEvent.remove(false);
+      this.clearBannerHideEvent = null;
+    }
+    if (this.clearBannerTween) {
+      this.clearBannerTween.stop();
+      this.clearBannerTween = null;
+    }
+    if (this.clearBannerGroup) {
+      this.clearBannerGroup.destroy(true);
+      this.clearBannerGroup = null;
+    }
+    this.clearBannerLine1 = null;
+    this.clearBannerLine2 = null;
+
+    if (this.sectionTrackerGroup) {
+      this.sectionTrackerGroup.destroy(true);
+      this.sectionTrackerGroup = null;
+    }
+    if (this.zenSandboxPanelGroup) {
+      this.zenSandboxPanelGroup.destroy(true);
+      this.zenSandboxPanelGroup = null;
+    }
+
+    [
+      "gradeDisplay",
+      "gradeText",
+      "gradePointsText",
+      "nextGradeText",
+      "levelLabel",
+      "levelDisplayLabel",
+      "levelDisplayText",
+      "currentLevelText",
+      "capLevelText",
+      "levelBar",
+      "scoreLabel",
+      "scoreText",
+      "scorePerPieceLabel",
+      "scorePerPieceText",
+      "vsLabel",
+      "vsScoreText",
+      "attackLabel",
+      "attackTotalText",
+      "attackPerMinLabel",
+      "attackPerMinText",
+      "attackPerPieceLabel",
+      "attackPerPieceText",
+      "finesseInputLabel",
+      "finesseInputText",
+      "inputPerPieceLabel",
+      "inputPerPieceText",
+      "pieceCountLabel",
+      "pieceCountText",
+      "ppsLabel",
+      "ppsText",
+      "rawPpsLabel",
+      "rawPpsText",
+      "playerNameText",
+      "timeText",
+      "coolRegretText",
+      "hanabiLabel",
+      "hanabiTextInGame",
+      "bravoCountLabel",
+      "bravoCountText",
+      "asukaKitaLabel",
+      "asukaKitaText",
+      "ppsSummaryText",
+      "ppsGraphGraphics",
+      "ppsLegendText",
+      "staffRollBonusText",
+      "tapInternalGradeText",
+      "powerupStatusText",
+    ].forEach(destroyRef);
+
+    destroyTextGroup(this.roundsMedalLabels || []);
+    destroyTextGroup(this.roundsMedalTexts || []);
+    destroyTextGroup(Object.values(this.finesseTexts || {}).filter(Boolean));
+
+    this.roundsMedalLabels = [];
+    this.roundsMedalTexts = [];
+    this.finesseTexts = {};
+    this.halfTimeTexts = null;
+    this.sectionSectionLabels = null;
+    this.sectionTimeTexts = null;
+    this.sectionTotalTexts = null;
+    this.sectionTallyTexts = null;
+    this.sectionPerfTexts = [];
+    this.playfieldBorder = null;
+  }
+
+  handleViewportResize(viewport = {}) {
+    this.calculateLayout(viewport);
+    this.applyGameplayHudZoom();
+    this.destroyResponsiveUi();
+    this.setupUI();
+    this.updatePowerupStatusLayout();
+    if (this.versusHUD && typeof this.versusHUD.relayout === "function") {
+      this.versusHUD.relayout();
+    }
   }
 
   applyGameplayHudZoom({ forceRedraw = false } = {}) {
@@ -1865,6 +2025,7 @@ class GameScene extends Phaser.Scene {
     }
     this.hintGraphics = null;
     this.hintPlacement = null;
+    this.hintPlacements = [];
     this.spinRotatedWhileGrounded = false;
     this.levelUpType = config.levelUpType || "piece";
     this.lineClearBonus = config.lineClearBonus || 1;
@@ -2121,9 +2282,25 @@ class GameScene extends Phaser.Scene {
     }
   }
 
-  calculateLayout() {
-    const windowWidth = window.innerWidth;
-    const windowHeight = window.innerHeight;
+  calculateLayout(viewport = {}) {
+    const windowWidth = Math.max(
+      1,
+      Math.floor(
+        viewport.width ||
+        this.scale?.width ||
+        this.cameras?.main?.width ||
+        window.innerWidth,
+      ),
+    );
+    const windowHeight = Math.max(
+      1,
+      Math.floor(
+        viewport.height ||
+        this.scale?.height ||
+        this.cameras?.main?.height ||
+        window.innerHeight,
+      ),
+    );
 
     const maxCellWidth = Math.floor((windowWidth * 0.8) / this.board.cols);
     const maxCellHeight = Math.floor((windowHeight * 0.9) / this.visibleRows);
@@ -2149,6 +2326,9 @@ class GameScene extends Phaser.Scene {
     this.windowHeight = windowHeight;
 
     if (this.cameras?.main) {
+      if (typeof this.cameras.main.setSize === "function") {
+        this.cameras.main.setSize(windowWidth, windowHeight);
+      }
       this.cameras.main.centerOn(windowWidth / 2, windowHeight / 2);
     }
 
@@ -3245,8 +3425,9 @@ class GameScene extends Phaser.Scene {
     // Overlay group for transient UI (e.g., READY/GO) that must survive draw() clears
     this.overlayGroup = this.add.group();
     this.hintGraphics = this.add.graphics({
-      lineStyle: { width: 2, color: 0x00e0ff, alpha: 0.5 },
+      lineStyle: { width: 4, color: this.hintColor, alpha: 0.95 },
     });
+    this.hintGraphics.setDepth(9500);
     this.powerupEffectHandler =
       typeof PowerupEffectHandler !== "undefined"
         ? new PowerupEffectHandler(this)
@@ -3595,6 +3776,10 @@ class GameScene extends Phaser.Scene {
       this.bravoHideEvent.remove(false);
       this.bravoHideEvent = null;
     }
+    if (this.bravoTween) {
+      this.bravoTween.stop();
+      this.bravoTween = null;
+    }
     if (this.bravoText) {
       this.bravoText.setVisible(false);
     }
@@ -3933,6 +4118,10 @@ class GameScene extends Phaser.Scene {
       this.bravoHideEvent.remove(false);
       this.bravoHideEvent = null;
     }
+    if (this.bravoTween) {
+      this.bravoTween.stop();
+      this.bravoTween = null;
+    }
 
     this.bravoActive = true;
     this.bravoText.setText("BRAVO!!");
@@ -3946,31 +4135,32 @@ class GameScene extends Phaser.Scene {
       this.playSfx("firework", 0.85);
     } catch {}
 
-    // Timeline: grow + spin in 1s, then fade and slightly shrink over 3s
-    const tl = this.tweens.createTimeline();
-    tl.add({
+    // Sequence: grow + spin in 1s, then fade and slightly shrink over 3s
+    this.bravoTween = this.tweens.add({
       targets: this.bravoText,
       scale: { from: 0, to: 1 },
       alpha: { from: 0, to: 1 },
       angle: { from: 0, to: 360 },
       duration: 1000,
       ease: "Cubic.easeOut",
+      onComplete: () => {
+        this.bravoTween = this.tweens.add({
+          targets: this.bravoText,
+          scale: { from: 1, to: 0.9 },
+          alpha: { from: 1, to: 0 },
+          duration: 3000,
+          ease: "Cubic.easeInOut",
+          onComplete: () => {
+            if (this.bravoText) {
+              this.bravoText.setVisible(false);
+            }
+            this.bravoActive = false;
+            this.bravoHideEvent = null;
+            this.bravoTween = null;
+          },
+        });
+      },
     });
-    tl.add({
-      targets: this.bravoText,
-      scale: { from: 1, to: 0.9 },
-      alpha: { from: 1, to: 0 },
-      duration: 3000,
-      ease: "Cubic.easeInOut",
-    });
-    tl.setCallback("onComplete", () => {
-      if (this.bravoText) {
-        this.bravoText.setVisible(false);
-      }
-      this.bravoActive = false;
-      this.bravoHideEvent = null;
-    });
-    tl.play();
   }
 
   getAttackTableForSpin(spinType, lineClear) {
@@ -11611,11 +11801,22 @@ class GameScene extends Phaser.Scene {
           impossible: "#ff8888",
         };
         const hint = this.gameMode?.minosaHint || this.minosaHint || null;
+        const path =
+          this.gameMode?.minosaPath || this.minosaPath || [];
+        const pieceBudget =
+          this.gameMode?.minosaPieceBudget || this.minosaPieceBudget || 0;
         const hintSuffix =
           status === "possible" && hint?.usedHold && hint?.piece
             ? ` ${hint.source === "hold" ? "H" : "N"}:${hint.piece}`
             : "";
-        this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}`);
+        const remainingSuffix =
+          status === "possible" &&
+          Array.isArray(path) &&
+          path.length > 0 &&
+          pieceBudget > 0
+            ? ` ${path.length}/${pieceBudget}`
+            : "";
+        this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}${remainingSuffix}`);
         this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
       } else {
         const kitaCount =
@@ -11848,10 +12049,26 @@ class GameScene extends Phaser.Scene {
       16,
       Math.min(24, Math.floor(this.cellSize * 0.8)),
     );
+    const modeId = this.getHintModeId();
+    const previewHint = this.getPrimaryMinosaHint(modeId);
+    const highlightHoldHint =
+      !!(
+        previewHint &&
+        previewHint.usedHold &&
+        previewHint.source === "hold" &&
+        typeof previewHint.piece === "string"
+      );
+    const highlightNextHint =
+      !!(
+        previewHint &&
+        previewHint.usedHold &&
+        previewHint.source === "next" &&
+        typeof previewHint.piece === "string"
+      );
 
     const nextLabel = this.add.text(nextX, nextY, "NEXT", {
       fontSize: `${nextFontSize}px`,
-      fill: "#fff",
+      fill: highlightNextHint ? this.hintColorHex : "#fff",
       fontFamily: "Courier New",
       fontStyle: "bold",
     });
@@ -11917,6 +12134,17 @@ class GameScene extends Phaser.Scene {
       const nextAreaOffsetY =
         this.borderOffsetY + 30 + i * (previewCellSize * 3 + 4); // Closer spacing
       nextPiece.draw(this, nextAreaOffsetX, nextAreaOffsetY, previewCellSize, false, 1, false);
+      if (highlightNextHint && i === 0) {
+        const nextHighlight = this.add.graphics();
+        nextHighlight.lineStyle(4, this.hintColor, 0.95);
+        nextHighlight.strokeRect(
+          nextAreaOffsetX - previewCellSize,
+          nextAreaOffsetY - previewCellSize,
+          previewCellSize * 4,
+          previewCellSize * 4,
+        );
+        this.gameGroup.add(nextHighlight);
+      }
     }
 
     // Update powerup status text based on next queue if not already showing active
@@ -11945,7 +12173,7 @@ class GameScene extends Phaser.Scene {
 
       const holdLabel = this.add.text(holdX, holdY, "HOLD", {
         fontSize: `${holdFontSize}px`,
-        fill: "#fff",
+        fill: highlightHoldHint ? this.hintColorHex : "#fff",
         fontFamily: "Courier New",
         fontStyle: "bold",
       });
@@ -11966,6 +12194,17 @@ class GameScene extends Phaser.Scene {
         displayPiece.x = 0;
         displayPiece.y = 2; // Start from the top visible row
         displayPiece.draw(this, holdX, holdY + 30, previewCellSize, false, 1, false);
+        if (highlightHoldHint) {
+          const holdHighlight = this.add.graphics();
+          holdHighlight.lineStyle(4, this.hintColor, 0.95);
+          holdHighlight.strokeRect(
+            holdX - previewCellSize,
+            holdY + 30 - previewCellSize,
+            previewCellSize * 4,
+            previewCellSize * 4,
+          );
+          this.gameGroup.add(holdHighlight);
+        }
       }
     }
 

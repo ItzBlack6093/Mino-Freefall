@@ -237,6 +237,7 @@ class VersusHUD {
     this.timerText = null;
     this.opponentNameText = null;
     this.connectionDot = null;
+    this.connectionState = true;
   }
 
   create() {
@@ -323,6 +324,16 @@ class VersusHUD {
     this.container.setDepth(1000);
   }
 
+  relayout() {
+    if (!this.container) return;
+    const cam = this.scene?.cameras?.main;
+    if (!cam) return;
+
+    this.container.setPosition(cam.width - 180, 40);
+    this.updateGarbageQueue(this.garbageQueue);
+    this.updateConnectionDot(this.connectionState);
+  }
+
   updateOpponentBoard(boardData) {
     if (!this.miniGraphics || !boardData) return;
     this.miniGraphics.clear();
@@ -400,8 +411,9 @@ class VersusHUD {
 
   updateConnectionDot(connected) {
     if (!this.connectionDot) return;
+    this.connectionState = connected !== false;
     this.connectionDot.clear();
-    this.connectionDot.fillStyle(connected ? 0x00ff00 : 0xff0000, 1);
+    this.connectionDot.fillStyle(this.connectionState ? 0x00ff00 : 0xff0000, 1);
     this.connectionDot.fillCircle(150, 6, 4);
   }
 

@@ -270,21 +270,17 @@ class PowerupEffectHandler {
             if (onComplete) onComplete();
             return;
         }
-        const timeline = scene.tweens.createTimeline();
-        targets.forEach((t) => {
-            timeline.add({
-                targets: t,
-                y: '+=6',
-                duration: 70,
-                yoyo: true,
-                repeat: 1,
-                ease: 'Sine.easeInOut',
-            });
+        scene.tweens.add({
+            targets,
+            y: '+=6',
+            duration: 70,
+            yoyo: true,
+            repeat: 1,
+            ease: 'Sine.easeInOut',
+            onComplete: () => {
+                if (onComplete) onComplete();
+            },
         });
-        timeline.setCallback('onComplete', () => {
-            if (onComplete) onComplete();
-        });
-        timeline.play();
     }
     
     // Process powerup effects when lines are cleared

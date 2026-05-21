@@ -16,8 +16,11 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerFirstPiece = true;
         this.minosa = null;
         this.minosaStatus = 'possible';
+        this.minosaPath = [];
         this.minosaHint = null;
         this.minosaSignature = null;
+        this.minosaPieceBudget = this.getMinosaPieceBudget();
+        this.minosaTargetRows = variant === 'easy' ? 4 : null;
     }
 
     getModeConfig() {
@@ -87,23 +90,28 @@ class TGM4KonohaMode extends BaseMode {
         this.randomizerHistory = ['Z', 'Z', 'S', 'S'];
         this.randomizerFirstPiece = true;
         this.minosaStatus = 'possible';
+        this.minosaPath = [];
         this.minosaHint = null;
         this.minosaSignature = null;
+        this.minosaPieceBudget = this.getMinosaPieceBudget();
+        this.minosaTargetRows = this.variant === 'easy' ? 4 : null;
         gameScene.bravoCount = 0;
         gameScene.konohaMinosaRevision = 0;
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = [];
         gameScene.minosaHint = null;
+        gameScene.minosaPieceBudget = this.minosaPieceBudget;
+        gameScene.minosaTargetRows = this.minosaTargetRows;
         if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.resetScene === 'function') {
             KonohaIllustrationSystem.resetScene(gameScene);
         }
 
-        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
-            this.minosa = getMinosaModuleInstance();
-        } else if (!this.minosa && typeof MinosaModule !== 'undefined') {
-            this.minosa = MinosaModule.getSharedInstance
-                ? MinosaModule.getSharedInstance()
-                : new MinosaModule();
+        if (!this.minosa && typeof getMinosaKonohaInstance === 'function') {
+            this.minosa = getMinosaKonohaInstance();
+        } else if (!this.minosa && typeof MinosaKonoha !== 'undefined') {
+            this.minosa = MinosaKonoha.getSharedInstance
+                ? MinosaKonoha.getSharedInstance()
+                : new MinosaKonoha();
         }
 
         // Initialize big mode for Konoha with shared module instance.
@@ -236,32 +244,47 @@ class TGM4KonohaMode extends BaseMode {
         return `${this.bravoCount} Bravoes`;
     }
 
+    getMinosaPieceBudget() {
+        return this.variant === 'easy' ? 5 : 7;
+    }
+
     updateMinosaStatus(gameScene) {
         if (!gameScene) return this.minosaStatus;
         const signature = this.getMinosaSignature(gameScene);
         if (signature && signature === this.minosaSignature) return this.minosaStatus;
         this.minosaSignature = signature;
-        if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
-            this.minosa = getMinosaModuleInstance();
+        if (!this.minosa && typeof getMinosaKonohaInstance === 'function') {
+            this.minosa = getMinosaKonohaInstance();
         }
         const result = this.minosa && typeof this.minosa.evaluateGameScene === 'function'
             ? this.minosa.evaluateGameScene(gameScene)
             : { status: 'impossible' };
         this.minosaStatus = result.status || 'impossible';
         const path = Array.isArray(result.path) ? result.path : [];
+        this.minosaPath = path;
         this.minosaHint = path.length > 0 ? path[0] : null;
+        this.minosaPieceBudget = Number.isInteger(result.pieceBudget) && result.pieceBudget > 0
+            ? result.pieceBudget
+            : this.getMinosaPieceBudget();
+        this.minosaTargetRows = Number.isInteger(result.targetRows) && result.targetRows > 0
+            ? result.targetRows
+            : (this.variant === 'easy' ? 4 : null);
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = path;
         gameScene.minosaHint = this.minosaHint;
+        gameScene.minosaPieceBudget = this.minosaPieceBudget;
+        gameScene.minosaTargetRows = this.minosaTargetRows;
         return this.minosaStatus;
     }
 
     getMinosaSignature(gameScene) {
         if (!gameScene?.board?.grid) return '';
+        const pieceBudget = this.getMinosaPieceBudget();
         const currentType = this.normalizeMinosaPiece(gameScene.currentPiece);
         const queue = (Array.isArray(gameScene.nextPieces) ? gameScene.nextPieces : [])
             .map(piece => this.normalizeMinosaPiece(piece))
             .filter(piece => piece)
+            .slice(0, pieceBudget)
             .join('');
         const holdType = this.normalizeMinosaPiece(gameScene.holdPiece) || '';
         const achieved = gameScene.bravoActive ||
@@ -277,6 +300,8 @@ class TGM4KonohaMode extends BaseMode {
             holdType,
             gameScene.canHold !== false ? '1' : '0',
             achieved ? '1' : '0',
+            this.variant,
+            pieceBudget,
         ].join('|');
     }
 

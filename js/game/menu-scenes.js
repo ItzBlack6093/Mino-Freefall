@@ -280,6 +280,10 @@ class BootScene extends Phaser.Scene {
     this.titleText = null;
   }
 
+  calculateLayout() {
+    this.scene.restart();
+  }
+
   preload() {
     const centerX = this.cameras.main.width / 2;
     const centerY = this.cameras.main.height / 2;
@@ -406,12 +410,32 @@ class MenuScene extends Phaser.Scene {
     this.profileOverlayElement = null;
   }
 
+  init(data = {}) {
+    if (Number.isInteger(data.currentModeTypeIndex)) {
+      this.currentModeTypeIndex = data.currentModeTypeIndex;
+    }
+    if (Number.isInteger(data.currentSubmodeIndex)) {
+      this.currentSubmodeIndex = data.currentSubmodeIndex;
+    }
+  }
+
   getModeTypesFromManager() {
     if (typeof getModeManager === "undefined") {
       return [];
     }
     const modeManager = getModeManager();
     return modeManager.getMenuModeTypes();
+  }
+
+  buildRestartData() {
+    return {
+      currentModeTypeIndex: this.currentModeTypeIndex,
+      currentSubmodeIndex: this.currentSubmodeIndex,
+    };
+  }
+
+  calculateLayout() {
+    this.scene.restart(this.buildRestartData());
   }
 
   create() {
@@ -3024,6 +3048,14 @@ class SettingsScene extends Phaser.Scene {
 
   init(data = {}) {
     this.activeSettingsTab = data.activeTab || "controls";
+  }
+
+  buildRestartData() {
+    return { activeTab: this.activeSettingsTab };
+  }
+
+  calculateLayout() {
+    this.scene.restart(this.buildRestartData());
   }
 
   preload() {
@@ -6345,6 +6377,20 @@ class AssetLoaderScene extends Phaser.Scene {
     this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
   }
 
+  buildRestartData() {
+    return {
+      gameMode: this.gameMode,
+      gameModeName: this.gameModeName,
+      mode: this.selectedMode,
+      roundsDebugMedals: this.roundsDebugMedals,
+      startingLevel: this.startingLevel,
+    };
+  }
+
+  calculateLayout() {
+    this.scene.restart(this.buildRestartData());
+  }
+
   preload() {
     // Show loading text
     const centerX = this.cameras.main.width / 2;
@@ -6397,6 +6443,19 @@ class LoadingScreenScene extends Phaser.Scene {
       maxLevel: getStartingLevelCapForMode(this.gameMode),
     });
     this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
+  }
+
+  buildRestartData() {
+    return {
+      gameMode: this.gameMode,
+      mode: this.selectedMode,
+      roundsDebugMedals: this.roundsDebugMedals,
+      startingLevel: this.startingLevel,
+    };
+  }
+
+  calculateLayout() {
+    this.scene.restart(this.buildRestartData());
   }
 
   create() {
