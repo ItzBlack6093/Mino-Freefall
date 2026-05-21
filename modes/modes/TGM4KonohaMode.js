@@ -89,6 +89,7 @@ class TGM4KonohaMode extends BaseMode {
         this.minosaHint = null;
         this.minosaSignature = null;
         gameScene.bravoCount = 0;
+        gameScene.konohaMinosaRevision = 0;
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = [];
         gameScene.minosaHint = null;
@@ -256,9 +257,6 @@ class TGM4KonohaMode extends BaseMode {
 
     getMinosaSignature(gameScene) {
         if (!gameScene?.board?.grid) return '';
-        const gridKey = gameScene.board.grid
-            .map(row => row.map(cell => cell ? '1' : '0').join(''))
-            .join('/');
         const currentType = this.normalizeMinosaPiece(gameScene.currentPiece);
         const queue = (Array.isArray(gameScene.nextPieces) ? gameScene.nextPieces : [])
             .map(piece => this.normalizeMinosaPiece(piece))
@@ -272,7 +270,7 @@ class TGM4KonohaMode extends BaseMode {
         return [
             gameScene.board.rows,
             gameScene.board.cols,
-            gridKey,
+            gameScene.konohaMinosaRevision || 0,
             currentType || '',
             queue,
             holdType,

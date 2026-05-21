@@ -106,6 +106,7 @@
     return {
       slotIndex: clampSlotIndex(slotIndex),
       characterId,
+      kind,
       key: `konoha_${isIcon ? "icon" : "egm"}_${characterId}`,
       url: `characters/chars/${characterId}/${isIcon ? "thumb.png" : "egm.png"}`,
     };
@@ -113,16 +114,21 @@
 
   function getGradientAssetDescriptor(state, kind) {
     if (state === STATES.locked) {
-      return { ...GRADIENT_ASSETS.locked[kind] };
+      return { ...GRADIENT_ASSETS.locked[kind], kind };
     }
     if (state === STATES.partial) {
-      return { ...GRADIENT_ASSETS.partial[kind] };
+      return { ...GRADIENT_ASSETS.partial[kind], kind };
     }
     return null;
   }
 
   function getAssetDescriptor(state, kind) {
     return getGradientAssetDescriptor(state, kind);
+  }
+
+  function getCompositeTextureKey(slotIndex, kind, state) {
+    const characterId = getCharacterId(slotIndex);
+    return `konoha_${kind}_${characterId}_${state}`;
   }
 
   function getStateLabel(state) {
@@ -236,6 +242,8 @@
         revealFullDuringAre: false,
         loadingKeys: new Set(),
         loaderHooked: false,
+        trackedBaseTextures: new Map(),
+        trackedCompositeTextures: new Map(),
       };
     }
     return scene.konohaIllustrationRuntime;
@@ -252,12 +260,16 @@
     });
   }
 
-  function ensureSceneTexture(scene, descriptor) {
+  function queueTextureLoad(scene, descriptor, trackedMap, trackedValue) {
     if (!scene || !descriptor) return false;
-    if (scene.textures?.exists(descriptor.key)) return true;
+    if (scene.textures?.exists(descriptor.key)) {
+      if (trackedMap) trackedMap.set(descriptor.key, trackedValue);
+      return true;
+    }
 
     const runtime = ensureRuntime(scene);
     attachLoaderHooks(scene, runtime);
+    if (trackedMap) trackedMap.set(descriptor.key, trackedValue);
     if (runtime?.loadingKeys?.has(descriptor.key)) return false;
 
     runtime?.loadingKeys?.add(descriptor.key);
@@ -268,17 +280,127 @@
     return false;
   }
 
-  function prefetchDisplayAssets(scene, slotIndex) {
-    if (!scene) return;
-    ensureSceneTexture(scene, getBaseAssetDescriptor(slotIndex, "egm"));
-    ensureSceneTexture(scene, getBaseAssetDescriptor(slotIndex, "icon"));
+  function getRetainedSlots(activeSlotIndex) {
+    const active = clampSlotIndex(activeSlotIndex);
+    const retained = new Set([active]);
+    if (active > 0) retained.add(active - 1);
+    if (active < TOTAL_ILLUSTRATIONS - 1) retained.add(active + 1);
+    return retained;
+  }
+
+  function pruneTextureCache(scene, activeSlotIndex) {
+    const runtime = ensureRuntime(scene);
+    if (!runtime || !scene?.textures) return;
+    const retainedSlots = getRetainedSlots(activeSlotIndex);
+
+    for (const [key, slotIndex] of [...runtime.trackedBaseTextures.entries()]) {
+      if (retainedSlots.has(slotIndex)) continue;
+      if (scene.textures.exists(key)) {
+        scene.textures.remove(key);
+      }
+      runtime.trackedBaseTextures.delete(key);
+    }
+
+    for (const [key, meta] of [...runtime.trackedCompositeTextures.entries()]) {
+      if (retainedSlots.has(meta.slotIndex)) continue;
+      if (scene.textures.exists(key)) {
+        scene.textures.remove(key);
+      }
+      runtime.trackedCompositeTextures.delete(key);
+    }
+  }
+
+  function getTextureSourceImage(scene, key) {
+    const texture = scene?.textures?.get(key);
+    return texture?.source?.[0]?.image || null;
+  }
+
+  function buildCompositeDataUrl(scene, baseKey, gradientKey) {
+    const baseImage = getTextureSourceImage(scene, baseKey);
+    const gradientImage = getTextureSourceImage(scene, gradientKey);
+    if (!baseImage || !gradientImage) return null;
+
+    const width = baseImage.naturalWidth || baseImage.width;
+    const height = baseImage.naturalHeight || baseImage.height;
+    if (!width || !height) return null;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+
+    context.imageSmoothingEnabled = false;
+    context.clearRect(0, 0, width, height);
+    context.globalCompositeOperation = "source-over";
+    context.drawImage(baseImage, 0, 0, width, height);
+    context.globalCompositeOperation = "source-atop";
+    context.drawImage(gradientImage, 0, 0, width, height);
+    context.globalCompositeOperation = "source-over";
+    return canvas.toDataURL("image/png");
+  }
+
+  function ensureDisplayTexture(scene, slotIndex, kind, state) {
+    const runtime = ensureRuntime(scene);
+    const clampedSlotIndex = clampSlotIndex(slotIndex);
+    const baseDescriptor = getBaseAssetDescriptor(clampedSlotIndex, kind);
+    if (!queueTextureLoad(scene, baseDescriptor, runtime?.trackedBaseTextures, clampedSlotIndex)) {
+      return null;
+    }
+
+    if (state === STATES.unlocked) {
+      return baseDescriptor.key;
+    }
+
+    const gradientDescriptor = getGradientAssetDescriptor(state, kind);
+    if (!gradientDescriptor) {
+      return baseDescriptor.key;
+    }
+    if (!queueTextureLoad(scene, gradientDescriptor, null, null)) {
+      return null;
+    }
+
+    const compositeKey = getCompositeTextureKey(clampedSlotIndex, kind, state);
+    runtime?.trackedCompositeTextures.set(compositeKey, {
+      slotIndex: clampedSlotIndex,
+      kind,
+      state,
+    });
+    if (scene.textures?.exists(compositeKey)) {
+      return compositeKey;
+    }
+    if (runtime?.loadingKeys?.has(compositeKey)) {
+      return null;
+    }
+
+    const compositeDataUrl = buildCompositeDataUrl(scene, baseDescriptor.key, gradientDescriptor.key);
+    if (!compositeDataUrl) {
+      return null;
+    }
+
+    runtime?.loadingKeys?.add(compositeKey);
+    scene.load.image(compositeKey, compositeDataUrl);
+    try {
+      scene.load.start();
+    } catch {}
+    return null;
   }
 
   function prefetchSceneAssets(scene) {
+    if (!scene) return;
     const progress = getProgressForScene(scene);
-    const active = clampSlotIndex(progress.activeSlotIndex);
-    prefetchDisplayAssets(scene, active);
-    prefetchDisplayAssets(scene, Math.min(TOTAL_ILLUSTRATIONS - 1, active + 1));
+    const activeSlotIndex = clampSlotIndex(progress.activeSlotIndex);
+    pruneTextureCache(scene, activeSlotIndex);
+
+    const currentState = progress.slots?.[activeSlotIndex]?.state || STATES.locked;
+    ensureDisplayTexture(scene, activeSlotIndex, "egm", currentState);
+    ensureDisplayTexture(scene, activeSlotIndex, "icon", currentState);
+
+    const nextSlotIndex = Math.min(TOTAL_ILLUSTRATIONS - 1, activeSlotIndex + 1);
+    if (nextSlotIndex !== activeSlotIndex) {
+      ensureDisplayTexture(scene, nextSlotIndex, "egm", STATES.locked);
+      ensureDisplayTexture(scene, nextSlotIndex, "icon", STATES.locked);
+    }
   }
 
   function resetScene(scene) {
@@ -333,40 +455,15 @@
     );
   }
 
-  function buildCompositeSprite(scene, {
-    baseDescriptor,
-    gradientDescriptor,
-    x,
-    y,
-    displayWidth,
-    displayHeight,
-    cropBounds = null,
-  }) {
-    if (!ensureSceneTexture(scene, baseDescriptor)) return null;
-    if (gradientDescriptor && !ensureSceneTexture(scene, gradientDescriptor)) return null;
-
-    const baseSprite = scene.add
-      .image(x, y, baseDescriptor.key)
+  function drawTexture(scene, textureKey, x, y, displayWidth, displayHeight, cropBounds = null) {
+    if (!textureKey || !scene?.textures?.exists(textureKey)) return;
+    const sprite = scene.add
+      .image(x, y, textureKey)
       .setDisplaySize(displayWidth, displayHeight);
     if (cropBounds) {
-      applyCropToBounds(baseSprite, cropBounds);
+      applyCropToBounds(sprite, cropBounds);
     }
-    scene.gameGroup?.add(baseSprite);
-
-    if (!gradientDescriptor) {
-      return { baseSprite, overlaySprite: null };
-    }
-
-    const overlaySprite = scene.add
-      .image(x, y, gradientDescriptor.key)
-      .setDisplaySize(displayWidth, displayHeight);
-    overlaySprite.setMask(baseSprite.createBitmapMask());
-    if (cropBounds) {
-      applyCropToBounds(overlaySprite, cropBounds);
-    }
-    scene.gameGroup?.add(overlaySprite);
-
-    return { baseSprite, overlaySprite };
+    scene.gameGroup?.add(sprite);
   }
 
   function drawMatrixIllustration(scene) {
@@ -377,18 +474,17 @@
     const progress = getProgressForScene(scene);
     const display = getSceneDisplay(progress);
     const baseDescriptor = getBaseAssetDescriptor(display.slotIndex, "egm");
-    const gradientDescriptor = getGradientAssetDescriptor(display.state, "egm");
-    const sourceTexture = scene.textures?.exists(baseDescriptor.key)
-      ? scene.textures.get(baseDescriptor.key)
-      : null;
-    const source = sourceTexture?.source?.[0]?.image;
-
-    if (!source?.width || !source?.height) {
-      prefetchSceneAssets(scene);
-      ensureSceneTexture(scene, baseDescriptor);
-      if (gradientDescriptor) ensureSceneTexture(scene, gradientDescriptor);
+    if (!queueTextureLoad(scene, baseDescriptor, runtime?.trackedBaseTextures, display.slotIndex)) {
       return;
     }
+
+    const source = getTextureSourceImage(scene, baseDescriptor.key);
+    if (!source?.width || !source?.height) {
+      return;
+    }
+
+    const textureKey = ensureDisplayTexture(scene, display.slotIndex, "egm", display.state);
+    if (!textureKey) return;
 
     const now = scene?.time?.now || Date.now();
     const popProgress = runtime.lastPopAt ? Math.min(1, (now - runtime.lastPopAt) / 320) : 1;
@@ -406,15 +502,15 @@
             bottom: scene.borderOffsetY + scene.playfieldHeight,
           };
 
-    buildCompositeSprite(scene, {
-      baseDescriptor,
-      gradientDescriptor,
-      x: scene.borderOffsetX + scene.playfieldWidth / 2,
-      y: scene.borderOffsetY + displayHeight / 2 + popYOffset,
+    drawTexture(
+      scene,
+      textureKey,
+      scene.borderOffsetX + scene.playfieldWidth / 2,
+      scene.borderOffsetY + displayHeight / 2 + popYOffset,
       displayWidth,
       displayHeight,
       cropBounds,
-    });
+    );
   }
 
   function drawPlayerInfoIcon(scene, { centerX = 0, topY = 0, textWidth = 0, fontSize = 16 } = {}) {
@@ -423,25 +519,18 @@
 
     const progress = getProgressForScene(scene);
     const display = getSceneDisplay(progress);
-    const baseDescriptor = getBaseAssetDescriptor(display.slotIndex, "icon");
-    const gradientDescriptor = getGradientAssetDescriptor(display.state, "icon");
-
-    if (!scene.textures?.exists(baseDescriptor.key)) {
-      prefetchSceneAssets(scene);
-      ensureSceneTexture(scene, baseDescriptor);
-      if (gradientDescriptor) ensureSceneTexture(scene, gradientDescriptor);
-      return;
-    }
+    const textureKey = ensureDisplayTexture(scene, display.slotIndex, "icon", display.state);
+    if (!textureKey) return;
 
     const iconSize = Math.max(26, Math.floor(scene.cellSize * 1.4));
-    buildCompositeSprite(scene, {
-      baseDescriptor,
-      gradientDescriptor,
-      x: centerX - textWidth / 2 - iconSize / 2 - 10,
-      y: topY + fontSize * 0.55,
-      displayWidth: iconSize,
-      displayHeight: iconSize,
-    });
+    drawTexture(
+      scene,
+      textureKey,
+      centerX - textWidth / 2 - iconSize / 2 - 10,
+      topY + fontSize * 0.55,
+      iconSize,
+      iconSize,
+    );
   }
 
   function getDomImageEntry(url) {

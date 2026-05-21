@@ -42,6 +42,7 @@ class GameScene extends Phaser.Scene {
     this.minosaStatus = "possible";
     this.minosaPath = [];
     this.minosaHint = null;
+    this.konohaMinosaRevision = 0;
     this.nextGradeText = null;
     this.levelDisplay = null;
     this.rollBonus = 0;
@@ -754,6 +755,10 @@ class GameScene extends Phaser.Scene {
 
     // Section stop handling (TGM-style)
     this.levelStopActive = false;
+  }
+
+  markKonohaMinosaDirty() {
+    this.konohaMinosaRevision = (this.konohaMinosaRevision || 0) + 1;
   }
 
   isNormalOrEasyMode() {
@@ -6723,6 +6728,7 @@ class GameScene extends Phaser.Scene {
 
     this.currentSectionPieceIndex = (this.currentSectionPieceIndex || 0) + 1;
     this.pushBackstepSnapshot("spawn");
+    this.markKonohaMinosaDirty();
     if (
       typeof KonohaIllustrationSystem !== "undefined" &&
       typeof KonohaIllustrationSystem.onPieceSpawn === "function"
@@ -7241,6 +7247,7 @@ class GameScene extends Phaser.Scene {
       lockedPiece.x,
       lockedPiece.y,
     );
+    this.markKonohaMinosaDirty();
 
     // Mode hook: notify piece lock (e.g., Easy combo reset on no clear)
     if (this.gameMode && typeof this.gameMode.onPieceLock === "function") {
@@ -7643,6 +7650,8 @@ class GameScene extends Phaser.Scene {
       this.pushBackstepSnapshot("hold");
     }
 
+    this.markKonohaMinosaDirty();
+
     return true;
   }
 
@@ -7761,6 +7770,8 @@ class GameScene extends Phaser.Scene {
         }
       }
     }
+
+    this.markKonohaMinosaDirty();
 
     // Reset cleared lines after processing
     this.clearedLines = [];
