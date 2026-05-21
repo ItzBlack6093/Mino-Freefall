@@ -3,6 +3,9 @@ const SHARED_IMAGE_ASSETS = [
   ["mino_ars", "img/minoARS.png"],
   ["mono", "img/mono.png"],
   ["mono_ars", "img/monoARS.png"],
+  ...((typeof window !== "undefined" && window.KonohaIllustrationSystem && typeof window.KonohaIllustrationSystem.getSharedImageAssets === "function")
+    ? window.KonohaIllustrationSystem.getSharedImageAssets()
+    : []),
 ];
 
 const SHARED_BGM_ASSETS = [
@@ -605,6 +608,52 @@ class MenuScene extends Phaser.Scene {
       : null;
   }
 
+  normalizeGradeLineColor(lineColor) {
+    const normalized = String(lineColor || "none").toLowerCase();
+    if (normalized === "orange" || normalized === "green") {
+      return normalized;
+    }
+    return "none";
+  }
+
+  getGradeLineValue(lineColor) {
+    const values = {
+      none: 0,
+      green: 1,
+      orange: 2,
+    };
+    return values[this.normalizeGradeLineColor(lineColor)] || 0;
+  }
+
+  getGradeLineLabel(lineColor) {
+    const labels = {
+      none: "NO LINE",
+      green: "GREEN LINE",
+      orange: "ORANGE LINE",
+    };
+    return labels[this.normalizeGradeLineColor(lineColor)] || "NO LINE";
+  }
+
+  getGradeLineTextColor(lineColor, fallback = "#ffff00") {
+    const colors = {
+      none: fallback,
+      green: "#00ff00",
+      orange: "#ff8800",
+    };
+    return colors[this.normalizeGradeLineColor(lineColor)] || fallback;
+  }
+
+  shouldDisplayGradeLineStatus(modeId, entry) {
+    if (!entry || !entry.grade || entry.grade === "N/A") {
+      return false;
+    }
+    return (
+      this.normalizeGradeLineColor(entry.gradeLineColor) !== "none" ||
+      modeId === "tgm2" ||
+      modeId === "tgm2_master"
+    );
+  }
+
   getProfileModeCardSummary(modeId) {
     if (modeId === "zen") {
       return {
@@ -640,21 +689,42 @@ class MenuScene extends Phaser.Scene {
     return {
       primary,
       secondary: secondaryParts.length > 0 ? secondaryParts.join(" / ") : "Best record",
+      primaryColor: formatted.leftColor || "#f8f8f8",
     };
   }
 
   getKonohaIllustrationProgress() {
+    if (
+      typeof window !== "undefined" &&
+      window.KonohaIllustrationSystem &&
+      typeof window.KonohaIllustrationSystem.getStoredProgress === "function"
+    ) {
+      return window.KonohaIllustrationSystem.getStoredProgress();
+    }
+
     const easyEntry = this.getBestLeaderboardEntry("konoha_easy");
     const hardEntry = this.getBestLeaderboardEntry("konoha_hard");
-    const easyCount = Math.max(0, Number(easyEntry && easyEntry.allClears) || 0);
-    const hardCount = Math.max(0, Number(hardEntry && hardEntry.allClears) || 0);
-    const total = 50;
+    const steps =
+      Math.max(0, Number(easyEntry && easyEntry.allClears) || 0) +
+      Math.max(0, Number(hardEntry && hardEntry.allClears) || 0);
+    const clampedSteps = Math.min(149, steps);
 
     return {
-      total,
-      unlocked: Math.min(total, easyCount + hardCount),
-      easyCount,
-      hardCount,
+      total: 50,
+      steps: clampedSteps,
+      unlocked: Math.min(50, Math.floor((clampedSteps + 1) / 3)),
+      partialUnlocked: clampedSteps % 3 === 1 ? 1 : 0,
+      lockedCount: Math.max(0, 50 - Math.min(50, Math.floor((clampedSteps + 1) / 3)) - (clampedSteps % 3 === 1 ? 1 : 0)),
+      slots: Array.from({ length: 50 }, (_, index) => ({
+        index,
+        number: index + 1,
+        state:
+          clampedSteps - index * 3 >= 2
+            ? "unlocked"
+            : clampedSteps - index * 3 >= 1
+              ? "partial"
+              : "locked",
+      })),
     };
   }
 
@@ -923,7 +993,7 @@ class MenuScene extends Phaser.Scene {
       tabRow.appendChild(button);
     };
 
-    const createPane = (tabId, titleText, accent, noteText) => {
+    const createPane = (tabId, titleText, accent) => {
       const pane = this.applyInlineStyles(document.createElement("div"), {
         minHeight: "0",
         flex: "1 1 auto",
@@ -944,14 +1014,6 @@ class MenuScene extends Phaser.Scene {
       });
       paneTitle.textContent = titleText;
       pane.appendChild(paneTitle);
-
-      const note = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "12px",
-        lineHeight: "1.4",
-        color: palette.muted,
-      });
-      note.textContent = noteText;
-      pane.appendChild(note);
 
       const body = this.applyInlineStyles(document.createElement("div"), {
         minHeight: "0",
@@ -974,7 +1036,6 @@ class MenuScene extends Phaser.Scene {
       "scores",
       "Best Scores",
       tabThemes.scores.accent,
-      "One row per mode type, with each mode split into its own best-record card.",
     );
 
     modeTypes.forEach((modeType) => {
@@ -1039,7 +1100,7 @@ class MenuScene extends Phaser.Scene {
         const primary = this.applyInlineStyles(document.createElement("div"), {
           fontSize: "15px",
           fontWeight: "700",
-          color: palette.text,
+          color: summary.primaryColor || palette.text,
           whiteSpace: "nowrap",
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -1067,7 +1128,6 @@ class MenuScene extends Phaser.Scene {
       "illustrations",
       "Illustrations",
       tabThemes.illustrations.accent,
-      `Placeholder gallery: ${illustrationProgress.easyCount} Konoha Easy + ${illustrationProgress.hardCount} Konoha Hard all clears unlock up to ${illustrationProgress.total} slots.`,
     );
 
     const illustrationInfo = this.applyInlineStyles(document.createElement("div"), {
@@ -1079,7 +1139,7 @@ class MenuScene extends Phaser.Scene {
       padding: "8px",
     });
     illustrationInfo.textContent =
-      `Unlocked now: ${illustrationProgress.unlocked}/${illustrationProgress.total}. Placeholders remain until art is added.`;
+      `Unlocked now: ${illustrationProgress.unlocked}/${illustrationProgress.total}. In progress: ${illustrationProgress.partialUnlocked || 0}.`;
     illustrationPane.appendChild(illustrationInfo);
 
     const illustrationGrid = this.applyInlineStyles(document.createElement("div"), {
@@ -1091,7 +1151,18 @@ class MenuScene extends Phaser.Scene {
     illustrationPane.appendChild(illustrationGrid);
 
     for (let index = 0; index < illustrationProgress.total; index += 1) {
-      const unlocked = index < illustrationProgress.unlocked;
+      const slot = illustrationProgress.slots?.[index] || {
+        index,
+        number: index + 1,
+        state: "locked",
+      };
+      const unlocked = slot.state !== "locked";
+      const stateLabel =
+        typeof window !== "undefined" &&
+        window.KonohaIllustrationSystem &&
+        typeof window.KonohaIllustrationSystem.getStateLabel === "function"
+          ? window.KonohaIllustrationSystem.getStateLabel(slot.state)
+          : slot.state;
       const cell = this.applyInlineStyles(document.createElement("div"), {
         aspectRatio: "1 / 1",
         border: `1px solid ${unlocked ? tabThemes.illustrations.accent : palette.border}`,
@@ -1112,12 +1183,25 @@ class MenuScene extends Phaser.Scene {
       slotNumber.textContent = `ILL ${String(index + 1).padStart(2, "0")}`;
       cell.appendChild(slotNumber);
 
+      if (
+        typeof window !== "undefined" &&
+        window.KonohaIllustrationSystem &&
+        typeof window.KonohaIllustrationSystem.createProfileIllustrationNode === "function"
+      ) {
+        const slotNode = window.KonohaIllustrationSystem.createProfileIllustrationNode(slot, {
+          size: 44,
+        });
+        if (slotNode) {
+          cell.appendChild(slotNode);
+        }
+      }
+
       const slotState = this.applyInlineStyles(document.createElement("div"), {
         fontSize: "11px",
         fontWeight: "700",
         color: unlocked ? palette.text : palette.muted,
       });
-      slotState.textContent = unlocked ? "OPEN" : "LOCK";
+      slotState.textContent = stateLabel;
       cell.appendChild(slotState);
 
       illustrationGrid.appendChild(cell);
@@ -1127,7 +1211,6 @@ class MenuScene extends Phaser.Scene {
       "achievements",
       "Achievements",
       tabThemes.achievements.accent,
-      `${completedCount} completed for ${rating} AR total. Scroll for the full list.`,
     );
 
     const achievementInfo = this.applyInlineStyles(document.createElement("div"), {
@@ -1753,7 +1836,7 @@ class MenuScene extends Phaser.Scene {
       const leftText = this.add
         .text(this.leaderboardContainer.x - 110, y, formatted.left, {
           fontSize: "24px",
-          fill: "#ffff00",
+          fill: formatted.leftColor || "#ffff00",
           fontFamily: "Courier New",
           fontStyle: "bold",
         })
@@ -2473,6 +2556,7 @@ class MenuScene extends Phaser.Scene {
           score: e.score,
           level: e.level,
           grade: e.grade,
+          gradeLineColor: e.gradeLineColor,
           lines: e.lines,
           pps: e.pps,
         });
@@ -2540,7 +2624,9 @@ class MenuScene extends Phaser.Scene {
     };
 
     const byGrade = () =>
-      this.getGradeValue(getVal(b.grade)) - this.getGradeValue(getVal(a.grade));
+      this.getGradeValue(getVal(b.grade)) - this.getGradeValue(getVal(a.grade)) ||
+      this.getGradeLineValue(getVal(b.gradeLineColor)) -
+        this.getGradeLineValue(getVal(a.gradeLineColor));
     const byDesc = (x, y) => getVal(y) - getVal(x);
     const byAsc = (x, y) => getVal(x) - getVal(y);
 
@@ -2583,11 +2669,14 @@ class MenuScene extends Phaser.Scene {
         );
       case "tgm1":
       case "tgm2":
+      case "tgm2_master":
       case "tgm_plus":
       case "tgm3":
+      case "tgm3_master":
       case "tgm4":
       case "master_20g":
       case "tadeath":
+      case "ta_death":
       case "shirase":
       case "tgm4_rounds":
       case "asuka_easy":
@@ -2665,21 +2754,30 @@ class MenuScene extends Phaser.Scene {
         };
       case "tgm1":
       case "tgm2":
+      case "tgm2_master":
       case "tgm_plus":
       case "tgm3":
+      case "tgm3_master":
       case "tgm4":
       case "master_20g":
       case "tadeath":
+      case "ta_death":
       case "shirase":
       case "tgm4_rounds":
       case "asuka_easy":
       case "asuka_normal":
       case "asuka_hard": // Master, 20G, Race
-        return {
-          left: entry.grade || "9",
-          middle: `L${fmtNum(entry.level)}`,
-          right: fmtTime(entry.time),
-        };
+        {
+          const lineSuffix = this.shouldDisplayGradeLineStatus(modeId, entry)
+            ? ` / ${this.getGradeLineLabel(entry.gradeLineColor)}`
+            : "";
+          return {
+            left: entry.grade || "9",
+            middle: `L${fmtNum(entry.level)}${lineSuffix}`,
+            right: fmtTime(entry.time),
+            leftColor: this.getGradeLineTextColor(entry.gradeLineColor),
+          };
+        }
       default:
         return {
           left: fmtNum(entry.score),
@@ -2700,13 +2798,14 @@ class MenuScene extends Phaser.Scene {
           score: parsed.score || 0,
           level: parsed.level || 0,
           grade: parsed.grade || "9",
+          gradeLineColor: parsed.gradeLineColor || "none",
           time: parsed.time || "--:--.--",
         };
       } catch (error) {
         console.warn(`Failed to parse stored score for mode ${mode}:`, error);
       }
     }
-    return { score: 0, level: 0, grade: "9", time: "--:--.--" };
+    return { score: 0, level: 0, grade: "9", gradeLineColor: "none", time: "--:--.--" };
   }
 
   // Get difficulty color for a mode type

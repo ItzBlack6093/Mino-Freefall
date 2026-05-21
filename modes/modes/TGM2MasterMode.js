@@ -46,6 +46,9 @@ class TGM2MasterMode extends BaseMode {
         this.mRollUnlocked = false;
         this.mRollStarted = false;
         this.linesClearedInMRoll = 0;
+        this.finalGrade = null;
+        this.finalLineColor = 'none';
+        this.finalRankingType = 'regular';
         
         // Progressive timing system
         this.currentTimingPhase = 1; // 1-6 phases based on level
@@ -69,7 +72,14 @@ class TGM2MasterMode extends BaseMode {
             gameScene.invisibleStackActive = false;
         }
 
+        this.finalGrade = finalGrade;
+        this.finalLineColor = lineColor;
+        this.finalRankingType = rankingType;
+        this.displayedGrade = finalGrade;
+
         this.checkMRollConditions(gameScene);
+            gameScene.grade = finalGrade;
+            gameScene.linesClearedInMRoll = this.linesClearedInMRoll;
     }
 
     getInternalGrade() {
@@ -573,13 +583,22 @@ class TGM2MasterMode extends BaseMode {
             }
         }
 
+        this.finalGrade = finalGrade;
+        this.finalLineColor = lineColor;
+        this.finalRankingType = rankingType;
+        this.displayedGrade = finalGrade;
+
         if (gameScene) {
+            gameScene.grade = finalGrade;
+            gameScene.linesClearedInMRoll = this.linesClearedInMRoll;
             if (typeof gameScene.setGradeLineColor === 'function') {
                 gameScene.setGradeLineColor(lineColor);
             } else {
                 gameScene.gradeLineColor = lineColor;
             }
         }
+
+        this.saveBestScore(gameScene);
 
         console.log(`TGM2 Master Final Ranking: ${finalGrade} (${rankingType}) lines:${linesDuringRoll} lineColor:${lineColor}`);
 
@@ -621,7 +640,10 @@ class TGM2MasterMode extends BaseMode {
     
     // Handle game over
     onGameOver(gameScene) {
-        // Save best score
+        if (this.finalGrade !== null || this.fadingRollActive || this.mRollStarted) {
+            return;
+        }
+
         this.saveBestScore(gameScene);
     }
     
@@ -630,11 +652,13 @@ class TGM2MasterMode extends BaseMode {
         const entry = {
             score: this.tgm2Score,
             level: gameScene.level,
-            grade: this.displayedGrade,
+            grade: this.finalGrade || this.displayedGrade,
+            gradeLineColor: this.finalLineColor || gameScene.gradeLineColor || 'none',
             time: `${Math.floor(gameScene.currentTime / 60)}:${Math.floor(gameScene.currentTime % 60).toString().padStart(2, '0')}.${Math.floor((gameScene.currentTime % 1) * 100).toString().padStart(2, '0')}`,
             pps: gameScene.conventionalPPS != null ? Number(gameScene.conventionalPPS.toFixed(2)) : undefined,
             gradePoints: this.tgm2Grading.totalGradePoints,
-            internalGrade: this.tgm2Grading.internalGrade
+            internalGrade: this.tgm2Grading.internalGrade,
+            linesClearedInMRoll: this.linesClearedInMRoll || 0
         };
         if (typeof gameScene.saveLeaderboardEntry === 'function') {
             gameScene.saveLeaderboardEntry(this.modeId, entry);
@@ -648,9 +672,11 @@ class TGM2MasterMode extends BaseMode {
             score: 0,
             level: 0,
             grade: '9',
+            gradeLineColor: 'none',
             time: '0:00.00',
             gradePoints: 0,
-            internalGrade: 0
+            internalGrade: 0,
+            linesClearedInMRoll: 0
         };
     }
     
@@ -670,6 +696,9 @@ class TGM2MasterMode extends BaseMode {
         this.mRollUnlocked = false;
         this.mRollStarted = false;
         this.linesClearedInMRoll = 0;
+        this.finalGrade = null;
+        this.finalLineColor = 'none';
+        this.finalRankingType = 'regular';
         
         // Reset timing system
         this.currentTimingPhase = 1;

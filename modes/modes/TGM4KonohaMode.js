@@ -92,6 +92,9 @@ class TGM4KonohaMode extends BaseMode {
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = [];
         gameScene.minosaHint = null;
+        if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.resetScene === 'function') {
+            KonohaIllustrationSystem.resetScene(gameScene);
+        }
 
         if (!this.minosa && typeof getMinosaModuleInstance === 'function') {
             this.minosa = getMinosaModuleInstance();
@@ -204,6 +207,9 @@ class TGM4KonohaMode extends BaseMode {
             this.bravoCount += 1;
             if (gameScene) {
                 gameScene.bravoCount = this.bravoCount;
+                if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.onBravo === 'function') {
+                    KonohaIllustrationSystem.onBravo(gameScene);
+                }
             }
         }
 

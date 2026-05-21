@@ -984,6 +984,16 @@ class GameScene extends Phaser.Scene {
     return gradeValues[grade] || 0;
   }
 
+  getGradeLineValue(lineColor) {
+    const values = {
+      none: 0,
+      green: 1,
+      orange: 2,
+    };
+    const normalized = String(lineColor || "none").toLowerCase();
+    return values[normalized] || 0;
+  }
+
   compareEntries(modeId, a, b) {
     const getVal = (val) => (val === undefined || val === null ? 0 : val);
     const parseNumTime = (t) => {
@@ -999,7 +1009,9 @@ class GameScene extends Phaser.Scene {
     };
 
     const byGrade = () =>
-      this.getGradeValue(getVal(b.grade)) - this.getGradeValue(getVal(a.grade));
+      this.getGradeValue(getVal(b.grade)) - this.getGradeValue(getVal(a.grade)) ||
+      this.getGradeLineValue(getVal(b.gradeLineColor)) -
+        this.getGradeLineValue(getVal(a.gradeLineColor));
     const byDesc = (x, y) => getVal(y) - getVal(x);
     const byAsc = (x, y) => getVal(x) - getVal(y);
 
@@ -1042,11 +1054,14 @@ class GameScene extends Phaser.Scene {
         );
       case "tgm1":
       case "tgm2":
+      case "tgm2_master":
       case "tgm_plus":
       case "tgm3":
+      case "tgm3_master":
       case "tgm4":
       case "master_20g":
       case "tadeath":
+      case "ta_death":
       case "shirase":
       case "tgm4_rounds":
       case "asuka_easy":
@@ -2069,6 +2084,7 @@ class GameScene extends Phaser.Scene {
           score: e.score,
           level: e.level,
           grade: e.grade,
+          gradeLineColor: e.gradeLineColor,
           lines: e.lines,
           pps: e.pps,
         });
@@ -3133,6 +3149,17 @@ class GameScene extends Phaser.Scene {
       this.playerNameText.setPosition(playerNameX, playerNameY);
       this.playerNameText.setText(playerNameValue);
       this.playerNameText.setStyle({ fontSize: `${playerNameFontSize}px` });
+    }
+    if (
+      typeof KonohaIllustrationSystem !== "undefined" &&
+      typeof KonohaIllustrationSystem.drawPlayerInfoIcon === "function"
+    ) {
+      KonohaIllustrationSystem.drawPlayerInfoIcon(this, {
+        centerX: playerNameX,
+        topY: playerNameY,
+        textWidth: this.playerNameText?.width || 0,
+        fontSize: playerNameFontSize,
+      });
     }
 
     const playerNameBottomY =
@@ -6696,6 +6723,12 @@ class GameScene extends Phaser.Scene {
 
     this.currentSectionPieceIndex = (this.currentSectionPieceIndex || 0) + 1;
     this.pushBackstepSnapshot("spawn");
+    if (
+      typeof KonohaIllustrationSystem !== "undefined" &&
+      typeof KonohaIllustrationSystem.onPieceSpawn === "function"
+    ) {
+      KonohaIllustrationSystem.onPieceSpawn(this);
+    }
   }
 
   generateNextPieces(minCount = 6) {
@@ -10322,6 +10355,7 @@ class GameScene extends Phaser.Scene {
       level: this.level,
       lines: this.lines,
       grade: this.grade,
+      gradeLineColor: this.gradeLineColor || "none",
       time:
         this.currentTime !== undefined && this.currentTime !== null
           ? `${Math.floor(this.currentTime / 60)
@@ -11262,6 +11296,12 @@ class GameScene extends Phaser.Scene {
           this.preserveBoardOnStaticEnd) &&
         (!this.fadingComplete || this.creditsFadeInDone || this.preserveBoardOnStaticEnd)
       ) {
+        if (
+          typeof KonohaIllustrationSystem !== "undefined" &&
+          typeof KonohaIllustrationSystem.drawMatrixIllustration === "function"
+        ) {
+          KonohaIllustrationSystem.drawMatrixIllustration(this);
+        }
         this.board.draw(
           this,
           this.matrixOffsetX,
