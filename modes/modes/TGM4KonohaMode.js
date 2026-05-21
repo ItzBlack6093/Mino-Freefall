@@ -54,6 +54,31 @@ class TGM4KonohaMode extends BaseMode {
         };
     }
 
+    getBgmConfig() {
+        if (this.variant === 'hard') {
+            return {
+                progressSource: 'level',
+                stopSource: 'bgmStopLevelOrProgress',
+                useStopBuffer: false,
+                transitionStopOffset: 9,
+                segments: [
+                    { end: 999, key: 'mf_konohahard' },
+                    { key: 'mf_konohahard2' }
+                ]
+            };
+        }
+
+        return {
+            progressSource: 'level',
+            stopSource: 'level',
+            useStopBuffer: false,
+            transitionStopOffset: 0,
+            segments: [
+                { key: 'mf_konohaez' }
+            ]
+        };
+    }
+
     getKonohaGravity(level) {
         if (level < 8) return 4;
         if (level < 19) return 5;
@@ -209,14 +234,15 @@ class TGM4KonohaMode extends BaseMode {
     }
 
     handleLineClear(gameScene, linesCleared) {
-        const isBravo = gameScene?.bravoActive ||
-            gameScene?.lastClearType === 'bravo' ||
-            (typeof gameScene?.lastClearType === 'string' && gameScene.lastClearType.includes('all clear'));
+        const isBravo = this.isBravoLineClear(gameScene, linesCleared);
 
         if (isBravo && linesCleared > 0) {
             this.bravoCount += 1;
             if (gameScene) {
                 gameScene.bravoCount = this.bravoCount;
+                if (typeof gameScene.showBravoBanner === 'function') {
+                    gameScene.showBravoBanner(this.bravoCount);
+                }
                 if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.onBravo === 'function') {
                     KonohaIllustrationSystem.onBravo(gameScene);
                 }
@@ -246,6 +272,23 @@ class TGM4KonohaMode extends BaseMode {
 
     getMinosaPieceBudget() {
         return this.variant === 'easy' ? 5 : 7;
+    }
+
+    isBravoLineClear(gameScene, linesCleared = 0) {
+        if (!gameScene || linesCleared <= 0) return false;
+        if (gameScene.lastLineClearWasBravo === true) return true;
+        const lastClearType = typeof gameScene.lastClearType === 'string'
+            ? gameScene.lastClearType.toLowerCase()
+            : '';
+        return lastClearType.includes('bravo') || lastClearType.includes('all clear');
+    }
+
+    hasAchievedAllClear(gameScene) {
+        return Boolean(
+            gameScene?.piecesPlaced > 0 &&
+            Array.isArray(gameScene?.board?.grid) &&
+            gameScene.board.grid.every(row => Array.isArray(row) && row.every(cell => !cell))
+        );
     }
 
     updateMinosaStatus(gameScene) {
@@ -287,10 +330,7 @@ class TGM4KonohaMode extends BaseMode {
             .slice(0, pieceBudget)
             .join('');
         const holdType = this.normalizeMinosaPiece(gameScene.holdPiece) || '';
-        const achieved = gameScene.bravoActive ||
-            gameScene.lastClearType === 'bravo' ||
-            (typeof gameScene.lastClearType === 'string' && gameScene.lastClearType.includes('all clear')) ||
-            (gameScene.piecesPlaced > 0 && gameScene.board.grid.every(row => row.every(cell => !cell)));
+        const achieved = this.hasAchievedAllClear(gameScene);
         return [
             gameScene.board.rows,
             gameScene.board.cols,
@@ -336,7 +376,11 @@ class TGM4KonohaMode extends BaseMode {
     }
 
     onGameOver(gameScene) {
-        if (!gameScene || typeof gameScene.saveLeaderboardEntry !== 'function') return;
+        if (!gameScene) return;
+        if (typeof gameScene.stopAllBGMs === 'function') {
+            gameScene.stopAllBGMs();
+        }
+        if (typeof gameScene.saveLeaderboardEntry !== 'function') return;
         const time = `${Math.floor(gameScene.currentTime / 60)}:${Math.floor(gameScene.currentTime % 60).toString().padStart(2, '0')}.${Math.floor((gameScene.currentTime % 1) * 100).toString().padStart(2, '0')}`;
         gameScene.saveLeaderboardEntry(gameScene.selectedMode, {
             allClears: this.bravoCount,

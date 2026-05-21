@@ -22,6 +22,9 @@ const SHARED_BGM_ASSETS = [
   ["mf_std_1", "bgm/standard/mf_std_1.mp3"],
   ["mf_std_2", "bgm/standard/mf_std_2.mp3"],
   ["mf_std_3", "bgm/standard/mf_std_3.mp3"],
+  ["mf_konohaez", "bgm/konoha/mf_konohaez.mp3"],
+  ["mf_konohahard", "bgm/konoha/mf_konohahard.mp3"],
+  ["mf_konohahard2", "bgm/konoha/mf_konohahard2.mp3"],
 ];
 
 const SHARED_LEGACY_BGM_ASSETS = [
@@ -91,6 +94,9 @@ const BGM_ROOM_PACKS = [
       { key: "mf_std_1", label: "Standard 1" },
       { key: "mf_std_2", label: "Standard 2" },
       { key: "mf_std_3", label: "Standard 3" },
+      { key: "mf_konohaez", label: "Konoha Easy" },
+      { key: "mf_konohahard", label: "Konoha Hard" },
+      { key: "mf_konohahard2", label: "Konoha Hard 1000+" },
     ],
   },
   {
@@ -1222,6 +1228,88 @@ class MenuScene extends Phaser.Scene {
       "Illustrations",
       tabThemes.illustrations.accent,
     );
+    illustrationPane.style.overflowY = "hidden";
+    illustrationPane.style.paddingRight = "0";
+
+    const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 1280;
+    const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 720;
+    const illustrationGridColumns = 10;
+    const illustrationGridRows = 5;
+    const illustrationCellSize = Math.max(
+      18,
+      Math.floor(
+        Math.min(
+          (Math.min(viewportHeight - 24, 760) - 392) / illustrationGridRows,
+          (Math.min(viewportWidth - 24, 1180) - 160) / illustrationGridColumns,
+        ),
+      ),
+    );
+    let illustrationPreviewElement = null;
+    const dismissIllustrationPreview = () => {
+      if (illustrationPreviewElement && illustrationPreviewElement.parentNode) {
+        illustrationPreviewElement.parentNode.removeChild(illustrationPreviewElement);
+      }
+      illustrationPreviewElement = null;
+    };
+    const showIllustrationPreview = (slot) => {
+      if (slot?.state !== "unlocked") return;
+      dismissIllustrationPreview();
+
+      const previewBackdrop = this.applyInlineStyles(document.createElement("div"), {
+        position: "absolute",
+        inset: "0",
+        zIndex: "4",
+        background: "rgba(0, 0, 0, 0.94)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+        cursor: "pointer",
+      });
+      previewBackdrop.addEventListener("click", () => dismissIllustrationPreview());
+
+      const previewFrame = this.applyInlineStyles(document.createElement("div"), {
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: "10px",
+        maxWidth: "min(1080px, calc(100vw - 40px))",
+        maxHeight: "calc(100vh - 40px)",
+      });
+      previewBackdrop.appendChild(previewFrame);
+
+      const previewHint = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "13px",
+        fontWeight: "700",
+        letterSpacing: "0.06em",
+        color: tabThemes.illustrations.accent,
+        textAlign: "center",
+      });
+      previewHint.textContent = `ILL ${String((slot?.number || 1)).padStart(2, "0")} • CLICK TO DISMISS`;
+      previewFrame.appendChild(previewHint);
+
+      if (
+        typeof window !== "undefined" &&
+        window.KonohaIllustrationSystem &&
+        typeof window.KonohaIllustrationSystem.createProfileIllustrationNode === "function"
+      ) {
+        const previewNode = window.KonohaIllustrationSystem.createProfileIllustrationNode(slot, {
+          kind: "egm",
+        });
+        if (previewNode) {
+          previewNode.style.display = "block";
+          previewNode.style.width = "auto";
+          previewNode.style.height = "auto";
+          previewNode.style.maxWidth = "min(1080px, calc(100vw - 40px))";
+          previewNode.style.maxHeight = "calc(100vh - 86px)";
+          previewNode.style.imageRendering = "pixelated";
+          previewFrame.appendChild(previewNode);
+        }
+      }
+
+      overlay.appendChild(previewBackdrop);
+      illustrationPreviewElement = previewBackdrop;
+    };
 
     const illustrationInfo = this.applyInlineStyles(document.createElement("div"), {
       fontSize: "12px",
@@ -1235,21 +1323,48 @@ class MenuScene extends Phaser.Scene {
       `Unlocked now: ${illustrationProgress.unlocked}/${illustrationProgress.total}. In progress: ${illustrationProgress.partialUnlocked || 0}.`;
     illustrationPane.appendChild(illustrationInfo);
 
+    const illustrationGridShell = this.applyInlineStyles(document.createElement("div"), {
+      flex: "1 1 auto",
+      minHeight: "0",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      overflow: "hidden",
+    });
+    illustrationPane.appendChild(illustrationGridShell);
+
     const illustrationGrid = this.applyInlineStyles(document.createElement("div"), {
       display: "grid",
-      gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-      gap: "8px",
-      alignContent: "start",
+      gridTemplateColumns: `repeat(${illustrationGridColumns}, ${illustrationCellSize}px)`,
+      gap: "4px",
+      alignContent: "center",
+      justifyContent: "center",
+      width: "fit-content",
     });
-    illustrationPane.appendChild(illustrationGrid);
+    illustrationGridShell.appendChild(illustrationGrid);
 
-    for (let index = 0; index < illustrationProgress.total; index += 1) {
-      const slot = illustrationProgress.slots?.[index] || {
-        index,
-        number: index + 1,
-        state: "locked",
+    const illustrationSlots = (Array.isArray(illustrationProgress.slots)
+      ? illustrationProgress.slots.slice()
+      : []
+    ).sort((a, b) => {
+      const stateRank = {
+        unlocked: 0,
+        partial: 1,
+        locked: 2,
       };
-      const unlocked = slot.state !== "locked";
+      const aStateRank = Object.prototype.hasOwnProperty.call(stateRank, a?.state) ? stateRank[a.state] : 99;
+      const bStateRank = Object.prototype.hasOwnProperty.call(stateRank, b?.state) ? stateRank[b.state] : 99;
+      if (aStateRank !== bStateRank) return aStateRank - bStateRank;
+      const aName = typeof a?.characterId === "string" ? a.characterId : "";
+      const bName = typeof b?.characterId === "string" ? b.characterId : "";
+      if (aName !== bName) return aName.localeCompare(bName);
+      return (a?.index || 0) - (b?.index || 0);
+    });
+
+    for (const slot of illustrationSlots) {
+      const index = Number.isFinite(slot?.index) ? slot.index : 0;
+      const revealed = slot.state !== "locked";
+      const fullyUnlocked = slot.state === "unlocked";
       const stateLabel =
         typeof window !== "undefined" &&
         window.KonohaIllustrationSystem &&
@@ -1257,24 +1372,19 @@ class MenuScene extends Phaser.Scene {
           ? window.KonohaIllustrationSystem.getStateLabel(slot.state)
           : slot.state;
       const cell = this.applyInlineStyles(document.createElement("div"), {
-        aspectRatio: "1 / 1",
-        border: `1px solid ${unlocked ? tabThemes.illustrations.accent : palette.border}`,
-        background: unlocked ? "#2b1026" : palette.surfaceAlt,
+        width: `${illustrationCellSize}px`,
+        height: `${illustrationCellSize}px`,
+        border: `1px solid ${fullyUnlocked ? tabThemes.illustrations.accent : revealed ? "#8f547f" : palette.border}`,
+        background: revealed ? "#2b1026" : palette.surfaceAlt,
         display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "4px",
-        textAlign: "center",
-        padding: "4px",
+        alignItems: "stretch",
+        justifyContent: "stretch",
+        padding: "0",
+        overflow: "hidden",
+        boxSizing: "border-box",
+        cursor: fullyUnlocked ? "pointer" : "default",
       });
-
-      const slotNumber = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "10px",
-        color: unlocked ? tabThemes.illustrations.accent : palette.muted,
-      });
-      slotNumber.textContent = `ILL ${String(index + 1).padStart(2, "0")}`;
-      cell.appendChild(slotNumber);
+      cell.title = `ILL ${String(index + 1).padStart(2, "0")} • ${stateLabel}${fullyUnlocked ? " • Click to view" : ""}`;
 
       if (
         typeof window !== "undefined" &&
@@ -1282,20 +1392,26 @@ class MenuScene extends Phaser.Scene {
         typeof window.KonohaIllustrationSystem.createProfileIllustrationNode === "function"
       ) {
         const slotNode = window.KonohaIllustrationSystem.createProfileIllustrationNode(slot, {
-          size: 44,
+          size: illustrationCellSize,
         });
         if (slotNode) {
+          slotNode.style.width = "100%";
+          slotNode.style.height = "100%";
+          slotNode.style.pointerEvents = "none";
           cell.appendChild(slotNode);
         }
       }
-
-      const slotState = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "11px",
-        fontWeight: "700",
-        color: unlocked ? palette.text : palette.muted,
-      });
-      slotState.textContent = stateLabel;
-      cell.appendChild(slotState);
+      if (fullyUnlocked) {
+        cell.tabIndex = 0;
+        const activatePreview = () => showIllustrationPreview(slot);
+        cell.addEventListener("click", activatePreview);
+        cell.addEventListener("keydown", (event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            activatePreview();
+          }
+        });
+      }
 
       illustrationGrid.appendChild(cell);
     }
@@ -2615,7 +2731,9 @@ class MenuScene extends Phaser.Scene {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.slice().sort((a, b) => this.compareEntries(modeId, a, b));
+        }
       } catch (e) {
         console.warn("Failed to parse leaderboard", modeId, e);
       }
@@ -2647,6 +2765,7 @@ class MenuScene extends Phaser.Scene {
         const sig = JSON.stringify({
           time: e.time,
           score: e.score,
+          allClears: e.allClears,
           level: e.level,
           grade: e.grade,
           gradeLineColor: e.gradeLineColor,
@@ -2757,7 +2876,6 @@ class MenuScene extends Phaser.Scene {
       case "konoha_hard": // All Clear
         return (
           byDesc(a.allClears, b.allClears) ||
-          byDesc(a.level, b.level) ||
           byAsc(parseNumTime(a.time), parseNumTime(b.time))
         );
       case "tgm1":

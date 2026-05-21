@@ -45,6 +45,7 @@ class GameScene extends Phaser.Scene {
     this.minosaPieceBudget = 0;
     this.minosaTargetRows = null;
     this.konohaMinosaRevision = 0;
+    this.zenMinosaGuideSignature = null;
     this.hintPlacements = [];
     this.hintColor = 0xffff66;
     this.hintColorHex = "#ffff66";
@@ -65,9 +66,12 @@ class GameScene extends Phaser.Scene {
     this.coolRegretBlinkEvent = null;
     this.coolRegretHideEvent = null;
     this.bravoText = null;
+    this.bravoValueText = null;
     this.bravoHideEvent = null;
     this.bravoTween = null;
+    this.bravoValueTween = null;
     this.bravoActive = false;
+    this.lastLineClearWasBravo = false;
     this.sectionPerfTexts = [];
     this.sectionTimes = [];
     this.torikanFailed = false;
@@ -1072,7 +1076,6 @@ class GameScene extends Phaser.Scene {
       case "konoha_hard": // All Clear
         return (
           byDesc(a.allClears, b.allClears) ||
-          byDesc(a.level, b.level) ||
           byAsc(parseNumTime(a.time), parseNumTime(b.time))
         );
       case "tgm1":
@@ -1418,8 +1421,117 @@ class GameScene extends Phaser.Scene {
     return typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
   }
 
+  isZenMinosaGuideEnabled(modeId = this.getHintModeId()) {
+    const id = typeof modeId === "string" ? modeId.toLowerCase() : "";
+    const guideMode = String(this.zenSandboxConfig?.minosaGuideMode || "off").toLowerCase();
+    return id.includes("zen") && guideMode !== "off";
+  }
+
+  getZenMinosaGuideConfig() {
+    const cfg = this.zenSandboxConfig || {};
+    return {
+      guideMode: typeof cfg.minosaGuideMode === "string" ? cfg.minosaGuideMode : "off",
+      lookahead: Math.max(1, Math.min(5, Math.round(Number(cfg.minosaGuideLookahead) || 3))),
+      candidateLimit: Math.max(1, Math.min(16, Math.round(Number(cfg.minosaGuideCandidateLimit) || 8))),
+    };
+  }
+
+  normalizeMinosaGuidePiece(piece) {
+    const type =
+      typeof piece === "string"
+        ? piece
+        : typeof piece?.type === "string"
+          ? piece.type
+          : typeof piece?.piece === "string"
+            ? piece.piece
+            : null;
+    return typeof type === "string" ? type.toUpperCase() : null;
+  }
+
+  isValidMinosaHintStep(step) {
+    return !!(
+      step &&
+      typeof step.piece === "string" &&
+      Number.isFinite(step.x) &&
+      Number.isFinite(step.y)
+    );
+  }
+
+  getZenMinosaGuideSignature() {
+    if (!this.board?.grid) return "";
+    const config = this.getZenMinosaGuideConfig();
+    let boardSignature = "";
+    for (let r = 0; r < this.board.rows; r++) {
+      const row = this.board.grid[r];
+      for (let c = 0; c < this.board.cols; c++) {
+        boardSignature += row[c] ? "1" : "0";
+      }
+    }
+    const queueSignature = Array.isArray(this.nextPieces)
+      ? this.nextPieces
+          .map((piece) => this.normalizeMinosaGuidePiece(piece))
+          .filter((piece) => piece)
+          .join("")
+      : "";
+    return [
+      config.guideMode,
+      config.lookahead,
+      config.candidateLimit,
+      this.rotationSystem || "",
+      this.board.rows,
+      this.board.cols,
+      boardSignature,
+      this.normalizeMinosaGuidePiece(this.currentPiece) || "",
+      queueSignature,
+      this.normalizeMinosaGuidePiece(this.holdPiece) || "",
+      this.canHold !== false ? "1" : "0",
+    ].join("|");
+  }
+
+  updateZenMinosaGuideHint(modeId = this.getHintModeId()) {
+    if (!this.isZenMinosaGuideEnabled(modeId)) {
+      this.zenMinosaGuideSignature = null;
+      this.minosaStatus = "possible";
+      this.minosaPath = [];
+      this.minosaHint = null;
+      return null;
+    }
+
+    const signature = this.getZenMinosaGuideSignature();
+    if (signature && signature === this.zenMinosaGuideSignature) {
+      return this.isValidMinosaHintStep(this.minosaHint) ? this.minosaHint : null;
+    }
+
+    this.zenMinosaGuideSignature = signature;
+    let minosa = typeof getMinosaInstance === "function" ? getMinosaInstance() : null;
+    if (!minosa && typeof Minosa !== "undefined") {
+      minosa =
+        typeof Minosa.getSharedInstance === "function"
+          ? Minosa.getSharedInstance()
+          : new Minosa();
+    }
+
+    const result =
+      minosa && typeof minosa.evaluateGuideGameScene === "function"
+        ? minosa.evaluateGuideGameScene(this, this.getZenMinosaGuideConfig())
+        : null;
+    const path = Array.isArray(result?.path)
+      ? result.path.filter((step) => this.isValidMinosaHintStep(step))
+      : [];
+    const hint = this.isValidMinosaHintStep(result?.hint) ? result.hint : path[0] || null;
+    this.minosaStatus = hint ? "possible" : "impossible";
+    this.minosaPath = path;
+    this.minosaHint = hint;
+    return hint;
+  }
+
   getPrimaryMinosaHint(modeId = this.getHintModeId()) {
-    if (!this.isKonohaHintMode(modeId)) return null;
+    const isKonohaMode = this.isKonohaHintMode(modeId);
+    const isZenMinosaMode = this.isZenMinosaGuideEnabled(modeId);
+    if (!isKonohaMode && !isZenMinosaMode) return null;
+    if (isZenMinosaMode) {
+      this.updateZenMinosaGuideHint(modeId);
+    }
     const minosaStatus = this.gameMode?.minosaStatus || this.minosaStatus || "";
     if (minosaStatus !== "possible") return null;
     const sceneMinosaPath = this.gameMode?.minosaPath || this.minosaPath || [];
@@ -1439,11 +1551,65 @@ class GameScene extends Phaser.Scene {
       : null;
   }
 
+  drawHintPieceOverlay(graphics, piece, offsetX, offsetY, cellSize, options = {}) {
+    if (!graphics || !piece || !Array.isArray(piece.shape)) return;
+    const hiddenRows =
+      options.hiddenRows !== undefined
+        ? options.hiddenRows
+        : Math.max(0, (this.board?.rows || 0) - (this.visibleRows || 0));
+    const minimumBoardY =
+      options.minimumBoardY !== undefined ? options.minimumBoardY : hiddenRows;
+    const lineWidth =
+      options.lineWidth !== undefined ? options.lineWidth : Math.max(3, Math.floor(cellSize * 0.14));
+    const color = options.color !== undefined ? options.color : this.hintColor;
+    const alpha = options.alpha !== undefined ? options.alpha : 0.95;
+    const inset = Math.min(cellSize * 0.35, Math.max(1, lineWidth / 2));
+    const outlineSize = Math.max(1, cellSize - inset * 2);
+    graphics.lineStyle(lineWidth, color, alpha);
+
+    for (let r = 0; r < piece.shape.length; r++) {
+      for (let c = 0; c < piece.shape[r].length; c++) {
+        if (!piece.shape[r][c]) continue;
+        const pieceY = piece.y + r;
+        if (pieceY < minimumBoardY) continue;
+        graphics.strokeRect(
+          offsetX + (piece.x + c) * cellSize - cellSize / 2 + inset,
+          offsetY + (pieceY - hiddenRows) * cellSize - cellSize / 2 + inset,
+          outlineSize,
+          outlineSize,
+        );
+      }
+    }
+  }
+
+  hideBravoBanner() {
+    this.bravoActive = false;
+    if (this.bravoHideEvent) {
+      this.bravoHideEvent.remove(false);
+      this.bravoHideEvent = null;
+    }
+    if (this.bravoTween) {
+      this.bravoTween.stop();
+      this.bravoTween = null;
+    }
+    if (this.bravoValueTween) {
+      this.bravoValueTween.stop();
+      this.bravoValueTween = null;
+    }
+    if (this.bravoText) {
+      this.bravoText.setVisible(false);
+    }
+    if (this.bravoValueText) {
+      this.bravoValueText.setVisible(false);
+    }
+  }
+
   updatePlacementHint() {
     if (!this.hintGraphics) return;
     this.hintGraphics.clear();
     const modeId = this.getHintModeId();
     const isKonohaMode = this.isKonohaHintMode(modeId);
+    const isZenMinosaMode = this.isZenMinosaGuideEnabled(modeId);
     if (
       !this.currentPiece ||
       this.areActive ||
@@ -1451,7 +1617,7 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayActive ||
       this.loadingPhase ||
       this.readyGoPhase ||
-      !(this.isNormalOrEasyMode() || isKonohaMode)
+      !(this.isNormalOrEasyMode() || isKonohaMode || isZenMinosaMode)
     ) {
       this.hintPlacement = null;
       this.hintPlacements = [];
@@ -1460,6 +1626,12 @@ class GameScene extends Phaser.Scene {
     }
 
     const minosaHint = this.getPrimaryMinosaHint(modeId);
+    if ((isKonohaMode || isZenMinosaMode) && !minosaHint) {
+      this.hintPlacement = null;
+      this.hintPlacements = [];
+      this.hintSignature = null;
+      return;
+    }
     const hintPieceType = minosaHint ? minosaHint.piece : this.currentPiece.type;
 
     const rows = this.board.rows;
@@ -1612,22 +1784,11 @@ class GameScene extends Phaser.Scene {
     const cell = this.cellSize;
     const offX = this.matrixOffsetX;
     const offY = this.matrixOffsetY;
-    this.hintGraphics.lineStyle(4, this.hintColor, 0.95);
-    for (let r = 0; r < hintPlacement.shape.length; r++) {
-      for (let c = 0; c < hintPlacement.shape[r].length; c++) {
-        if (!hintPlacement.shape[r][c]) continue;
-        const x = hintPlacement.x + c;
-        const y = hintPlacement.y + r;
-        const drawY = y - startRow;
-        if (drawY < 0) continue;
-        this.hintGraphics.strokeRect(
-          offX + x * cell - cell / 2,
-          offY + drawY * cell - cell / 2,
-          cell,
-          cell,
-        );
-      }
-    }
+    this.drawHintPieceOverlay(this.hintGraphics, hintPlacement, offX, offY, cell, {
+      hiddenRows: startRow,
+      minimumBoardY: startRow,
+      lineWidth: Math.max(4, Math.floor(cell * 0.16)),
+    });
 
     // Apply smooth blink (alpha oscillation)
     const blinkSpeed = 2; // Hz
@@ -2221,7 +2382,9 @@ class GameScene extends Phaser.Scene {
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          return parsed.slice().sort((a, b) => this.compareEntries(modeId, a, b));
+        }
       } catch (e) {
         console.warn("Failed to parse leaderboard", modeId, e);
       }
@@ -2253,6 +2416,7 @@ class GameScene extends Phaser.Scene {
         const sig = JSON.stringify({
           time: e.time,
           score: e.score,
+          allClears: e.allClears,
           level: e.level,
           grade: e.grade,
           gradeLineColor: e.gradeLineColor,
@@ -3477,6 +3641,7 @@ class GameScene extends Phaser.Scene {
     this.comboCount = -1;
     this.backToBack = false;
     this.lastClearType = null;
+    this.lastLineClearWasBravo = false;
     this.lastPieceType = null;
     this.backstepHistory = [];
     this.backstepRestoreInProgress = false;
@@ -3526,7 +3691,7 @@ class GameScene extends Phaser.Scene {
     this.lockDelay = 0;
     this.lockDelayBufferedStart = false;
     this.skipDASMovementAfterSpawn = false;
-    this.stackAlpha = 0.8;
+    this.stackAlpha = 1;
 
     // Reset randomizer / first-spawn logic so the first spawned piece does not increment level.
     this.pieceHistory = ["Z", "Z", "S", "S"];
@@ -3771,18 +3936,7 @@ class GameScene extends Phaser.Scene {
     }
     this.tgm3BagQueue = [];
     this.tgm3DroughtCounters = null;
-    this.bravoActive = false;
-    if (this.bravoHideEvent) {
-      this.bravoHideEvent.remove(false);
-      this.bravoHideEvent = null;
-    }
-    if (this.bravoTween) {
-      this.bravoTween.stop();
-      this.bravoTween = null;
-    }
-    if (this.bravoText) {
-      this.bravoText.setVisible(false);
-    }
+    this.hideBravoBanner();
     this.bgmInternalLevelBuffer = 0;
     this.totalPausedTime = 0;
     this.isPaused = false;
@@ -4087,10 +4241,133 @@ class GameScene extends Phaser.Scene {
     };
   }
 
-  showBravoBanner() {
+  showBravoBanner(bravoValue = null) {
+    const modeId =
+      (this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode) || "";
+    const isKonohaMode =
+      typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+
+    this.hideBravoBanner();
+
+    if (isKonohaMode) {
+      const labelFontSize = `${Math.max(this.uiScale * 22, 18)}px`;
+      const valueFontSize = `${Math.max(this.uiScale * 28, 22)}px`;
+      const paddingX = Math.max(14, Math.floor(this.cellSize * 0.45));
+      const paddingY = Math.max(10, Math.floor(this.cellSize * 0.35));
+      const bannerY = this.borderOffsetY + paddingY;
+      const valueText = String(
+        bravoValue != null
+          ? bravoValue
+          : this.gameMode?.bravoCount ?? this.bravoCount ?? 0,
+      );
+
+      if (!this.bravoText) {
+        this.bravoText = this.add
+          .text(0, 0, "BRAVO", {
+            fontSize: labelFontSize,
+            fill: "#ffdd44",
+            stroke: "#000000",
+            strokeThickness: 3,
+            fontFamily: "Courier New",
+            fontStyle: "bold",
+          })
+          .setOrigin(0, 0)
+          .setDepth(9999)
+          .setAlpha(0);
+        if (this.overlayGroup) {
+          this.overlayGroup.add(this.bravoText);
+        } else {
+          this.gameGroup.add(this.bravoText);
+        }
+      }
+
+      if (!this.bravoValueText) {
+        this.bravoValueText = this.add
+          .text(0, 0, valueText, {
+            fontSize: valueFontSize,
+            fill: "#ffff88",
+            stroke: "#000000",
+            strokeThickness: 3,
+            fontFamily: "Courier New",
+            fontStyle: "bold",
+            align: "right",
+          })
+          .setOrigin(1, 0)
+          .setDepth(9999)
+          .setAlpha(0);
+        if (this.overlayGroup) {
+          this.overlayGroup.add(this.bravoValueText);
+        } else {
+          this.gameGroup.add(this.bravoValueText);
+        }
+      }
+
+      this.bravoActive = true;
+      this.bravoText.setStyle({
+        fontSize: labelFontSize,
+        fill: "#ffdd44",
+        stroke: "#000000",
+        strokeThickness: 3,
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      });
+      this.bravoText
+        .setText("BRAVO")
+        .setPosition(this.borderOffsetX + paddingX, bannerY)
+        .setOrigin(0, 0)
+        .setScale(0.88)
+        .setAngle(0)
+        .setAlpha(0)
+        .setVisible(true);
+      this.bravoValueText.setStyle({
+        fontSize: valueFontSize,
+        fill: "#ffff88",
+        stroke: "#000000",
+        strokeThickness: 3,
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+        align: "right",
+      });
+      this.bravoValueText
+        .setText(valueText)
+        .setPosition(this.borderOffsetX + this.playfieldWidth - paddingX, bannerY)
+        .setOrigin(1, 0)
+        .setScale(0.88)
+        .setAngle(0)
+        .setAlpha(0)
+        .setVisible(true);
+      this.children.bringToTop(this.bravoText);
+      this.children.bringToTop(this.bravoValueText);
+
+      try {
+        this.playSfx("gradeup", 0.7);
+      } catch {}
+
+      this.bravoTween = this.tweens.add({
+        targets: this.bravoText,
+        scale: { from: 0.88, to: 1 },
+        alpha: { from: 0, to: 1 },
+        angle: { from: 0, to: -10 },
+        duration: 220,
+        ease: "Back.Out",
+      });
+      this.bravoValueTween = this.tweens.add({
+        targets: this.bravoValueText,
+        scale: { from: 0.88, to: 1 },
+        alpha: { from: 0, to: 1 },
+        angle: { from: 0, to: 10 },
+        duration: 220,
+        ease: "Back.Out",
+      });
+      return;
+    }
+
+    const fontSize = this.timeText?.style?.fontSize || `${Math.max(this.uiScale * 28, 20)}px`;
+
     // Reuse if exists
     if (!this.bravoText) {
-      const fontSize = this.timeText?.style?.fontSize || `${Math.max(this.uiScale * 28, 20)}px`;
       this.bravoText = this.add
         .text(
           this.borderOffsetX + this.playfieldWidth / 2,
@@ -4114,28 +4391,34 @@ class GameScene extends Phaser.Scene {
       }
     }
 
-    if (this.bravoHideEvent) {
-      this.bravoHideEvent.remove(false);
-      this.bravoHideEvent = null;
-    }
-    if (this.bravoTween) {
-      this.bravoTween.stop();
-      this.bravoTween = null;
-    }
-
     this.bravoActive = true;
-    this.bravoText.setText("BRAVO!!");
-    this.bravoText.setAlpha(0);
-    this.bravoText.setScale(0);
-    this.bravoText.setAngle(0);
-    this.bravoText.setVisible(true);
+    this.bravoText.setStyle({
+      fontSize,
+      fill: "#ffdd44",
+      stroke: "#000000",
+      strokeThickness: 0,
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+      align: "center",
+    });
+    this.bravoText
+      .setText("BRAVO!!")
+      .setPosition(this.borderOffsetX + this.playfieldWidth / 2, this.borderOffsetY + this.playfieldHeight / 2)
+      .setOrigin(0.5, 0.5)
+      .setAlpha(0)
+      .setScale(0)
+      .setAngle(0)
+      .setVisible(true);
+    if (this.bravoValueText) {
+      this.bravoValueText.setVisible(false);
+    }
     this.children.bringToTop(this.bravoText);
 
     try {
       this.playSfx("firework", 0.85);
     } catch {}
 
-    // Sequence: grow + spin in 1s, then fade and slightly shrink over 3s
+    // Preserve the original non-Konoha Bravo sequence.
     this.bravoTween = this.tweens.add({
       targets: this.bravoText,
       scale: { from: 0, to: 1 },
@@ -6923,6 +7206,16 @@ class GameScene extends Phaser.Scene {
     this.currentSectionPieceIndex = (this.currentSectionPieceIndex || 0) + 1;
     this.pushBackstepSnapshot("spawn");
     this.markKonohaMinosaDirty();
+    const spawnModeId =
+      (this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode) || "";
+    if (
+      typeof spawnModeId === "string" &&
+      (spawnModeId.startsWith("tgm4_konoha") || spawnModeId.startsWith("konoha_"))
+    ) {
+      this.hideBravoBanner();
+    }
     if (
       typeof KonohaIllustrationSystem !== "undefined" &&
       typeof KonohaIllustrationSystem.onPieceSpawn === "function"
@@ -7488,6 +7781,7 @@ class GameScene extends Phaser.Scene {
     // Store cleared lines for animation
     this.clearedLines = linesToClear;
     this.completedLinesThisLock = allCompletedLines;
+    this.lastLineClearWasBravo = false;
 
     // Track pending powerup activation if any part of the powerup piece is cleared
     this.pendingPowerup = null;
@@ -7542,15 +7836,20 @@ class GameScene extends Phaser.Scene {
       this.totalGarbageCleared = (this.totalGarbageCleared || 0) + garbageLinesCleared;
     }
     const triggeredBravo = linesToClear.length > 0 && this.isAllClearAfterLines(linesToClear);
+    this.lastLineClearWasBravo = triggeredBravo;
     if (triggeredBravo) {
       const modeId =
         (this.gameMode && typeof this.gameMode.getModeId === "function"
           ? this.gameMode.getModeId()
           : this.selectedMode) || "unknown";
+      const isKonohaMode =
+        typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
       try {
         `[BRAVO] mode=${modeId} lines=${linesToClear.length} level=${this.level} score=${this.score}`;
       } catch {}
-      this.showBravoBanner();
+      if (!isKonohaMode) {
+        this.showBravoBanner();
+      }
     }
     // Zen cheese injection on line clears when configured (only in Zen sandbox modes)
     if (this.isZenSandboxActive && this.isZenSandboxActive()) {
@@ -7966,6 +8265,14 @@ class GameScene extends Phaser.Scene {
     }
 
     this.markKonohaMinosaDirty();
+    if (
+      this.lastLineClearWasBravo &&
+      this.gameMode &&
+      typeof this.gameMode.updateMinosaStatus === "function"
+    ) {
+      this.gameMode.updateMinosaStatus(this);
+    }
+    this.lastLineClearWasBravo = false;
 
     // Reset cleared lines after processing
     this.clearedLines = [];
@@ -9664,6 +9971,7 @@ class GameScene extends Phaser.Scene {
     this.backToBack = false;
     this.totalLines = 0;
     this.lastClearType = null;
+    this.lastLineClearWasBravo = false;
     this.gradeHistory = [];
     this.sectionTimes = [];
     this.sectionStartTime = 0;
@@ -10469,7 +10777,7 @@ class GameScene extends Phaser.Scene {
   startLockFlash() {
     // Store the locked piece's color and position for the flash effect
     const flashColor = this.currentPiece ? this.currentPiece.color : 0xffffff;
-    const stackAlpha = this.stackAlpha || 0.8;
+    const stackAlpha = this.stackAlpha || 1;
     let activePieceAlpha = 1;
     if (this.isGrounded && this.lockDelay > 0) {
       const fadeFrac = Math.min(this.lockDelay / (this.lockDelayMax || 0.5), 1);
@@ -10629,8 +10937,6 @@ class GameScene extends Phaser.Scene {
       autoExitDelay = 10,
     } = options;
 
-    this.stopAllBGMs?.();
-
     this.gameOver = true;
     this.gameOverTimer = 0;
     this.gameOverAutoExitDelay = Math.max(0, Number(autoExitDelay) || 10);
@@ -10687,8 +10993,6 @@ class GameScene extends Phaser.Scene {
       this.continueCreditsAfterTopout();
       return;
     }
-
-    this.stopAllBGMs?.();
 
     // Zen: use custom recover-only flow (no GAME OVER text) and keep matrix visible
     if (this.isZenSandboxActive && this.isZenSandboxActive()) {
@@ -10936,6 +11240,8 @@ class GameScene extends Phaser.Scene {
       this.gameOverFadeDoneTime = null;
       return;
     }
+
+    this.stopAllBGMs?.();
 
     this.gameOverSfxPlayed = false;
 
@@ -12136,7 +12442,7 @@ class GameScene extends Phaser.Scene {
       nextPiece.draw(this, nextAreaOffsetX, nextAreaOffsetY, previewCellSize, false, 1, false);
       if (highlightNextHint && i === 0) {
         const nextHighlight = this.add.graphics();
-        nextHighlight.lineStyle(4, this.hintColor, 0.95);
+        nextHighlight.lineStyle(Math.max(4, Math.floor(previewCellSize * 0.2)), this.hintColor, 0.95);
         nextHighlight.strokeRect(
           nextAreaOffsetX - previewCellSize,
           nextAreaOffsetY - previewCellSize,
@@ -12196,13 +12502,11 @@ class GameScene extends Phaser.Scene {
         displayPiece.draw(this, holdX, holdY + 30, previewCellSize, false, 1, false);
         if (highlightHoldHint) {
           const holdHighlight = this.add.graphics();
-          holdHighlight.lineStyle(4, this.hintColor, 0.95);
-          holdHighlight.strokeRect(
-            holdX - previewCellSize,
-            holdY + 30 - previewCellSize,
-            previewCellSize * 4,
-            previewCellSize * 4,
-          );
+          this.drawHintPieceOverlay(holdHighlight, displayPiece, holdX, holdY + 30, previewCellSize, {
+            hiddenRows: Math.max(0, (this.board?.rows || 0) - (this.visibleRows || 0)),
+            minimumBoardY: Number.NEGATIVE_INFINITY,
+            lineWidth: Math.max(4, Math.floor(previewCellSize * 0.2)),
+          });
           this.gameGroup.add(holdHighlight);
         }
       }

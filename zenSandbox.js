@@ -14,6 +14,9 @@
     spinType: "standard", // options: standard, t_only, all
     gravityMode: "none", // none, low, slow, medium, fast, static
     gravityRowsPerFrame: 0, // used when gravityMode === "static"
+    minosaGuideMode: "off", // off, survival, tetris, tspin
+    minosaGuideLookahead: 3, // 1-5
+    minosaGuideCandidateLimit: 8, // 1-16
     bagChanged: false, // UI notice flag
     displayMode: "versus", // none, versus, speed, efficiency
   };
@@ -46,6 +49,32 @@
   }
 
   const PIECES = ["I", "J", "L", "O", "S", "T", "Z"];
+  const DEFAULT_MINOSA_GUIDE_MODES = ["survival", "tetris", "tspin"];
+
+  function clampInteger(value, min, max, fallback) {
+    const numericValue = Math.round(Number(value));
+    if (!Number.isFinite(numericValue)) return fallback;
+    return Math.max(min, Math.min(max, numericValue));
+  }
+
+  function getMinosaGuideModeOptions() {
+    const exposedModes = Array.isArray(global.Minosa?.GUIDE_MODES)
+      ? global.Minosa.GUIDE_MODES
+      : DEFAULT_MINOSA_GUIDE_MODES;
+    const uniqueModes = [...new Set(exposedModes.filter((mode) => typeof mode === "string" && mode.trim()))];
+    const labels = {
+      survival: "Survival",
+      tetris: "Tetris",
+      tspin: "T-Spin",
+    };
+    return [
+      { label: "off", value: "off" },
+      ...uniqueModes.map((mode) => ({
+        label: labels[mode] || mode,
+        value: mode,
+      })),
+    ];
+  }
 
   function createShuffledBag() {
     const bag = [...PIECES];
@@ -304,9 +333,25 @@
     const x = opts?.x ?? 0;
     const y = opts?.y ?? 0;
     const lineHeight = Math.max(18, Math.floor((opts?.cellSize ?? 16) * 0.7));
+    const viewportWidth = opts?.width ?? 250;
+    const cameraHeight = scene.cameras?.main?.height || scene.game?.config?.height || 720;
+    const viewportHeight = Math.max(240, cameraHeight - y - 24);
     const group = scene.add.container(x, y);
+    const content = scene.add.container(0, 0);
+    group.add(content);
+    group.zenViewportWidth = viewportWidth;
+    group.zenViewportHeight = viewportHeight;
 
-    let rowY = lineHeight * 0.2 - 20; // lift list by 20px
+    const title = scene.add
+      .text(viewportWidth * 0.38, 0, "Zen Sandbox", {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5, 0);
+    content.add(title);
+
+    let rowY = lineHeight * 1.5;
 
     const refreshPanel = () => {
       if (typeof ZenSandboxHelper !== "undefined" && ZenSandboxHelper.renderPanel) {
@@ -326,11 +371,11 @@
       fontFamily: "Courier New",
     });
     bagNotice.setVisible(!!cfg.bagChanged);
-    group.add(bagNotice);
+    content.add(bagNotice);
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Bag",
@@ -353,11 +398,11 @@
       },
       refreshPanel,
     );
-    rowY += lineHeight * (1 + 0.9 * 5 + 1.2);
+    rowY += lineHeight * (1 + 0.9 * 7 + 1.2);
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Attack",
@@ -373,7 +418,7 @@
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Cheese",
@@ -390,7 +435,7 @@
 
     createNumericInputRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Cheese %",
@@ -406,7 +451,7 @@
     );
     rowY += lineHeight * 1.6;
 
-    createNumericInputRow(scene, group, 0, rowY, "Cheese rows", `${cfg.cheeseRows}`, (val) => {
+    createNumericInputRow(scene, content, 0, rowY, "Cheese rows", `${cfg.cheeseRows}`, (val) => {
       const num = Math.max(1, Math.min(20, Math.round(Number(val))));
       if (Number.isFinite(num)) {
         scene.setZenSandboxConfig && scene.setZenSandboxConfig({ cheeseRows: num });
@@ -418,7 +463,7 @@
 
     createNumericInputRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Cheese interval (s)",
@@ -436,7 +481,7 @@
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Spin",
@@ -453,7 +498,7 @@
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Infinite resets",
@@ -470,7 +515,7 @@
     // Gravity presets
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Gravity",
@@ -491,7 +536,7 @@
     if (cfg.gravityMode === "static") {
       createNumericInputRow(
         scene,
-        group,
+        content,
         0,
         rowY,
         "Static rows/frame",
@@ -511,7 +556,7 @@
 
     createRadioRow(
       scene,
-      group,
+      content,
       0,
       rowY,
       "Display",
@@ -526,6 +571,88 @@
       refreshPanel,
     );
     rowY += lineHeight * (1 + 0.9 * 2);
+
+    const minosaGuideOptions = getMinosaGuideModeOptions();
+    createRadioRow(
+      scene,
+      content,
+      0,
+      rowY,
+      "Minosa",
+      minosaGuideOptions,
+      cfg.minosaGuideMode || "off",
+      (val) => scene.setZenSandboxConfig && scene.setZenSandboxConfig({ minosaGuideMode: val }),
+      refreshPanel,
+    );
+    rowY += lineHeight * (1 + 0.9 * minosaGuideOptions.length);
+
+    if ((cfg.minosaGuideMode || "off") !== "off") {
+      createNumericInputRow(
+        scene,
+        content,
+        0,
+        rowY,
+        "Lookahead",
+        `${clampInteger(cfg.minosaGuideLookahead, 1, 5, 3)}`,
+        (val) => {
+          const num = clampInteger(val, 1, 5, 3);
+          scene.setZenSandboxConfig && scene.setZenSandboxConfig({ minosaGuideLookahead: num });
+          return num;
+        },
+      );
+      rowY += lineHeight * 1.6;
+
+      createNumericInputRow(
+        scene,
+        content,
+        0,
+        rowY,
+        "Candidates",
+        `${clampInteger(cfg.minosaGuideCandidateLimit, 1, 16, 8)}`,
+        (val) => {
+          const num = clampInteger(val, 1, 16, 8);
+          scene.setZenSandboxConfig && scene.setZenSandboxConfig({ minosaGuideCandidateLimit: num });
+          return num;
+        },
+      );
+      rowY += lineHeight * 1.6;
+    }
+
+    const maskPadding = 12;
+    const contentHeight = Math.max(viewportHeight, rowY + lineHeight);
+    const maxScroll = Math.max(0, contentHeight - viewportHeight);
+    const maskGraphics = scene.make.graphics({ x: 0, y: 0, add: false });
+    maskGraphics.fillStyle(0xffffff);
+    maskGraphics.fillRect(x - maskPadding, y - maskPadding, viewportWidth, viewportHeight + maskPadding * 2);
+    content.setMask(maskGraphics.createGeometryMask());
+
+    const setScroll = (nextScroll) => {
+      const clampedScroll = Math.max(0, Math.min(maxScroll, Number(nextScroll) || 0));
+      scene.zenSandboxPanelScrollY = clampedScroll;
+      content.y = -clampedScroll;
+    };
+    setScroll(scene.zenSandboxPanelScrollY || 0);
+
+    const wheelHandler = (_pointer, _gameObjects, _deltaX, deltaY) => {
+      if (!scene.zenSandboxPanelVisible || maxScroll <= 0) return;
+      const pointer = scene.input?.activePointer;
+      if (!pointer) return;
+      const withinBounds =
+        pointer.worldX >= x - maskPadding &&
+        pointer.worldX <= x - maskPadding + viewportWidth &&
+        pointer.worldY >= y - maskPadding &&
+        pointer.worldY <= y - maskPadding + viewportHeight + maskPadding * 2;
+      if (!withinBounds) return;
+      setScroll((scene.zenSandboxPanelScrollY || 0) + deltaY * 0.7);
+    };
+    scene.input?.on("wheel", wheelHandler);
+    group.once("destroy", () => {
+      scene.input?.off("wheel", wheelHandler);
+      if (content.clearMask) {
+        content.clearMask(true);
+      }
+      maskGraphics.destroy();
+    });
 
     return group;
   }
@@ -841,7 +968,7 @@
       const chevronY = scene.cameras?.main
         ? scene.cameras.main.height / 2
         : (scene.game.config.height || 0) / 2;
-      const expandedX = baseX + 220;
+      const expandedX = baseX + (panel?.zenViewportWidth || 220) + 20;
       const collapsedX = 10;
       const chevron = scene.add
         .triangle(expandedX, chevronY, -8, -12, -8, 12, 10, 0, 0xffff00, 1)

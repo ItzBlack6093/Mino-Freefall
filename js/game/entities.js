@@ -250,11 +250,11 @@ class Board {
           }
           if (zenActive) {
             if (!scene.minoFadeActive) {
-              // Outside the fade animation, use normal stack dimming (85%)
-              rowAlpha = scene.stackAlpha || 0.8;
+              // Outside the fade animation, use the configured stack opacity.
+              rowAlpha = scene.stackAlpha || 1;
             } else {
-              // During fade: clamp to max 85%, allow reaching 0
-              const maxAlpha = scene.stackAlpha || 0.8;
+              // During fade: clamp to the configured stack opacity, allow reaching 0
+              const maxAlpha = scene.stackAlpha || 1;
               if (rowAlpha > maxAlpha) rowAlpha = maxAlpha;
               if (rowAlpha < 0) rowAlpha = 0;
             }
