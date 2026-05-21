@@ -127,6 +127,9 @@ class TGM4KonohaMode extends BaseMode {
         gameScene.minosaHint = null;
         gameScene.minosaPieceBudget = this.minosaPieceBudget;
         gameScene.minosaTargetRows = this.minosaTargetRows;
+        gameScene.konohaMinosaSuppressDisplay = false;
+        gameScene.konohaBravoKitaTickActive = false;
+        gameScene.konohaHideImpossibleAfterBravoSpawn = false;
         if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.resetScene === 'function') {
             KonohaIllustrationSystem.resetScene(gameScene);
         }
@@ -358,7 +361,6 @@ class TGM4KonohaMode extends BaseMode {
 
     update(gameScene) {
         if (!gameScene || gameScene.gameOver) return;
-        this.updateMinosaStatus(gameScene);
         if (!this.timerStarted && gameScene.currentPiece) {
             this.timerStarted = true;
             this.lastTimerTime = gameScene.currentTime || 0;
@@ -382,13 +384,17 @@ class TGM4KonohaMode extends BaseMode {
         }
         if (typeof gameScene.saveLeaderboardEntry !== 'function') return;
         const time = `${Math.floor(gameScene.currentTime / 60)}:${Math.floor(gameScene.currentTime % 60).toString().padStart(2, '0')}.${Math.floor((gameScene.currentTime % 1) * 100).toString().padStart(2, '0')}`;
-        gameScene.saveLeaderboardEntry(gameScene.selectedMode, {
+        const entry = {
             allClears: this.bravoCount,
             level: gameScene.level,
             grade: this.getDisplayedGrade(),
             time,
             pps: gameScene.conventionalPPS != null ? Number(gameScene.conventionalPPS.toFixed(2)) : undefined
-        });
+        };
+        if (typeof KonohaIllustrationSystem !== 'undefined' && typeof KonohaIllustrationSystem.getSceneAssignmentSnapshot === 'function') {
+            entry.illustrationAssignments = KonohaIllustrationSystem.getSceneAssignmentSnapshot(gameScene);
+        }
+        gameScene.saveLeaderboardEntry(gameScene.selectedMode, entry);
         gameScene.leaderboardSaved = true;
     }
 }

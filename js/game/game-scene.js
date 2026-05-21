@@ -45,6 +45,9 @@ class GameScene extends Phaser.Scene {
     this.minosaPieceBudget = 0;
     this.minosaTargetRows = null;
     this.konohaMinosaRevision = 0;
+    this.konohaMinosaSuppressDisplay = false;
+    this.konohaBravoKitaTickActive = false;
+    this.konohaHideImpossibleAfterBravoSpawn = false;
     this.zenMinosaGuideSignature = null;
     this.hintPlacements = [];
     this.hintColor = 0xffff66;
@@ -771,6 +774,30 @@ class GameScene extends Phaser.Scene {
     this.konohaMinosaRevision = (this.konohaMinosaRevision || 0) + 1;
   }
 
+  setKonohaBravoKitaActive(active = true) {
+    this.konohaBravoKitaTickActive = !!active;
+    if (active) {
+      this.konohaMinosaSuppressDisplay = false;
+      this.konohaHideImpossibleAfterBravoSpawn = true;
+    }
+  }
+
+  syncKonohaMinosaDisplayState(status) {
+    const normalized = typeof status === "string" ? status.toLowerCase() : "";
+    this.konohaBravoKitaTickActive = false;
+    this.konohaMinosaSuppressDisplay =
+      normalized === "impossible" && this.konohaHideImpossibleAfterBravoSpawn;
+    this.konohaHideImpossibleAfterBravoSpawn = false;
+    return normalized;
+  }
+
+  refreshKonohaMinosaStatus() {
+    if (!this.gameMode || typeof this.gameMode.updateMinosaStatus !== "function") {
+      return null;
+    }
+    return this.syncKonohaMinosaDisplayState(this.gameMode.updateMinosaStatus(this));
+  }
+
   isNormalOrEasyMode() {
     const modeId =
       (this.gameMode && typeof this.gameMode.getModeId === "function"
@@ -1021,6 +1048,13 @@ class GameScene extends Phaser.Scene {
     return values[normalized] || 0;
   }
 
+  hasIllustrationAssignments(entry) {
+    return (
+      Array.isArray(entry?.illustrationAssignments) &&
+      entry.illustrationAssignments.some((characterId) => typeof characterId === "string" && characterId)
+    );
+  }
+
   compareEntries(modeId, a, b) {
     const getVal = (val) => (val === undefined || val === null ? 0 : val);
     const parseNumTime = (t) => {
@@ -1076,7 +1110,8 @@ class GameScene extends Phaser.Scene {
       case "konoha_hard": // All Clear
         return (
           byDesc(a.allClears, b.allClears) ||
-          byAsc(parseNumTime(a.time), parseNumTime(b.time))
+          byAsc(parseNumTime(a.time), parseNumTime(b.time)) ||
+          Number(this.hasIllustrationAssignments(b)) - Number(this.hasIllustrationAssignments(a))
         );
       case "tgm1":
       case "tgm2":
@@ -1601,6 +1636,131 @@ class GameScene extends Phaser.Scene {
     }
     if (this.bravoValueText) {
       this.bravoValueText.setVisible(false);
+    }
+  }
+
+  getKonohaBravoStyle(modeId = "") {
+    const isHardMode = typeof modeId === "string" && modeId.endsWith("_hard");
+
+    if (isHardMode) {
+      return {
+        labelGradient: ["#ffffff", "#8eeeff", "#4f86ff"],
+        valueGradient: ["#f4feff", "#69edff", "#426dff"],
+        fireworkColors: [0xf4feff, 0x69edff, 0x426dff, 0x8ec5ff, 0xffffff],
+      };
+    }
+
+    return {
+      labelGradient: ["#fffce0", "#ffd166", "#ff8f5a"],
+      valueGradient: ["#fff7ba", "#ffbe4d", "#ff5d6c"],
+      fireworkColors: [0xfff7ba, 0xffbe4d, 0xff8a4d, 0xff5d6c, 0xffffff],
+    };
+  }
+
+  applyTextGradient(textObject, colors, direction = "diagonal") {
+    if (!textObject?.context || !Array.isArray(colors) || colors.length === 0) return;
+
+    const width = Math.max(1, textObject.width || textObject.canvas?.width || 1);
+    const height = Math.max(1, textObject.height || textObject.canvas?.height || 1);
+    const gradient =
+      direction === "horizontal"
+        ? textObject.context.createLinearGradient(0, height * 0.5, width, height * 0.5)
+        : textObject.context.createLinearGradient(width * 0.12, 0, width * 0.88, height);
+    const maxStopIndex = Math.max(1, colors.length - 1);
+
+    colors.forEach((color, index) => {
+      gradient.addColorStop(index / maxStopIndex, color);
+    });
+
+    textObject.setFill(gradient);
+  }
+
+  spawnKonohaBravoFireworkBurst(x, y, colors = []) {
+    if (!this.add || !this.tweens) return;
+
+    const palette = Array.isArray(colors) && colors.length > 0 ? colors : [0xffffff, 0xffdd44, 0xff8844];
+    const parentGroup = this.overlayGroup || this.gameGroup;
+    const coreFlash = this.add.graphics().setDepth(9997);
+    coreFlash.fillStyle(0xffffff, 0.95);
+    coreFlash.fillCircle(0, 0, Math.max(4, this.cellSize * 0.18));
+    coreFlash.x = x;
+    coreFlash.y = y;
+    if (parentGroup) {
+      parentGroup.add(coreFlash);
+    }
+    this.tweens.add({
+      targets: coreFlash,
+      alpha: { from: 0.95, to: 0 },
+      scale: { from: 0.2, to: 2.4 },
+      duration: 240,
+      ease: "Quad.easeOut",
+      onComplete: () => {
+        coreFlash.destroy();
+      },
+    });
+
+    try {
+      this.playSfx("firework", 0.6 + Math.random() * 0.08);
+    } catch {}
+
+    const particleCount = 18 + Math.floor(Math.random() * 8);
+    for (let i = 0; i < particleCount; i++) {
+      const particle = this.add.graphics().setDepth(9997);
+      const radius = Phaser.Math.FloatBetween(1.8, 4.2);
+      const color = palette[Math.floor(Math.random() * palette.length)];
+      particle.fillStyle(color, 1);
+      particle.fillCircle(0, 0, radius);
+      particle.x = x;
+      particle.y = y;
+      if (parentGroup) {
+        parentGroup.add(particle);
+      }
+
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(this.cellSize * 2.4, this.cellSize * 5.2);
+      const lift = Phaser.Math.FloatBetween(this.cellSize * 0.4, this.cellSize * 1.4);
+      const duration = Phaser.Math.Between(520, 920);
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance - lift,
+        alpha: { from: 1, to: 0 },
+        scale: { from: 0.9, to: 0.18 },
+        delay: Math.random() * 70,
+        duration,
+        ease: "Cubic.easeOut",
+        onComplete: () => {
+          particle.destroy();
+        },
+      });
+    }
+  }
+
+  launchKonohaBravoFireworks(modeId = "", bannerY = 0) {
+    if (!this.time) return;
+
+    const { fireworkColors } = this.getKonohaBravoStyle(modeId);
+    const burstCount = 5;
+    const leftBound = this.borderOffsetX + this.cellSize * 1.2;
+    const rightBound = this.borderOffsetX + this.playfieldWidth - this.cellSize * 1.2;
+    const minY = Math.floor(bannerY + this.cellSize * 1.4);
+    const maxY = Math.floor(this.borderOffsetY + this.playfieldHeight * 0.45);
+
+    for (let i = 0; i < burstCount; i++) {
+      this.time.delayedCall(i * 110, () => {
+        if (!this.scene?.isActive?.()) return;
+
+        const ratio = burstCount === 1 ? 0.5 : i / (burstCount - 1);
+        const x = Phaser.Math.Clamp(
+          Phaser.Math.Linear(leftBound, rightBound, ratio) + Phaser.Math.FloatBetween(-this.cellSize * 0.45, this.cellSize * 0.45),
+          leftBound,
+          rightBound,
+        );
+        const y = Phaser.Math.Between(minY, Math.max(minY, maxY));
+
+        this.spawnKonohaBravoFireworkBurst(x, y, fireworkColors);
+      });
     }
   }
 
@@ -2315,6 +2475,13 @@ class GameScene extends Phaser.Scene {
           byDesc(a.lines, b.lines) ||
           byDesc(a.score, b.score)
         );
+      case "konoha_easy":
+      case "konoha_hard":
+        return (
+          byDesc(a.allClears, b.allClears) ||
+          byAsc(parseNumTime(a.time), parseNumTime(b.time)) ||
+          Number(this.hasIllustrationAssignments(b)) - Number(this.hasIllustrationAssignments(a))
+        );
       default:
         // Generic: prefer score desc, time asc
         return (
@@ -2422,6 +2589,9 @@ class GameScene extends Phaser.Scene {
           gradeLineColor: e.gradeLineColor,
           lines: e.lines,
           pps: e.pps,
+          illustrationAssignments: Array.isArray(e.illustrationAssignments)
+            ? e.illustrationAssignments
+            : [],
         });
         if (!seen.has(sig)) {
           seen.add(sig);
@@ -4252,8 +4422,9 @@ class GameScene extends Phaser.Scene {
     this.hideBravoBanner();
 
     if (isKonohaMode) {
-      const labelFontSize = `${Math.max(this.uiScale * 22, 18)}px`;
-      const valueFontSize = `${Math.max(this.uiScale * 28, 22)}px`;
+      const konohaBravoStyle = this.getKonohaBravoStyle(modeId);
+      const labelFontSize = `${Math.max(this.uiScale * 66, 54)}px`;
+      const valueFontSize = `${Math.max(this.uiScale * 84, 66)}px`;
       const paddingX = Math.max(14, Math.floor(this.cellSize * 0.45));
       const paddingY = Math.max(10, Math.floor(this.cellSize * 0.35));
       const bannerY = this.borderOffsetY + paddingY;
@@ -4309,7 +4480,7 @@ class GameScene extends Phaser.Scene {
         fontSize: labelFontSize,
         fill: "#ffdd44",
         stroke: "#000000",
-        strokeThickness: 3,
+        strokeThickness: 4,
         fontFamily: "Courier New",
         fontStyle: "bold",
       });
@@ -4321,11 +4492,12 @@ class GameScene extends Phaser.Scene {
         .setAngle(0)
         .setAlpha(0)
         .setVisible(true);
+      this.applyTextGradient(this.bravoText, konohaBravoStyle.labelGradient);
       this.bravoValueText.setStyle({
         fontSize: valueFontSize,
         fill: "#ffff88",
         stroke: "#000000",
-        strokeThickness: 3,
+        strokeThickness: 4,
         fontFamily: "Courier New",
         fontStyle: "bold",
         align: "right",
@@ -4338,12 +4510,14 @@ class GameScene extends Phaser.Scene {
         .setAngle(0)
         .setAlpha(0)
         .setVisible(true);
+      this.applyTextGradient(this.bravoValueText, konohaBravoStyle.valueGradient);
       this.children.bringToTop(this.bravoText);
       this.children.bringToTop(this.bravoValueText);
 
       try {
         this.playSfx("gradeup", 0.7);
       } catch {}
+      this.launchKonohaBravoFireworks(modeId, bannerY);
 
       this.bravoTween = this.tweens.add({
         targets: this.bravoText,
@@ -4910,6 +5084,7 @@ class GameScene extends Phaser.Scene {
       if (this.asukaKitaText && typeof this.gameMode?.kitas === "number") {
         this.asukaKitaText.setText(this.gameMode.kitas.toString());
       }
+      this.refreshKonohaMinosaStatus();
       this.updateGradeUIVisibility();
       return true;
     } finally {
@@ -7216,6 +7391,7 @@ class GameScene extends Phaser.Scene {
     ) {
       this.hideBravoBanner();
     }
+    this.refreshKonohaMinosaStatus();
     if (
       typeof KonohaIllustrationSystem !== "undefined" &&
       typeof KonohaIllustrationSystem.onPieceSpawn === "function"
@@ -7847,6 +8023,9 @@ class GameScene extends Phaser.Scene {
       try {
         `[BRAVO] mode=${modeId} lines=${linesToClear.length} level=${this.level} score=${this.score}`;
       } catch {}
+      if (isKonohaMode) {
+        this.setKonohaBravoKitaActive(true);
+      }
       if (!isKonohaMode) {
         this.showBravoBanner();
       }
@@ -8144,6 +8323,7 @@ class GameScene extends Phaser.Scene {
     }
 
     this.markKonohaMinosaDirty();
+    this.refreshKonohaMinosaStatus();
 
     return true;
   }
@@ -8265,13 +8445,6 @@ class GameScene extends Phaser.Scene {
     }
 
     this.markKonohaMinosaDirty();
-    if (
-      this.lastLineClearWasBravo &&
-      this.gameMode &&
-      typeof this.gameMode.updateMinosaStatus === "function"
-    ) {
-      this.gameMode.updateMinosaStatus(this);
-    }
     this.lastLineClearWasBravo = false;
 
     // Reset cleared lines after processing
@@ -11804,6 +11977,14 @@ class GameScene extends Phaser.Scene {
       ); // Height reduced by 1px, width expanded 1px left
       this.gameGroup.add(this.playfieldBorder);
 
+      if (
+        this.gameStarted &&
+        typeof KonohaIllustrationSystem !== "undefined" &&
+        typeof KonohaIllustrationSystem.drawMatrixIllustration === "function"
+      ) {
+        KonohaIllustrationSystem.drawMatrixIllustration(this);
+      }
+
       // Draw game elements using matrix offset (skip during game over after fading)
       // During game over fading, keep drawing the stack so row-by-row alpha can be applied.
       // Also keep drawing after a credits fade-in so the revealed stack stays visible.
@@ -11815,12 +11996,6 @@ class GameScene extends Phaser.Scene {
           this.preserveBoardOnStaticEnd) &&
         (!this.fadingComplete || this.creditsFadeInDone || this.preserveBoardOnStaticEnd)
       ) {
-        if (
-          typeof KonohaIllustrationSystem !== "undefined" &&
-          typeof KonohaIllustrationSystem.drawMatrixIllustration === "function"
-        ) {
-          KonohaIllustrationSystem.drawMatrixIllustration(this);
-        }
         this.board.draw(
           this,
           this.matrixOffsetX,
@@ -12095,7 +12270,11 @@ class GameScene extends Phaser.Scene {
         ? this.gameMode.getModeId()
         : this.selectedMode;
       if (typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"))) {
-        const status = this.gameMode?.minosaStatus || this.minosaStatus || "possible";
+        const baseStatus = this.gameMode?.minosaStatus || this.minosaStatus || "possible";
+        const status =
+          this.konohaBravoKitaTickActive && this.areActive
+            ? "achieved"
+            : baseStatus;
         const iconByStatus = {
           achieved: "🦊✓",
           possible: "🦊",
@@ -12107,23 +12286,18 @@ class GameScene extends Phaser.Scene {
           impossible: "#ff8888",
         };
         const hint = this.gameMode?.minosaHint || this.minosaHint || null;
-        const path =
-          this.gameMode?.minosaPath || this.minosaPath || [];
-        const pieceBudget =
-          this.gameMode?.minosaPieceBudget || this.minosaPieceBudget || 0;
         const hintSuffix =
           status === "possible" && hint?.usedHold && hint?.piece
-            ? ` ${hint.source === "hold" ? "H" : "N"}:${hint.piece}`
+            ? ` ${hint.piece}`
             : "";
-        const remainingSuffix =
-          status === "possible" &&
-          Array.isArray(path) &&
-          path.length > 0 &&
-          pieceBudget > 0
-            ? ` ${path.length}/${pieceBudget}`
-            : "";
-        this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}${remainingSuffix}`);
-        this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
+        const shouldShowKita =
+          !this.konohaMinosaSuppressDisplay &&
+          (status === "possible" || status === "achieved" || status === "impossible");
+        this.asukaKitaText.setVisible(shouldShowKita);
+        if (shouldShowKita) {
+          this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}`);
+          this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
+        }
       } else {
         const kitaCount =
           this.gameMode && typeof this.gameMode.kitas === "number"
@@ -12134,6 +12308,7 @@ class GameScene extends Phaser.Scene {
           (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
         const kitaDisplayText =
           isAsukaMode && kitaCount > 0 ? `🦊x${kitaCount}` : kitaCount.toString();
+        this.asukaKitaText.setVisible(true);
         this.asukaKitaText.setText(kitaDisplayText);
         this.asukaKitaText.setColor("#ffff88");
       }

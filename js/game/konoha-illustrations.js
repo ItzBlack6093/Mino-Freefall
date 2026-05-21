@@ -226,10 +226,122 @@
     );
   }
 
-  function getStoredProgress() {
-    return buildProgressFromSteps(
-      getBestAllClears("konoha_easy") + getBestAllClears("konoha_hard"),
+  function hasStoredAssignments(entry) {
+    return (
+      Array.isArray(entry?.illustrationAssignments) &&
+      entry.illustrationAssignments.some((characterId) => typeof characterId === "string" && characterId)
     );
+  }
+
+  function parseStoredEntryTime(entry) {
+    const time = typeof entry?.time === "string" ? entry.time : "";
+    const parts = time.split(":");
+    if (parts.length !== 2) return Number.POSITIVE_INFINITY;
+    const minutes = Number(parts[0]);
+    const seconds = Number(parts[1]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) return Number.POSITIVE_INFINITY;
+    return minutes * 60 + seconds;
+  }
+
+  function getBestLeaderboardEntry(modeId) {
+    return readLeaderboard(modeId).reduce((best, entry) => {
+      if (!entry) return best;
+      if (!best) return entry;
+      const bestAllClears = Math.floor(Number(best?.allClears) || 0);
+      const entryAllClears = Math.floor(Number(entry?.allClears) || 0);
+      if (entryAllClears !== bestAllClears) {
+        return entryAllClears > bestAllClears ? entry : best;
+      }
+
+      const bestTime = parseStoredEntryTime(best);
+      const entryTime = parseStoredEntryTime(entry);
+      if (entryTime !== bestTime) {
+        return entryTime < bestTime ? entry : best;
+      }
+
+      const bestHasAssignments = hasStoredAssignments(best);
+      const entryHasAssignments = hasStoredAssignments(entry);
+      if (entryHasAssignments !== bestHasAssignments) {
+        return entryHasAssignments ? entry : best;
+      }
+
+      return best;
+    }, null);
+  }
+
+  function getStoredAssignmentList(entry) {
+    return Array.isArray(entry?.illustrationAssignments)
+      ? entry.illustrationAssignments.map((characterId) =>
+          typeof characterId === "string" && characterId ? characterId : null,
+        )
+      : [];
+  }
+
+  function getStoredModeProgress(modeId) {
+    const hard = modeId === "konoha_hard";
+    const total = hard ? TOTAL_ILLUSTRATIONS : EASY_RUN_ILLUSTRATION_TOTAL;
+    const characterIds = hard ? CHARACTER_IDS : EASY_CHARACTER_IDS;
+    const entry = getBestLeaderboardEntry(modeId);
+    return {
+      total,
+      steps: clampProgressSteps(entry?.allClears ?? 0, total),
+      characterIds,
+      assignments: getStoredAssignmentList(entry),
+    };
+  }
+
+  function getStatePriority(state) {
+    if (state === STATES.unlocked) return 2;
+    if (state === STATES.partial) return 1;
+    return 0;
+  }
+
+  function recordStoredCharacterStates(progress, stateByCharacterId) {
+    if (!progress || !(stateByCharacterId instanceof Map)) return;
+    const total = clampIllustrationTotal(progress.total || progress.characterIds?.length || TOTAL_ILLUSTRATIONS);
+    for (let slotIndex = 0; slotIndex < total; slotIndex += 1) {
+      const state = getSlotState(slotIndex, progress.steps, total);
+      if (state === STATES.locked) continue;
+      const characterId = progress.assignments[slotIndex] || getCharacterId(slotIndex, progress.characterIds);
+      const previousState = stateByCharacterId.get(characterId) || STATES.locked;
+      if (getStatePriority(state) > getStatePriority(previousState)) {
+        stateByCharacterId.set(characterId, state);
+      }
+    }
+  }
+
+  function getStoredProgress() {
+    const easyProgress = getStoredModeProgress("konoha_easy");
+    const hardProgress = getStoredModeProgress("konoha_hard");
+    const steps = clampProgressSteps(easyProgress.steps + hardProgress.steps);
+    const stateByCharacterId = new Map();
+    recordStoredCharacterStates(easyProgress, stateByCharacterId);
+    recordStoredCharacterStates(hardProgress, stateByCharacterId);
+    const slots = Array.from({ length: TOTAL_ILLUSTRATIONS }, (_, index) => {
+      const characterId = getCharacterId(index, CHARACTER_IDS);
+      const state = stateByCharacterId.get(characterId) || STATES.locked;
+      return {
+        index,
+        number: index + 1,
+        characterId,
+        state,
+      };
+    });
+    const unlocked = slots.filter((slot) => slot.state === STATES.unlocked).length;
+    const partialUnlocked = slots.filter((slot) => slot.state === STATES.partial).length;
+    const firstIncompleteSlotIndex = slots.findIndex((slot) => slot.state !== STATES.unlocked);
+
+    return {
+      total: TOTAL_ILLUSTRATIONS,
+      steps,
+      maxSteps: MAX_PROGRESS_STEPS,
+      unlocked,
+      partialUnlocked,
+      lockedCount: Math.max(0, TOTAL_ILLUSTRATIONS - unlocked - partialUnlocked),
+      activeSlotIndex:
+        firstIncompleteSlotIndex >= 0 ? firstIncompleteSlotIndex : Math.max(0, TOTAL_ILLUSTRATIONS - 1),
+      slots,
+    };
   }
 
   function isKonohaModeId(modeId) {
@@ -294,6 +406,18 @@
     return characterIds[characterIds.length - 1] || null;
   }
 
+  function getSceneAssignmentPool(runtime, slotIndex) {
+    if (!runtime) return [];
+    return slotIndex >= HARD_LATE_SLOT_START ? runtime.lateCharacterPool : runtime.baseCharacterPool;
+  }
+
+  function getSceneAssignmentFallback(slotIndex) {
+    if (slotIndex >= HARD_LATE_SLOT_START) {
+      return getCharacterId(slotIndex - HARD_LATE_SLOT_START, HARD_LATE_CHARACTER_IDS);
+    }
+    return getCharacterId(slotIndex, EASY_CHARACTER_IDS);
+  }
+
   function isHardLatePhase(scene, slotIndex) {
     if (getSceneVariant(scene) !== "hard") return false;
     return (
@@ -305,7 +429,30 @@
   function resolveSceneSlotCharacterId(scene, slotIndex) {
     const total = getSceneIllustrationTotal(scene);
     const clampedSlotIndex = clampSlotIndex(slotIndex, total);
-    return getCharacterId(clampedSlotIndex, getSceneCharacterIds(scene));
+    const runtime = ensureRuntime(scene);
+    const assignedCharacterId = runtime?.slotAssignments?.get(clampedSlotIndex);
+    if (assignedCharacterId) {
+      return assignedCharacterId;
+    }
+
+    const assignmentPool = getSceneAssignmentPool(runtime, clampedSlotIndex);
+    let characterId = drawWeightedCharacterId(assignmentPool);
+    if (characterId) {
+      removeCharacterFromPool(assignmentPool, characterId);
+    } else {
+      characterId = getSceneAssignmentFallback(clampedSlotIndex);
+    }
+
+    runtime?.slotAssignments?.set(clampedSlotIndex, characterId);
+    return characterId || getCharacterId(clampedSlotIndex, getSceneCharacterIds(scene));
+  }
+
+  function getSceneAssignmentSnapshot(scene) {
+    const runtime = ensureRuntime(scene);
+    const assignments = runtime?.slotAssignments;
+    if (!(assignments instanceof Map) || assignments.size <= 0) return [];
+    const lastAssignedSlot = Math.max(...assignments.keys());
+    return Array.from({ length: lastAssignedSlot + 1 }, (_, index) => assignments.get(index) || null);
   }
 
   function getProgressForScene(scene) {
@@ -696,9 +843,9 @@
     entry.listeners.push(callback);
   }
 
-  function redrawProfileCanvas(canvas, slotIndex, state, kind = "icon") {
+  function redrawProfileCanvas(canvas, slotIndex, state, kind = "icon", characterId = null) {
     if (!canvas) return;
-    const baseDescriptor = getBaseAssetDescriptor(slotIndex, kind);
+    const baseDescriptor = getBaseAssetDescriptor(slotIndex, kind, characterId);
     const gradientDescriptor = getGradientAssetDescriptor(state, kind);
 
     const draw = () => {
@@ -736,6 +883,7 @@
   function createProfileIllustrationNode(slot, { size = 44, kind = "icon" } = {}) {
     const slotIndex = clampSlotIndex(slot?.index ?? 0);
     const state = slot?.state || STATES.locked;
+    const characterId = typeof slot?.characterId === "string" ? slot.characterId : null;
     const canvas = document.createElement("canvas");
     canvas.width = 340;
     canvas.height = 340;
@@ -745,7 +893,7 @@
     }
     canvas.style.display = "block";
     canvas.style.imageRendering = "pixelated";
-    redrawProfileCanvas(canvas, slotIndex, state, kind);
+    redrawProfileCanvas(canvas, slotIndex, state, kind, characterId);
     return canvas;
   }
 
@@ -771,6 +919,7 @@
     getSceneVariant,
     getSceneIllustrationTotal,
     resolveSceneSlotCharacterId,
+    getSceneAssignmentSnapshot,
     isKonohaModeId,
     resetScene,
     onBravo,

@@ -1343,23 +1343,11 @@ class MenuScene extends Phaser.Scene {
     });
     illustrationGridShell.appendChild(illustrationGrid);
 
-    const illustrationSlots = (Array.isArray(illustrationProgress.slots)
-      ? illustrationProgress.slots.slice()
-      : []
-    ).sort((a, b) => {
-      const stateRank = {
-        unlocked: 0,
-        partial: 1,
-        locked: 2,
-      };
-      const aStateRank = Object.prototype.hasOwnProperty.call(stateRank, a?.state) ? stateRank[a.state] : 99;
-      const bStateRank = Object.prototype.hasOwnProperty.call(stateRank, b?.state) ? stateRank[b.state] : 99;
-      if (aStateRank !== bStateRank) return aStateRank - bStateRank;
-      const aName = typeof a?.characterId === "string" ? a.characterId : "";
-      const bName = typeof b?.characterId === "string" ? b.characterId : "";
-      if (aName !== bName) return aName.localeCompare(bName);
-      return (a?.index || 0) - (b?.index || 0);
-    });
+    const illustrationSlots = Array.isArray(illustrationProgress.slots)
+      ? illustrationProgress.slots
+          .slice()
+          .sort((a, b) => (Number.isFinite(a?.index) ? a.index : 0) - (Number.isFinite(b?.index) ? b.index : 0))
+      : [];
 
     for (const slot of illustrationSlots) {
       const index = Number.isFinite(slot?.index) ? slot.index : 0;
@@ -2771,6 +2759,9 @@ class MenuScene extends Phaser.Scene {
           gradeLineColor: e.gradeLineColor,
           lines: e.lines,
           pps: e.pps,
+          illustrationAssignments: Array.isArray(e.illustrationAssignments)
+            ? e.illustrationAssignments
+            : [],
         });
         if (!seen.has(sig)) {
           seen.add(sig);
@@ -2819,6 +2810,13 @@ class MenuScene extends Phaser.Scene {
       GM: 19,
     };
     return gradeValues[grade] || 0;
+  }
+
+  hasIllustrationAssignments(entry) {
+    return (
+      Array.isArray(entry?.illustrationAssignments) &&
+      entry.illustrationAssignments.some((characterId) => typeof characterId === "string" && characterId)
+    );
   }
 
   compareEntries(modeId, a, b) {
@@ -2876,7 +2874,8 @@ class MenuScene extends Phaser.Scene {
       case "konoha_hard": // All Clear
         return (
           byDesc(a.allClears, b.allClears) ||
-          byAsc(parseNumTime(a.time), parseNumTime(b.time))
+          byAsc(parseNumTime(a.time), parseNumTime(b.time)) ||
+          Number(this.hasIllustrationAssignments(b)) - Number(this.hasIllustrationAssignments(a))
         );
       case "tgm1":
       case "tgm2":
