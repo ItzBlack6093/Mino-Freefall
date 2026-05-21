@@ -1,0 +1,58 @@
+{
+  "name": "mino-freefall",
+  "version": "1.0.0",
+  "description": "Desktop wrapper and web runtime for Mino Freefall",
+  "private": true,
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "npm run desktop:dev",
+    "desktop:dev": "electron .",
+    "desktop:pack": "electron-builder --dir",
+    "desktop:dist": "electron-builder",
+    "desktop:dist:linux": "electron-builder --linux AppImage tar.gz",
+    "desktop:dist:win": "electron-builder --win nsis portable",
+    "server:start": "node server/index.js"
+  },
+  "dependencies": {
+    "phaser": "4.1.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.2",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "dev.yumemizook.minofreefall",
+    "productName": "Mino Freefall",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "LICENSE",
+      "index.html",
+      "electron/**/*",
+      "js/**/*",
+      "modes/**/*",
+      "img/**/*",
+      "fonts/**/*",
+      "bgm/**/*",
+      "characters/**/*",
+      "sfx/**/*",
+      "zenSandbox.js",
+      "package.json",
+      "node_modules/phaser/**/*"
+    ],
+    "linux": {
+      "category": "Game",
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    }
+  }
+}

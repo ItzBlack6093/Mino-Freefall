@@ -65,7 +65,8 @@ window.__minoResizeHandler = () => {
   activeGame.scale.resize(window.innerWidth, window.innerHeight);
   if (activeGame.scene.scenes.length > 0) {
     activeGame.scene.scenes.forEach(scene => {
-      if (scene && scene.calculateLayout) {
+      const isSceneActive = !!scene?.sys?.settings?.active;
+      if (isSceneActive && scene.calculateLayout) {
         scene.calculateLayout();
       }
     });

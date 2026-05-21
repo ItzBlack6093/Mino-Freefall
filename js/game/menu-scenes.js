@@ -124,6 +124,64 @@ const BOOT_MARQUEE_SHAPES = [
 
 const BOOT_MARQUEE_MONO_COLOR = 0xe8e8e8;
 
+function getSharedAssetQueueState() {
+  if (typeof window === "undefined") {
+    if (!globalThis.__minoSharedAssetQueueState) {
+      globalThis.__minoSharedAssetQueueState = {
+        pendingAudio: new Set(),
+        pendingImages: new Set(),
+        loaderEntries: new WeakMap(),
+      };
+    }
+    return globalThis.__minoSharedAssetQueueState;
+  }
+
+  if (!window.__minoSharedAssetQueueState) {
+    window.__minoSharedAssetQueueState = {
+      pendingAudio: new Set(),
+      pendingImages: new Set(),
+      loaderEntries: new WeakMap(),
+    };
+  }
+
+  return window.__minoSharedAssetQueueState;
+}
+
+function getSharedAssetLoaderEntry(scene) {
+  const loader = scene?.load;
+  if (!loader) return null;
+
+  const state = getSharedAssetQueueState();
+  let entry = state.loaderEntries.get(loader);
+  if (!entry) {
+    entry = {
+      audio: new Set(),
+      hooked: false,
+      images: new Set(),
+    };
+    state.loaderEntries.set(loader, entry);
+  }
+
+  if (!entry.hooked) {
+    entry.hooked = true;
+    loader.on("complete", () => {
+      entry.images.forEach((key) => state.pendingImages.delete(key));
+      entry.audio.forEach((key) => state.pendingAudio.delete(key));
+      entry.images.clear();
+      entry.audio.clear();
+    });
+    loader.on("loaderror", (file) => {
+      if (!file?.key) return;
+      entry.images.delete(file.key);
+      entry.audio.delete(file.key);
+      state.pendingImages.delete(file.key);
+      state.pendingAudio.delete(file.key);
+    });
+  }
+
+  return entry;
+}
+
 function ensureImageTexture(scene, key, url) {
   if (scene.textures.exists(key)) {
     const existingTexture = scene.textures.get(key);
@@ -133,7 +191,14 @@ function ensureImageTexture(scene, key, url) {
       scene.textures.remove(key);
     }
   }
+  const state = getSharedAssetQueueState();
+  if (state.pendingImages.has(key)) {
+    return;
+  }
   if (!scene.textures.exists(key)) {
+    const loaderEntry = getSharedAssetLoaderEntry(scene);
+    loaderEntry?.images.add(key);
+    state.pendingImages.add(key);
     scene.load.image(key, url);
   }
 }
@@ -144,7 +209,11 @@ function queueSharedGameAssets(scene) {
   });
 
   SHARED_AUDIO_ASSETS.forEach(([key, path]) => {
-    if (!scene.cache.audio.exists(key)) {
+    const state = getSharedAssetQueueState();
+    if (!scene.cache.audio.exists(key) && !state.pendingAudio.has(key)) {
+      const loaderEntry = getSharedAssetLoaderEntry(scene);
+      loaderEntry?.audio.add(key);
+      state.pendingAudio.add(key);
       scene.load.audio(key, path);
     }
   });
@@ -2958,26 +3027,10 @@ class SettingsScene extends Phaser.Scene {
   }
 
   preload() {
-    const ensureImageTexture = (key, url) => {
-      if (this.textures.exists(key)) {
-        const existingTexture = this.textures.get(key);
-        const src =
-          existingTexture && existingTexture.source
-            ? existingTexture.source[0]
-            : null;
-        if (!src || !src.image) {
-          this.textures.remove(key);
-        }
-      }
-      if (!this.textures.exists(key)) {
-        this.load.image(key, url);
-      }
-    };
-
-    ensureImageTexture("mino_srs", "img/mino.png");
-    ensureImageTexture("mino_ars", "img/minoARS.png");
-    ensureImageTexture("mono", "img/mono.png");
-    ensureImageTexture("mono_ars", "img/monoARS.png");
+    ensureImageTexture(this, "mino_srs", "img/mino.png");
+    ensureImageTexture(this, "mino_ars", "img/minoARS.png");
+    ensureImageTexture(this, "mono", "img/mono.png");
+    ensureImageTexture(this, "mono_ars", "img/monoARS.png");
   }
 
   create() {

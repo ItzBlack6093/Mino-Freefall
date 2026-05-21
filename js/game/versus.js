@@ -8,6 +8,12 @@ function computeMRClient(glickoRating) {
   return Math.round(mr * 100) / 100;
 }
 
+function getDefaultVersusServerUrl() {
+  const desktopUrl =
+    typeof window !== "undefined" ? window.minoDesktop?.versusServerUrl : null;
+  return desktopUrl || "ws://localhost:8080";
+}
+
 // ---------------------------------------------------------------------------
 // MatchmakingScene — Queue UI, rating display, opponent info
 // ---------------------------------------------------------------------------
@@ -23,7 +29,7 @@ class MatchmakingScene extends Phaser.Scene {
 
   init(data) {
     this.queueType = data.queueType || "guideline";
-    this.serverUrl = data.serverUrl || "ws://localhost:8080";
+    this.serverUrl = data.serverUrl || getDefaultVersusServerUrl();
   }
 
   create() {

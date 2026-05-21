@@ -315,7 +315,7 @@
     return texture?.source?.[0]?.image || null;
   }
 
-  function buildCompositeDataUrl(scene, baseKey, gradientKey) {
+  function buildCompositeCanvas(scene, baseKey, gradientKey) {
     const baseImage = getTextureSourceImage(scene, baseKey);
     const gradientImage = getTextureSourceImage(scene, gradientKey);
     if (!baseImage || !gradientImage) return null;
@@ -337,7 +337,7 @@
     context.globalCompositeOperation = "source-atop";
     context.drawImage(gradientImage, 0, 0, width, height);
     context.globalCompositeOperation = "source-over";
-    return canvas.toDataURL("image/png");
+    return canvas;
   }
 
   function ensureDisplayTexture(scene, slotIndex, kind, state) {
@@ -369,21 +369,12 @@
     if (scene.textures?.exists(compositeKey)) {
       return compositeKey;
     }
-    if (runtime?.loadingKeys?.has(compositeKey)) {
+    const compositeCanvas = buildCompositeCanvas(scene, baseDescriptor.key, gradientDescriptor.key);
+    if (!compositeCanvas) {
       return null;
     }
-
-    const compositeDataUrl = buildCompositeDataUrl(scene, baseDescriptor.key, gradientDescriptor.key);
-    if (!compositeDataUrl) {
-      return null;
-    }
-
-    runtime?.loadingKeys?.add(compositeKey);
-    scene.load.image(compositeKey, compositeDataUrl);
-    try {
-      scene.load.start();
-    } catch {}
-    return null;
+    scene.textures.addCanvas(compositeKey, compositeCanvas);
+    return scene.textures?.exists(compositeKey) ? compositeKey : null;
   }
 
   function prefetchSceneAssets(scene) {

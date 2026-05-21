@@ -963,6 +963,18 @@ class GameScene extends Phaser.Scene {
     return modeId === "tgm3_sakura";
   }
 
+  modeUsesGrading() {
+    const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
+    const modeId =
+      this.gameMode && typeof this.gameMode.getModeId === "function"
+        ? this.gameMode.getModeId()
+        : this.selectedMode;
+    const isKonohaMode =
+      typeof modeId === "string" &&
+      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+    return modeConfig.hasGrading !== false && !isKonohaMode;
+  }
+
   getGradeValue(grade) {
     const gradeValues = {
       9: 0,
@@ -1193,14 +1205,7 @@ class GameScene extends Phaser.Scene {
 
   applyInitialGradeFromMode() {
     const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const modeId =
-      this.gameMode && typeof this.gameMode.getModeId === "function"
-        ? this.gameMode.getModeId()
-        : this.selectedMode;
-    const isKonohaMode =
-      typeof modeId === "string" &&
-      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
-    const hasGrading = modeConfig.hasGrading !== false && !isKonohaMode;
+    const hasGrading = this.modeUsesGrading();
 
     if (!hasGrading) {
       this.grade = null;
@@ -2237,10 +2242,7 @@ class GameScene extends Phaser.Scene {
         ? this.gameMode.getModeId()
         : this.selectedMode;
     const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const isKonohaMode =
-      typeof modeId === "string" &&
-      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
-    const hasGrading = modeConfig.hasGrading !== false && !isKonohaMode;
+    const hasGrading = this.modeUsesGrading();
     const specialMechanics = modeConfig.specialMechanics || {};
     const isTADeathMode = modeId === "tadeath" || modeId === "ta_death";
     const isTGM2Mode =
@@ -2350,6 +2352,9 @@ class GameScene extends Phaser.Scene {
     const isMarathonMode = !!(this.selectedMode && this.selectedMode === "marathon");
     const isUltraMode = !!(this.selectedMode && this.selectedMode === "ultra");
     const isZenMode = !!(this.selectedMode === "zen");
+    const isKonohaMode =
+      typeof modeId === "string" &&
+      (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
     const isSprintMode = !!(
       this.selectedMode &&
       (this.selectedMode === "sprint_40" || this.selectedMode === "sprint_100")
@@ -5946,8 +5951,7 @@ class GameScene extends Phaser.Scene {
 
     // Update grade based on performance (only for modes with grading)
     if (!this.creditsActive) {
-      const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-      const hasGrading = modeConfig.hasGrading !== false;
+      const hasGrading = this.modeUsesGrading();
       if (hasGrading) {
         // Before any piece is placed, pin grade/internalGrade to baseline and skip external getters.
         if (this.totalPiecesPlaced === 0) {
@@ -9225,6 +9229,12 @@ class GameScene extends Phaser.Scene {
   }
 
   updateGrade() {
+    if (!this.modeUsesGrading()) {
+      this.grade = null;
+      this.internalGrade = null;
+      return;
+    }
+
     // Official TGM1 grade progression based on score thresholds with time requirements for GM
     const score = this.score;
     const time = this.currentTime;
@@ -9394,6 +9404,10 @@ class GameScene extends Phaser.Scene {
   }
 
   animateGradeUpgrade() {
+    if (!this.modeUsesGrading()) {
+      return;
+    }
+
     // Play grade up sound
     this.playSfx("gradeup", 0.6);
 
@@ -9426,8 +9440,7 @@ class GameScene extends Phaser.Scene {
 
   restartGame() {
     // Check if mode uses grading
-    const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const hasGrading = modeConfig.hasGrading !== false;
+    const hasGrading = this.modeUsesGrading();
 
     // Reset all game variables
     this.board = new Board();
@@ -11251,8 +11264,7 @@ class GameScene extends Phaser.Scene {
 
   draw() {
     // Check if mode uses grading
-    const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
-    const hasGrading = modeConfig.hasGrading !== false;
+    const hasGrading = this.modeUsesGrading();
 
     // Capture and immediately clear one-frame render suppression so it never persists
     const suppressRender = this.suppressPieceRenderThisFrame;

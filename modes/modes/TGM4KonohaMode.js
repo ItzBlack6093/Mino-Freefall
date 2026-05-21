@@ -33,6 +33,7 @@ class TGM4KonohaMode extends BaseMode {
             nextPieces: 6,
             holdEnabled: true,
             ghostEnabled: true,
+            hasGrading: false,
             levelUpType: 'lines',
             lineClearBonus: 1,
             gravityLevelCap: 9999,
