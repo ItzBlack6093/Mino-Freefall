@@ -4184,32 +4184,7 @@ class GameScene extends Phaser.Scene {
       this.roundsMedalTexts = [];
     });
 
-    const keybinds = (() => {
-      const defaultKeybinds = {
-        moveLeft: Phaser.Input.Keyboard.KeyCodes.Z,
-        moveRight: Phaser.Input.Keyboard.KeyCodes.C,
-        softDrop: Phaser.Input.Keyboard.KeyCodes.S,
-        rotateCW: Phaser.Input.Keyboard.KeyCodes.K,
-        rotateCW2: Phaser.Input.Keyboard.KeyCodes.UP,
-        rotateCCW: Phaser.Input.Keyboard.KeyCodes.SPACE,
-        rotateCCW2: Phaser.Input.Keyboard.KeyCodes.L,
-        rotate180: Phaser.Input.Keyboard.KeyCodes.X,
-        hardDrop: Phaser.Input.Keyboard.KeyCodes.X,
-        hold: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-        backstep: Phaser.Input.Keyboard.KeyCodes.BACKSPACE,
-        pause: Phaser.Input.Keyboard.KeyCodes.ESC,
-        menu: Phaser.Input.Keyboard.KeyCodes.M,
-        restart: Phaser.Input.Keyboard.KeyCodes.ENTER,
-      };
-      const stored = localStorage.getItem("keybinds");
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          return { ...defaultKeybinds, ...parsed };
-        } catch (e) {}
-      }
-      return defaultKeybinds;
-    })();
+    const keybinds = window.MinoKeybinds.getMergedKeybinds(localStorage);
 
     const ensureKeyCode = (code, fallback) =>
       Number.isInteger(code) ? code : fallback;
@@ -4217,23 +4192,24 @@ class GameScene extends Phaser.Scene {
       this.input.keyboard.addKey(ensureKeyCode(keyCode, fallback));
 
     this.keys = {
-      left: makeKey(keybinds.moveLeft, Phaser.Input.Keyboard.KeyCodes.Z),
-      right: makeKey(keybinds.moveRight, Phaser.Input.Keyboard.KeyCodes.C),
-      softDrop: makeKey(keybinds.softDrop, Phaser.Input.Keyboard.KeyCodes.S),
-      hardDrop: makeKey(keybinds.hardDrop, Phaser.Input.Keyboard.KeyCodes.X),
-      rotateCW: makeKey(keybinds.rotateCW, Phaser.Input.Keyboard.KeyCodes.K),
+      left: makeKey(keybinds.moveLeft, Phaser.Input.Keyboard.KeyCodes.LEFT),
+      right: makeKey(keybinds.moveRight, Phaser.Input.Keyboard.KeyCodes.RIGHT),
+      softDrop: makeKey(keybinds.softDrop, Phaser.Input.Keyboard.KeyCodes.DOWN),
+      hardDrop: makeKey(keybinds.hardDrop, Phaser.Input.Keyboard.KeyCodes.SPACE),
+      rotateCW: makeKey(keybinds.rotateCW, Phaser.Input.Keyboard.KeyCodes.X),
       rotateCW2: makeKey(keybinds.rotateCW2, Phaser.Input.Keyboard.KeyCodes.UP),
       rotateCCW: makeKey(
         keybinds.rotateCCW,
-        Phaser.Input.Keyboard.KeyCodes.SPACE,
+        Phaser.Input.Keyboard.KeyCodes.Z,
       ),
-      rotateCCW2: makeKey(keybinds.rotateCCW2, Phaser.Input.Keyboard.KeyCodes.L),
-      rotate180: makeKey(keybinds.rotate180, Phaser.Input.Keyboard.KeyCodes.X),
-      hold: makeKey(keybinds.hold, Phaser.Input.Keyboard.KeyCodes.SHIFT),
+      rotateCCW2: makeKey(keybinds.rotateCCW2, Phaser.Input.Keyboard.KeyCodes.CTRL),
+      rotate180: makeKey(keybinds.rotate180, Phaser.Input.Keyboard.KeyCodes.A),
+      hold: makeKey(keybinds.hold, Phaser.Input.Keyboard.KeyCodes.C),
       backstep: makeKey(keybinds.backstep, Phaser.Input.Keyboard.KeyCodes.BACKSPACE),
       pause: makeKey(keybinds.pause, Phaser.Input.Keyboard.KeyCodes.ESC),
       menu: makeKey(keybinds.menu, Phaser.Input.Keyboard.KeyCodes.M),
-      restart: makeKey(keybinds.restart, Phaser.Input.Keyboard.KeyCodes.ENTER),
+      start: makeKey(keybinds.start, Phaser.Input.Keyboard.KeyCodes.ENTER),
+      restart: makeKey(keybinds.restart, Phaser.Input.Keyboard.KeyCodes.R),
     };
 
     this.input.keyboard.addCapture([
@@ -4250,6 +4226,7 @@ class GameScene extends Phaser.Scene {
       keybinds.backstep,
       keybinds.pause,
       keybinds.menu,
+      keybinds.start,
       keybinds.restart,
     ]);
     this.restartKey = this.keys.restart;

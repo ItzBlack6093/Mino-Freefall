@@ -3308,15 +3308,19 @@ class SettingsScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const tabY = centerY - 145;
-    this.settingsTabs = [
-      { key: "controls", label: "Controls", x: centerX - 410 },
-      { key: "handling", label: "Handling", x: centerX - 190 },
-      { key: "rotation", label: "Rotation System", x: centerX + 50 },
-      { key: "audio", label: "Audio", x: centerX + 270 },
-      { key: "profile", label: "Profile", x: centerX + 490 },
-    ].map((tab) => {
+    const settingsTabDefs = [
+      { key: "controls", label: "Controls" },
+      { key: "handling", label: "Handling" },
+      { key: "gameplay", label: "Gameplay" },
+      { key: "rotation", label: "Rotation System" },
+      { key: "audio", label: "Audio" },
+      { key: "profile", label: "Profile" },
+    ];
+    const tabSpacing = 185;
+    const tabStartX = centerX - (tabSpacing * (settingsTabDefs.length - 1)) / 2;
+    this.settingsTabs = settingsTabDefs.map((tab, index) => {
       const text = this.add
-        .text(tab.x, tabY, tab.label, {
+        .text(tabStartX + index * tabSpacing, tabY, tab.label, {
           fontSize: "18px",
           fill: "#ffffff",
           fontFamily: "Courier New",
@@ -4135,10 +4139,11 @@ class SettingsScene extends Phaser.Scene {
     });
     this.updateSDFDisplay(sdfValue, { x: lineAreX, width: timingSliderWidth, y: sdfSliderY });
 
+    const gameplayX = centerX;
     const hudZoomValue = this.getGameplayHudZoom();
-    const hudZoomSliderY = sdfSliderY + 70;
+    const hudZoomSliderY = centerY - 20;
     this.hudZoomLabel = this.add
-      .text(lineAreX, hudZoomSliderY - 30, "Gameplay HUD Zoom", {
+      .text(gameplayX, hudZoomSliderY - 30, "Gameplay HUD Zoom", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -4148,7 +4153,7 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSlider = this.add.graphics();
     this.hudZoomSlider.fillStyle(0x333333);
     this.hudZoomSlider.fillRect(
-      lineAreX - timingSliderWidth / 2,
+      gameplayX - timingSliderWidth / 2,
       hudZoomSliderY - timingSliderHeight / 2,
       timingSliderWidth,
       timingSliderHeight,
@@ -4157,7 +4162,7 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSliderFill = this.add.graphics();
     this.hudZoomSliderFill.fillStyle(0x00ff00);
     this.hudZoomSliderFill.fillRect(
-      lineAreX - timingSliderWidth / 2,
+      gameplayX - timingSliderWidth / 2,
       hudZoomSliderY - timingSliderHeight / 2,
       timingSliderWidth * this.timingToPct(hudZoomValue, 0.75, 1.25),
       timingSliderHeight,
@@ -4166,13 +4171,13 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSliderKnob = this.add.graphics();
     this.hudZoomSliderKnob.fillStyle(0xffffff);
     this.hudZoomSliderKnob.fillCircle(
-      lineAreX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(hudZoomValue, 0.75, 1.25),
+      gameplayX - timingSliderWidth / 2 + timingSliderWidth * this.timingToPct(hudZoomValue, 0.75, 1.25),
       hudZoomSliderY,
       8,
     );
 
     this.hudZoomText = this.add
-      .text(lineAreX, hudZoomSliderY + 25, "", {
+      .text(gameplayX, hudZoomSliderY + 25, "", {
         fontSize: "16px",
         fill: "#ffffff",
         fontFamily: "Courier New",
@@ -4181,7 +4186,7 @@ class SettingsScene extends Phaser.Scene {
 
     this.hudZoomSlider.setInteractive(
       new Phaser.Geom.Rectangle(
-        lineAreX - timingSliderWidth / 2,
+        gameplayX - timingSliderWidth / 2,
         hudZoomSliderY - timingSliderHeight / 2,
         timingSliderWidth,
         timingSliderHeight,
@@ -4191,7 +4196,7 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSlider.on("pointerdown", (pointer) => {
       this.draggingHudZoom = true;
       this.updateHudZoomFromPointer(pointer, {
-        x: lineAreX,
+        x: gameplayX,
         width: timingSliderWidth,
         y: hudZoomSliderY,
       });
@@ -4200,7 +4205,7 @@ class SettingsScene extends Phaser.Scene {
       if (pointer.isDown) {
         this.draggingHudZoom = true;
         this.updateHudZoomFromPointer(pointer, {
-          x: lineAreX,
+          x: gameplayX,
           width: timingSliderWidth,
           y: hudZoomSliderY,
         });
@@ -4209,20 +4214,20 @@ class SettingsScene extends Phaser.Scene {
     this.input.on("pointermove", (pointer) => {
       if (this.draggingHudZoom && pointer.isDown) {
         this.updateHudZoomFromPointer(pointer, {
-          x: lineAreX,
+          x: gameplayX,
           width: timingSliderWidth,
           y: hudZoomSliderY,
         });
       }
     });
     this.updateHudZoomDisplay(hudZoomValue, {
-      x: lineAreX,
+      x: gameplayX,
       width: timingSliderWidth,
       y: hudZoomSliderY,
     });
 
-    const versusBoardLayoutX = centerX + 300;
-    const versusBoardLayoutY = hudZoomSliderY + 4;
+    const versusBoardLayoutX = gameplayX;
+    const versusBoardLayoutY = hudZoomSliderY + 110;
     this.versusBoardLayoutLabel = this.add
       .text(versusBoardLayoutX, versusBoardLayoutY - 28, "Versus Opponent Board", {
         fontSize: "20px",
@@ -4246,10 +4251,10 @@ class SettingsScene extends Phaser.Scene {
     });
     this.updateVersusBoardLayoutDisplay();
 
-    const forceMRollY = hudZoomSliderY + 70;
+    const forceMRollY = versusBoardLayoutY + 95;
     const forceMRollEnabled = this.getForceMRollEnabled();
     this.forceMRollLabel = this.add
-      .text(lineAreX, forceMRollY - 24, "Force M-Roll (TGM2 Master)", {
+      .text(gameplayX, forceMRollY - 24, "Force M-Roll (TGM2 Master)", {
         fontSize: "20px",
         fill: "#ffff00",
         fontFamily: "Courier New",
@@ -4257,7 +4262,7 @@ class SettingsScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.forceMRollText = this.add
-      .text(lineAreX, forceMRollY, forceMRollEnabled ? "ON" : "OFF", {
+      .text(gameplayX, forceMRollY, forceMRollEnabled ? "ON" : "OFF", {
         fontSize: "22px",
         fill: forceMRollEnabled ? "#00ff00" : "#ffffff",
         fontFamily: "Courier New",
@@ -4359,6 +4364,8 @@ class SettingsScene extends Phaser.Scene {
         this.sdfSliderFill,
         this.sdfSliderKnob,
         this.sdfText,
+      ],
+      gameplay: [
         this.hudZoomLabel,
         this.hudZoomSlider,
         this.hudZoomSliderFill,
@@ -4481,34 +4488,7 @@ class SettingsScene extends Phaser.Scene {
   }
 
   getKeybinds() {
-    const defaultKeybinds = {
-      moveLeft: Phaser.Input.Keyboard.KeyCodes.Z,
-      moveRight: Phaser.Input.Keyboard.KeyCodes.C,
-      softDrop: Phaser.Input.Keyboard.KeyCodes.S,
-      rotateCW: Phaser.Input.Keyboard.KeyCodes.K,
-      rotateCW2: Phaser.Input.Keyboard.KeyCodes.UP,
-      rotateCCW: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      rotateCCW2: Phaser.Input.Keyboard.KeyCodes.SPACE,
-      rotate180: Phaser.Input.Keyboard.KeyCodes.X,
-      hold: Phaser.Input.Keyboard.KeyCodes.SHIFT,
-      backstep: Phaser.Input.Keyboard.KeyCodes.BACKSPACE,
-      pause: Phaser.Input.Keyboard.KeyCodes.ESC,
-      menu: Phaser.Input.Keyboard.KeyCodes.ESC, // Menu and Pause share key
-      start: Phaser.Input.Keyboard.KeyCodes.ENTER,
-      restart: Phaser.Input.Keyboard.KeyCodes.C,
-    };
-
-    const stored = localStorage.getItem("keybinds");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        return { ...defaultKeybinds, ...parsed };
-      } catch (e) {
-        console.error("Failed to parse stored keybinds:", e);
-      }
-    }
-
-    return defaultKeybinds;
+    return window.MinoKeybinds.getMergedKeybinds(localStorage);
   }
 
   isZenSandboxActive() {
