@@ -100,6 +100,10 @@ class GameScene extends Phaser.Scene {
     this.playfieldBorder = null;
     this.gameOver = false;
     this.hudZoom = 1;
+    this.versusWideLayout = false;
+    this.versusBoardGap = 0;
+    this.versusOpponentBorderOffsetX = null;
+    this.versusOpponentMatrixOffsetX = null;
     // Calculate cell size and positioning for full screen
     this.calculateLayout();
 
@@ -283,15 +287,19 @@ class GameScene extends Phaser.Scene {
     }
     if (typeof this.updateZenSandboxDisplay !== "function") {
       this.updateZenSandboxDisplay = function () {
-        if (!this.isZenSandboxActive || !this.isZenSandboxActive()) return;
-        const mode = (this.zenSandboxConfig?.displayMode || "versus").toLowerCase();
+        const mode =
+          typeof this.getGameplayHudDisplayMode === "function"
+            ? this.getGameplayHudDisplayMode()
+            : null;
+        if (!mode) return;
         const showNone = mode === "none";
-        const isReadyGo = !!this.readyGoPhase;
+        const hideLevelDisplay =
+          typeof this.shouldHideGameplayHudLevelDisplay === "function" &&
+          this.shouldHideGameplayHudLevelDisplay();
         const isUltraMode = this.selectedMode === "ultra";
         const isZenMode = this.selectedMode === "zen";
         const showAttack = !showNone && (mode === "versus" || mode === "efficiency");
-        const showAtkPerPiece = showAttack && mode === "efficiency";
-        // Hide piece/PPS metrics during Ready/Go and when display mode is none
+        const showAtkPerPiece = showAttack && (mode === "efficiency" || mode === "versus");
         const showPps = !showNone && (mode === "versus" || mode === "speed" || mode === "efficiency");
         const showScore = !showNone && mode === "speed";
         const showScorePerPiece =
@@ -351,7 +359,7 @@ class GameScene extends Phaser.Scene {
         setGroupVisible(scorePerPieceElems, showScorePerPiece);
         setGroupVisible(finesseElems, showFinesse);
         setGroupVisible(timeElems, showTime);
-        setGroupVisible(linesElems, !showNone);
+        setGroupVisible(linesElems, !showNone && !hideLevelDisplay);
 
         if (this.spikeText) {
           const canShowSpike = showAttack && !this.readyGoPhase;
@@ -422,7 +430,7 @@ class GameScene extends Phaser.Scene {
     this.createClearBannerUI = (levelBottomY, scoreRowHeight, uiFontSize) => {
       const line1Font = Math.max(uiFontSize + 12, 28);
       const line2Font = Math.max(uiFontSize + 6, 22);
-      const xBase = this.borderOffsetX - 80; // 50px further left
+      const xBase = this.getHoldPanelX(); // align with hold-side UI
       const yBase =
         this.borderOffsetY + this.playfieldHeight / 2 - (line1Font + line2Font) / 2;
 
@@ -643,6 +651,9 @@ class GameScene extends Phaser.Scene {
     this.bgmEnabled = true;
     this.bgmTracks = {};
     this.bgmStarted = false;
+    this.currentBgmKey = null;
+    this.preserveVersusBgm = false;
+    this.preserveVersusBgmAcrossSceneChange = false;
 
     // Loop point configuration for BGM tracks
     this.loopPoints = {
@@ -1006,10 +1017,60 @@ class GameScene extends Phaser.Scene {
       this.gameMode && typeof this.gameMode.getModeId === "function"
         ? this.gameMode.getModeId()
         : this.selectedMode;
+    if (this.isVersusModeScene()) {
+      return false;
+    }
     const isKonohaMode =
       typeof modeId === "string" &&
       (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
     return modeConfig.hasGrading !== false && !isKonohaMode;
+  }
+
+  getCurrentSpecialMechanics() {
+    return (
+      (this.gameMode && typeof this.gameMode.getConfig === "function"
+        ? this.gameMode.getConfig()?.specialMechanics
+        : null) || {}
+    );
+  }
+
+  isLocalAiVersusMode() {
+    return !!this.getCurrentSpecialMechanics().localAiVersus;
+  }
+
+  isVersusModeScene() {
+    const specialMechanics = this.getCurrentSpecialMechanics();
+    return (
+      !!specialMechanics.localAiVersus ||
+      !!specialMechanics.versus ||
+      !!this.versusMatchData ||
+      !!window.__versusMatchData
+    );
+  }
+
+  getGameplayHudDisplayMode() {
+    if (this.isZenSandboxActive && this.isZenSandboxActive()) {
+      return (this.zenSandboxConfig?.displayMode || "versus").toLowerCase();
+    }
+    if (this.isVersusModeScene()) {
+      return "versus";
+    }
+    return null;
+  }
+
+  shouldHideGameplayHudLevelDisplay() {
+    const specialMechanics = this.getCurrentSpecialMechanics();
+    const isVersusMode =
+      !!specialMechanics.localAiVersus || !!specialMechanics.versus;
+    return (
+      isVersusMode &&
+      (specialMechanics.localAiQueueType === "guideline" ||
+        specialMechanics.versusType === "guideline")
+    );
+  }
+
+  shouldPersistVersusBgmOnGameOver() {
+    return this.isVersusModeScene() && !this.versusMatchResult;
   }
 
   getGradeValue(grade) {
@@ -1207,6 +1268,9 @@ class GameScene extends Phaser.Scene {
     this.customStartingLevelActive = this.startingLevel > 0;
     this.suppressGameplayBgmForImmediateCreditsStart = false;
     this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
+    this.preserveVersusBgm = data.preserveVersusBgm === true;
+    this.preserveVersusBgmAcrossSceneChange = false;
+    this.versusMatchResult = null;
 
     // Ensure mode-dependent timing/gravity state reflects configured starting level.
     this.syncModeStateToStartingLevel();
@@ -2016,6 +2080,55 @@ class GameScene extends Phaser.Scene {
     return Math.min(maxZoom, Math.max(minZoom, raw));
   }
 
+  getVersusBoardLayoutSetting() {
+    return localStorage.getItem("versusBoardLayout") === "mini" ? "mini" : "full";
+  }
+
+  shouldUseWideVersusLayout(viewport = {}) {
+    const specialMechanics =
+      this.gameMode && typeof this.gameMode.getConfig === "function"
+        ? this.gameMode.getConfig().specialMechanics || {}
+        : {};
+    const hasVersusMatch = !!(this.versusMatchData || window.__versusMatchData);
+    const isVersusMode = hasVersusMatch || !!specialMechanics.versus || !!specialMechanics.localAiVersus;
+    if (!isVersusMode) return false;
+    if (this.getVersusBoardLayoutSetting() === "mini") return false;
+
+    const width = Math.max(
+      1,
+      Math.floor(
+        viewport.width ||
+        this.scale?.width ||
+        this.cameras?.main?.width ||
+        window.innerWidth,
+      ),
+    );
+    const height = Math.max(
+      1,
+      Math.floor(
+        viewport.height ||
+        this.scale?.height ||
+        this.cameras?.main?.height ||
+        window.innerHeight,
+      ),
+    );
+    return width >= 1100 && height >= 720 && !this.bigModeBoardActive;
+  }
+
+  getNextPanelX() {
+    if (this.versusWideLayout && Number.isFinite(this.versusOpponentBorderOffsetX)) {
+      return this.borderOffsetX + this.playfieldWidth + 26;
+    }
+    return this.borderOffsetX + this.cellSize * this.board.cols + 20;
+  }
+
+  getHoldPanelX() {
+    if (this.versusWideLayout) {
+      return Math.max(20, this.borderOffsetX - 110);
+    }
+    return this.borderOffsetX - 80;
+  }
+
   setGameplayHudZoomSetting(value, { refresh = true } = {}) {
     const minZoom = 0.75;
     const maxZoom = 1.25;
@@ -2136,6 +2249,10 @@ class GameScene extends Phaser.Scene {
       "staffRollBonusText",
       "tapInternalGradeText",
       "powerupStatusText",
+      "b2bChainText",
+      "standardComboText",
+      "standardComboNumberText",
+      "standardComboLabelText",
     ].forEach(destroyRef);
 
     destroyTextGroup(this.roundsMedalLabels || []);
@@ -2203,6 +2320,8 @@ class GameScene extends Phaser.Scene {
         ? this.gameMode.getModeId()
         : this.selectedMode) || "";
     const modeIdLower = typeof modeId === "string" ? modeId.toLowerCase() : "";
+    const isLocalAiVersusMode = !!config.specialMechanics?.localAiVersus;
+    const isOnlineVersusMode = !!config.specialMechanics?.versus;
     const isEligibleTimingOverride = [
       "sprint_40",
       "sprint_100",
@@ -2212,7 +2331,7 @@ class GameScene extends Phaser.Scene {
       "marathon",
     ].some(
       (id) => modeIdLower.includes(id),
-    );
+    ) || isLocalAiVersusMode || isOnlineVersusMode;
     this.isEligibleTimingOverride = isEligibleTimingOverride;
 
     // Rotation system + ARS reset behavior
@@ -2283,9 +2402,10 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayOverride = 0;
     }
     // Soft drop speed multiplier (keep as-is, scalar not time-based)
-    // Non-Standard modes: fixed 1G speed (1 row per frame)
+    // Timing-override modes should honor the stored SDF setting even if the base mode
+    // would normally use the legacy 1G soft drop path.
     this.softDropMultiplier = 1;
-    if (this.usesStandardDropBehavior()) {
+    if (this.usesStandardDropBehavior() || isEligibleTimingOverride) {
       const storedSdf = this.getStoredTiming("timing_sdf_mult", null);
       if (storedSdf !== null) {
         const clamped = Math.min(Math.max(storedSdf, 5), 100);
@@ -2636,8 +2756,11 @@ class GameScene extends Phaser.Scene {
       ),
     );
 
-    const maxCellWidth = Math.floor((windowWidth * 0.8) / this.board.cols);
-    const maxCellHeight = Math.floor((windowHeight * 0.9) / this.visibleRows);
+    const useWideVersusLayout = this.shouldUseWideVersusLayout({ width: windowWidth, height: windowHeight });
+    const maxCellWidth = useWideVersusLayout
+      ? Math.floor((windowWidth - 700) / (this.board.cols * 2))
+      : Math.floor((windowWidth * 0.8) / this.board.cols);
+    const maxCellHeight = Math.floor((windowHeight * (useWideVersusLayout ? 0.82 : 0.9)) / this.visibleRows);
     const maxCellSize = this.bigModeBoardActive ? 80 : 40;
     this.hudZoom = this.getGameplayHudZoomSetting();
     this.uiScale = this.hudZoom;
@@ -2649,12 +2772,26 @@ class GameScene extends Phaser.Scene {
     this.playfieldWidth = this.cellSize * this.board.cols;
     this.playfieldHeight = this.cellSize * this.visibleRows;
 
-    this.borderOffsetX = Math.floor((windowWidth - this.playfieldWidth) / 2);
+    this.versusWideLayout = useWideVersusLayout;
+    if (useWideVersusLayout) {
+      const boardGap = Math.max(240, Math.floor(windowWidth * 0.18));
+      const totalBoardsWidth = this.playfieldWidth * 2 + boardGap;
+      this.versusBoardGap = boardGap;
+      this.borderOffsetX = Math.floor((windowWidth - totalBoardsWidth) / 2);
+      this.versusOpponentBorderOffsetX = this.borderOffsetX + this.playfieldWidth + boardGap;
+    } else {
+      this.versusBoardGap = 0;
+      this.borderOffsetX = Math.floor((windowWidth - this.playfieldWidth) / 2);
+      this.versusOpponentBorderOffsetX = null;
+    }
     this.borderOffsetY =
       Math.floor((windowHeight - this.playfieldHeight) / 2) - 30; // Adjusted for better centering
 
     this.matrixOffsetX = this.borderOffsetX + 17 + (this.bigModeBoardActive ? 20 : 0);
     this.matrixOffsetY = this.borderOffsetY + 20 + (this.bigModeBoardActive ? 20 : 0);
+    this.versusOpponentMatrixOffsetX = Number.isFinite(this.versusOpponentBorderOffsetX)
+      ? this.versusOpponentBorderOffsetX + 17 + (this.bigModeBoardActive ? 20 : 0)
+      : null;
 
     this.windowWidth = windowWidth;
     this.windowHeight = windowHeight;
@@ -2758,6 +2895,7 @@ class GameScene extends Phaser.Scene {
     const modeConfig = this.gameMode ? this.gameMode.getConfig() : {};
     const hasGrading = this.modeUsesGrading();
     const specialMechanics = modeConfig.specialMechanics || {};
+    const hideGameplayHudLevelDisplay = this.shouldHideGameplayHudLevelDisplay();
     const isTADeathMode = modeId === "tadeath" || modeId === "ta_death";
     const isTGM2Mode =
       Boolean(specialMechanics.tgm2Grading) ||
@@ -2912,7 +3050,8 @@ class GameScene extends Phaser.Scene {
           fontStyle: "bold",
         },
       )
-      .setOrigin(1, 0);
+      .setOrigin(1, 0)
+      .setVisible(!hideGameplayHudLevelDisplay);
     // Level bar and texts will be added in draw
 
     // Score display - next to matrix on left, right-aligned, moved 30px up and 20px right
@@ -2956,7 +3095,7 @@ class GameScene extends Phaser.Scene {
     this.createClearBannerUI(levelBottomY, scoreRowHeight, uiFontSize);
 
     // Piece per second displays - moved to right side of matrix, aligned with bottom of stack
-    const ppsX = this.borderOffsetX + this.cellSize * this.board.cols + 20;
+    const ppsX = this.getNextPanelX();
     const ppsY = this.borderOffsetY + this.playfieldHeight - 40; // Align with bottom of stack
     const spikeY = this.borderOffsetY + this.playfieldHeight * 0.5;
 
@@ -3060,7 +3199,7 @@ class GameScene extends Phaser.Scene {
     });
     uiParent.addMultiple(attackUIElements);
 
-    if (isZenMode && typeof this.updateZenSandboxDisplay === "function") {
+    if ((isZenMode || this.isVersusModeScene()) && typeof this.updateZenSandboxDisplay === "function") {
       this.updateZenSandboxDisplay();
     }
 
@@ -3148,7 +3287,7 @@ class GameScene extends Phaser.Scene {
     ]);
 
     // B2B chain display on left side, lower than clear banner
-    const b2bX = this.borderOffsetX - 80; // align above stack near clear banner
+    const b2bX = this.getHoldPanelX(); // align above stack near clear banner
     const b2bY = this.borderOffsetY + this.playfieldHeight / 2 - uiFontSize - 10;
     this.b2bChainText = this.add
       .text(b2bX, b2bY, "B2B x0", {
@@ -3366,7 +3505,8 @@ class GameScene extends Phaser.Scene {
     };
 
     const shouldShowSectionTracker =
-      !(isUltraMode || isZenMode || isKonohaMode) && modeId !== "tgm3_sakura";
+      !(isUltraMode || isZenMode || isKonohaMode || specialMechanics.localAiVersus || specialMechanics.versus) &&
+      modeId !== "tgm3_sakura";
     const shouldShowZenPanel = isZenMode && this.zenSandboxConfig;
     if (this.sectionTrackerGroup) {
       this.sectionTrackerGroup.destroy(true);
@@ -3754,6 +3894,19 @@ class GameScene extends Phaser.Scene {
 
   create() {
     // Initialize game elements here (spawn deferred until after READY/GO)
+    if (typeof cleanupVersusMode === "function") {
+      cleanupVersusMode(this);
+    } else {
+      this.versusHUD = null;
+      this.versusController = null;
+      this.networkManager = null;
+      this.versusNetworkListeners = [];
+      this.versusActive = false;
+    }
+    this.b2bChainText = null;
+    this.standardComboText = null;
+    this.standardComboNumberText = null;
+    this.standardComboLabelText = null;
     this.gameGroup = this.add.group();
     ensureMonochromeMinoTextures(this);
     // Overlay group for transient UI (e.g., READY/GO) that must survive draw() clears
@@ -3936,6 +4089,10 @@ class GameScene extends Phaser.Scene {
     this.calculateLayout();
 
     this.events.once("shutdown", () => {
+      if (typeof cleanupVersusMode === "function") {
+        cleanupVersusMode(this);
+      }
+      const preserveBgmAcrossSceneChange = !!this.preserveVersusBgmAcrossSceneChange;
       if (this.input && this.handleHudZoomWheel) {
         this.input.off("wheel", this.handleHudZoomWheel, this);
         this.handleHudZoomWheel = null;
@@ -3944,30 +4101,37 @@ class GameScene extends Phaser.Scene {
         this.bgmLoopTimer.remove(false);
         this.bgmLoopTimer = null;
       }
-      if (this.currentBGM) {
-        this.currentBGM.stop();
-        this.currentBGM = null;
-      }
-      const bgmObjects = [
-        this.stage1BGM,
-        this.stage2BGM,
-        this.tgm2_stage1,
-        this.tgm2_stage2,
-        this.tgm2_stage3,
-        this.tgm2_stage4,
-      ];
-      bgmObjects.forEach((bgm) => {
-        if (bgm) {
-          bgm.stop();
-          bgm.destroy();
+      if (!preserveBgmAcrossSceneChange) {
+        if (this.currentBGM) {
+          this.currentBGM.stop();
+          this.currentBGM = null;
         }
-      });
+        const bgmObjects = [
+          this.stage1BGM,
+          this.stage2BGM,
+          this.tgm2_stage1,
+          this.tgm2_stage2,
+          this.tgm2_stage3,
+          this.tgm2_stage4,
+        ];
+        bgmObjects.forEach((bgm) => {
+          if (bgm) {
+            bgm.stop();
+            bgm.destroy();
+          }
+        });
+      }
       this.stage1BGM = null;
       this.stage2BGM = null;
       this.tgm2_stage1 = null;
       this.tgm2_stage2 = null;
       this.tgm2_stage3 = null;
       this.tgm2_stage4 = null;
+      this.currentBGM = null;
+      this.currentBgmKey = null;
+      if (preserveBgmAcrossSceneChange) {
+        this.bgmTracks = {};
+      }
       if (this.tweens) this.tweens.killAll();
       if (this.time) this.time.removeAllEvents();
 
@@ -3996,6 +4160,10 @@ class GameScene extends Phaser.Scene {
       this.nextGradeText = null;
       this.roundsMedalLabels = [];
       this.roundsMedalTexts = [];
+      this.b2bChainText = null;
+      this.standardComboText = null;
+      this.standardComboNumberText = null;
+      this.standardComboLabelText = null;
       this.playfieldBorder = null;
       this.minoRowFadeAlpha = null;
       if (this.hanabiLabel) this.hanabiLabel.destroy();
@@ -4124,22 +4292,37 @@ class GameScene extends Phaser.Scene {
     this.applyGameplayHudZoom();
 
     // Initialize BGM system (playback deferred until first spawn)
-    this.initializeBGM();
-    this.bgmStarted = false;
-    // Ensure any leftover BGM from previous scene is stopped
-    this.stopCurrentBGM();
-    this.applyEffectiveVolumesScene();
-
-    // Prepare next queue (but do not spawn yet)
-    if (this.nextPieces.length < 6) {
-      this.generateNextPieces();
+    const preservedVersusBgm =
+      this.preserveVersusBgm && typeof window !== "undefined"
+        ? window.__minoPreservedVersusBgm
+        : null;
+    if (preservedVersusBgm?.bgmTracks) {
+      this.bgmTracks = preservedVersusBgm.bgmTracks;
+      this.stage1BGM = this.bgmTracks?.mf1_1 || null;
+      this.stage2BGM = this.bgmTracks?.mf1_2 || null;
+      this.currentBGM = preservedVersusBgm.currentBGM || null;
+      this.currentBgmKey = preservedVersusBgm.currentBgmKey || null;
+      this.bgmStarted = preservedVersusBgm.bgmStarted !== false;
+      window.__minoPreservedVersusBgm = null;
+      this.preserveVersusBgm = false;
+    } else {
+      this.initializeBGM();
+      this.bgmStarted = false;
+      // Ensure any leftover BGM from previous scene is stopped
+      this.stopCurrentBGM();
     }
+    this.applyEffectiveVolumesScene();
 
     // Initialize versus mode networking if match data is present
     if (window.__versusMatchData || (this.gameMode && this.gameMode.getConfig &&
         this.gameMode.getConfig().specialMechanics &&
         this.gameMode.getConfig().specialMechanics.versus)) {
       initVersusMode(this);
+    }
+
+    // Prepare next queue (but do not spawn yet)
+    if (this.nextPieces.length < 6) {
+      this.generateNextPieces();
     }
 
     // Show READY/GO; spawn will occur after GO
@@ -5651,12 +5834,14 @@ class GameScene extends Phaser.Scene {
           const ghost = this.currentPiece.getGhostPosition(this.board);
           this.hardDropRows = ghost.y - this.currentPiece.y;
           this.currentPiece.hardDrop(this.board);
+          if (this.hardDropRows > 0) {
+            this.spinRotatedWhileGrounded = false;
+          }
           // In ARS, begin lock delay instead of instant lock
           this.isGrounded = true;
           this.lockDelay = this.deltaTime;
           this.lockDelayBufferedStart = false;
           this.currentPiece.playGroundSound(this);
-          this.spinRotatedWhileGrounded = false;
         }
       } else if (!xKeyDown && this.xKeyPressed) {
         this.xKeyPressed = false;
@@ -5720,6 +5905,7 @@ class GameScene extends Phaser.Scene {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
+          this.spinRotatedWhileGrounded = false;
         }
         // Don't set grounded state here - let gravity/soft drop logic handle it
       }
@@ -5736,6 +5922,7 @@ class GameScene extends Phaser.Scene {
           this.incrementFinesseMove();
           this.recordFinesseInput(); // Count key press, not DAS
           this.resetLockDelay();
+          this.spinRotatedWhileGrounded = false;
         }
         // Don't set grounded state here - let gravity/soft drop logic handle it
       }
@@ -5758,6 +5945,8 @@ class GameScene extends Phaser.Scene {
           this.resetLockDelay();
           if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
             this.markGroundedSpin();
+          } else {
+            this.spinRotatedWhileGrounded = false;
           }
         } else if (this.currentPiece) {
           this.isGrounded = !this.currentPiece.canMoveDown(this.board);
@@ -5779,6 +5968,8 @@ class GameScene extends Phaser.Scene {
           this.resetLockDelay();
           if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
             this.markGroundedSpin();
+          } else {
+            this.spinRotatedWhileGrounded = false;
           }
         } else if (this.currentPiece) {
           this.isGrounded = !this.currentPiece.canMoveDown(this.board);
@@ -5799,6 +5990,8 @@ class GameScene extends Phaser.Scene {
           this.resetLockDelay();
           if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
             this.markGroundedSpin();
+          } else {
+            this.spinRotatedWhileGrounded = false;
           }
         } else if (this.currentPiece) {
           this.isGrounded = !this.currentPiece.canMoveDown(this.board);
@@ -5817,6 +6010,9 @@ class GameScene extends Phaser.Scene {
           const ghost = this.currentPiece.getGhostPosition(this.board);
           this.hardDropRows = ghost.y - this.currentPiece.y;
           this.currentPiece.hardDrop(this.board);
+          if (this.hardDropRows > 0) {
+            this.spinRotatedWhileGrounded = false;
+          }
           // For ARS, place without instant lock; for others, lock immediately
           if (this.rotationSystem === "ARS") {
             this.isGrounded = true;
@@ -5844,6 +6040,7 @@ class GameScene extends Phaser.Scene {
             const moved = this.currentPiece.move(this.board, -1, 0);
             if (moved) {
               this.resetLockDelay();
+              this.spinRotatedWhileGrounded = false;
             } else {
               // Piece tried to move left during DAS - no ground sound for movement failures
             }
@@ -5862,6 +6059,7 @@ class GameScene extends Phaser.Scene {
             }
             if (movedAny) {
               this.resetLockDelay();
+              this.spinRotatedWhileGrounded = false;
             }
           }
           this.leftTimer = 0;
@@ -5872,6 +6070,7 @@ class GameScene extends Phaser.Scene {
               const moved = this.currentPiece.move(this.board, -1, 0);
               if (moved) {
                 this.resetLockDelay();
+                this.spinRotatedWhileGrounded = false;
               } else {
                 // Piece tried to move left during ARR - no ground sound for movement failures
               }
@@ -5894,6 +6093,7 @@ class GameScene extends Phaser.Scene {
             const moved = this.currentPiece.move(this.board, 1, 0);
             if (moved) {
               this.resetLockDelay();
+              this.spinRotatedWhileGrounded = false;
             } else {
               // Piece tried to move right during DAS - no ground sound for movement failures
             }
@@ -5912,6 +6112,7 @@ class GameScene extends Phaser.Scene {
             }
             if (movedAny) {
               this.resetLockDelay();
+              this.spinRotatedWhileGrounded = false;
             }
           }
           this.rightTimer = 0;
@@ -5922,6 +6123,7 @@ class GameScene extends Phaser.Scene {
               const moved = this.currentPiece.move(this.board, 1, 0);
               if (moved) {
                 this.resetLockDelay();
+                this.spinRotatedWhileGrounded = false;
               } else {
                 // Piece tried to move right during ARR - no ground sound for movement failures
               }
@@ -6242,7 +6444,9 @@ class GameScene extends Phaser.Scene {
         let movedRows = 0;
         // Non-Standard modes: use time-based 1G speed (60 rows/second)
         // Standard modes: use multiplier-based per-frame movement
-        if (!this.usesStandardDropBehavior()) {
+        const useConfiguredSoftDropTiming =
+          this.usesStandardDropBehavior() || this.isEligibleTimingOverride;
+        if (!useConfiguredSoftDropTiming) {
           // Time-based 1G soft drop for non-Standard modes
           const softDropRowsPerSecond = 60; // 1G = 60 rows/second
           if (!this.softDropAccum) this.softDropAccum = 0;
@@ -6253,6 +6457,7 @@ class GameScene extends Phaser.Scene {
               if (this.currentPiece.move(this.board, 0, 1)) {
                 movedRows += 1;
                 this.resetLockDelay();
+                this.spinRotatedWhileGrounded = false;
                 this.wasGroundedDuringSoftDrop = false;
                 this.softDropMovedThisPiece = true;
                 this.softDropRows += 1;
@@ -6275,6 +6480,7 @@ class GameScene extends Phaser.Scene {
             if (this.currentPiece.move(this.board, 0, 1)) {
               movedRows += 1;
               this.resetLockDelay();
+              this.spinRotatedWhileGrounded = false;
               this.wasGroundedDuringSoftDrop = false;
               this.softDropMovedThisPiece = true;
               this.softDropRows += 1;
@@ -6355,6 +6561,7 @@ class GameScene extends Phaser.Scene {
         this.recordFinesseInput(); // Count the keypress
         if (this.currentPiece.move(this.board, 0, 1)) {
           this.resetLockDelay();
+          this.spinRotatedWhileGrounded = false;
         } else if (!this.isGrounded) {
           if (this.rotationSystem === "ARS") {
             // Single-tap soft drop in ARS: lock on contact
@@ -6418,7 +6625,11 @@ class GameScene extends Phaser.Scene {
         if (skipGravityThisFrame) {
           this.gravityAccum = 0;
         } else if (internalGravity >= 5120) {
+          const beforeDropY = this.currentPiece.y;
           this.currentPiece.hardDrop(this.board);
+          if (this.currentPiece.y !== beforeDropY) {
+            this.spinRotatedWhileGrounded = false;
+          }
           this.isGrounded = true;
           this.lastGroundedY = this.currentPiece ? this.currentPiece.y : this.lastGroundedY;
           this.gravityAccum = 0;
@@ -6454,6 +6665,7 @@ class GameScene extends Phaser.Scene {
                   movedRows++;
                   this.isGrounded = false;
                   this.resetLockDelay();
+                  this.spinRotatedWhileGrounded = false;
                 } else {
                   // Piece can't move down anymore
                   if (!this.isGrounded) {
@@ -7219,7 +7431,7 @@ class GameScene extends Phaser.Scene {
             return;
           }
           // Non-zen: game over
-          if (this.currentBGM) {
+          if (this.currentBGM && !this.shouldPersistVersusBgmOnGameOver()) {
             this.currentBGM.stop();
             this.currentBGM = null;
           }
@@ -7245,7 +7457,7 @@ class GameScene extends Phaser.Scene {
         }
         // Game over - piece can't spawn (reached top of visible area)
         // Stop BGM on game over
-        if (this.currentBGM) {
+        if (this.currentBGM && !this.shouldPersistVersusBgmOnGameOver()) {
           this.currentBGM.stop();
           this.currentBGM = null;
         }
@@ -7337,7 +7549,7 @@ class GameScene extends Phaser.Scene {
       }
 
       if (!shifted) {
-        if (this.currentBGM) {
+        if (this.currentBGM && !this.shouldPersistVersusBgmOnGameOver()) {
           this.currentBGM.stop();
           this.currentBGM = null;
         }
@@ -7401,6 +7613,13 @@ class GameScene extends Phaser.Scene {
   }
 
   generateNextPieces(minCount = 6) {
+    if (this.versusPieceSource && typeof this.versusPieceSource.nextPiece === "function") {
+      while (this.nextPieces.length < minCount) {
+        this.nextPieces.push(this.versusPieceSource.nextPiece());
+      }
+      return;
+    }
+
     const modeId =
       (this.gameMode && typeof this.gameMode.getModeId === "function"
         ? this.gameMode.getModeId()
@@ -8060,8 +8279,29 @@ class GameScene extends Phaser.Scene {
       prevBackToBack,
     );
     if (attackResult) {
+      const elapsedSeconds =
+        typeof getVersusElapsedSeconds === "function"
+          ? getVersusElapsedSeconds(this, this.currentTime || 0)
+          : Math.max(0, Number(this.currentTime) || 0);
+      const rawAttack =
+        typeof scaleVersusGarbageAttack === "function"
+          ? scaleVersusGarbageAttack(attackResult.attack, elapsedSeconds)
+          : Math.max(0, Number(attackResult.attack) || 0);
+      const outgoingAttack =
+        this.versusActive && typeof resolvePlayerVersusGarbageAfterLock === "function"
+          ? resolvePlayerVersusGarbageAfterLock(this, effectiveLinesCleared, rawAttack)
+          : rawAttack;
+      attackResult.attack = outgoingAttack;
+      this.lastVersusAttackRaw = rawAttack;
+      this.lastVersusAttackSent = outgoingAttack;
       this.updateAttackStats(attackResult.attack, this.currentTime || 0);
       this.updateAttackUI();
+      if (
+        this.versusController &&
+        typeof this.versusController.handlePlayerAttack === "function"
+      ) {
+        this.versusController.handlePlayerAttack(attackResult.attack);
+      }
       const shouldShowB2B =
         this.shouldShowB2BChain() &&
         (attackResult.isDifficult || attackResult.b2bBroken || attackResult.newChain >= 1);
@@ -8719,26 +8959,12 @@ class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Determine scoring system based on mode
-    const guidelineModes = new Set([
-      "marathon",
-      "sprint_40",
-      "sprint_100",
-      "ultra",
-      "zen",
-    ]);
-
-    const selectedModeKey =
-      typeof this.selectedMode === "string"
-        ? this.selectedMode
-        : this.selectedModeId || "";
-
     const isTwentyGMode =
       (this.gameMode && typeof this.gameMode.isTwentyGMode === "function"
         ? this.gameMode.isTwentyGMode()
-        : false) || selectedModeKey === "master_20g";
+        : false) || this.getCurrentModeId() === "master_20g";
 
-    const isStandardMode = !isTwentyGMode && guidelineModes.has(selectedModeKey);
+    const isStandardMode = !isTwentyGMode && this.isStandardScoringMode();
 
     if (isStandardMode) {
       this.updateGuidelineScore(lines, pieceType, spinInfo, options);
@@ -9550,10 +9776,13 @@ class GameScene extends Phaser.Scene {
       return { isSpin: false, isTSpin: false, spinType: null };
     }
 
-    // Non-T: immobile rule as requested:
-    // must be grounded (cannot move down) AND cannot move 1 left, 1 right, or 1 up.
+    // Non-T spins still use the immobility rule, but they must come from an
+    // actual grounded rotation so ordinary I-piece tetrises do not get
+    // misclassified as "I-spin quads".
+    if (!this.spinRotatedWhileGrounded) {
+      return { isSpin: false, isTSpin: false, spinType: null };
+    }
 
-    // Grounded check (cannot move down)
     const isGrounded = !canMove(0, 1);
     if (!isGrounded) return { isSpin: false, isTSpin: false, spinType: null };
 
@@ -9570,9 +9799,21 @@ class GameScene extends Phaser.Scene {
     };
   }
 
+  isStandardScoringMode() {
+    const modeId = this.getCurrentModeId();
+    return (
+      modeId === "ultra" ||
+      modeId === "zen" ||
+      modeId === "marathon" ||
+      modeId === "sprint_40" ||
+      modeId === "sprint_100" ||
+      modeId === "versus_guideline" ||
+      modeId === "versus_guideline_ai"
+    );
+  }
+
   isStandardComboMode() {
-    const m = this.selectedMode;
-    return m === "ultra" || m === "zen" || m === "marathon" || m === "sprint_40" || m === "sprint_100";
+    return this.isStandardScoringMode();
   }
 
   getCurrentModeId() {
@@ -9804,16 +10045,17 @@ class GameScene extends Phaser.Scene {
     )
       return;
 
-    // Hide spike counter outside Zen or during Ready/Go
-    const isZenMode =
-      typeof this.isZenSandboxActive === "function" ? this.isZenSandboxActive() : false;
+    const gameplayHudMode =
+      typeof this.getGameplayHudDisplayMode === "function"
+        ? this.getGameplayHudDisplayMode()
+        : null;
+    const showAttackMetrics = gameplayHudMode === "versus" || gameplayHudMode === "efficiency";
     if (this.readyGoPhase) {
       this.spikeText.setVisible(false);
       return;
     }
-    if (!isZenMode) {
+    if (!showAttackMetrics) {
       this.spikeText.setVisible(false);
-      // Still update totals/ATK per min if UI is shown elsewhere (e.g., Zen only)
       return;
     }
     const elapsed = Math.max(0.0001, this.currentTime || 0); // avoid div/0
@@ -11159,6 +11401,12 @@ class GameScene extends Phaser.Scene {
     if (this.gameMode && this.gameMode.onGameOver) {
       this.gameMode.onGameOver(this);
     }
+    if (
+      this.versusController &&
+      typeof this.versusController.handlePlayerGameOver === "function"
+    ) {
+      this.versusController.handlePlayerGameOver();
+    }
   }
 
   showGameOverScreen() {
@@ -11487,48 +11735,50 @@ class GameScene extends Phaser.Scene {
       this.bgmLoopTimer = null;
     }
 
-    // Stop any playing BGM (stage BGM or credits BGM)
-    if (this.currentBGM) {
-      this.currentBGM.stop();
-      this.currentBGM = null;
-    }
-    if (this.creditsBGM) {
-      this.creditsBGM.stop();
-      this.creditsBGM = null;
-    }
-
-    // Stop stage BGM objects
-    const stageBgms = [this.stage1BGM, this.stage2BGM];
-    stageBgms.forEach((bgm) => {
-      if (bgm) {
-        if (bgm.isPlaying) {
-          bgm.stop();
-        }
-        bgm.destroy();
+    if (!this.shouldPersistVersusBgmOnGameOver()) {
+      // Stop any playing BGM (stage BGM or credits BGM)
+      if (this.currentBGM) {
+        this.currentBGM.stop();
+        this.currentBGM = null;
       }
-    });
-    this.stage1BGM = null;
-    this.stage2BGM = null;
-
-    // Stop TGM2 BGM objects
-    const tgm2Bgms = [
-      this.tgm2_stage1,
-      this.tgm2_stage2,
-      this.tgm2_stage3,
-      this.tgm2_stage4,
-    ];
-    tgm2Bgms.forEach((bgm) => {
-      if (bgm) {
-        if (bgm.isPlaying) {
-          bgm.stop();
-        }
-        bgm.destroy();
+      if (this.creditsBGM) {
+        this.creditsBGM.stop();
+        this.creditsBGM = null;
       }
-    });
-    this.tgm2_stage1 = null;
-    this.tgm2_stage2 = null;
-    this.tgm2_stage3 = null;
-    this.tgm2_stage4 = null;
+
+      // Stop stage BGM objects
+      const stageBgms = [this.stage1BGM, this.stage2BGM];
+      stageBgms.forEach((bgm) => {
+        if (bgm) {
+          if (bgm.isPlaying) {
+            bgm.stop();
+          }
+          bgm.destroy();
+        }
+      });
+      this.stage1BGM = null;
+      this.stage2BGM = null;
+
+      // Stop TGM2 BGM objects
+      const tgm2Bgms = [
+        this.tgm2_stage1,
+        this.tgm2_stage2,
+        this.tgm2_stage3,
+        this.tgm2_stage4,
+      ];
+      tgm2Bgms.forEach((bgm) => {
+        if (bgm) {
+          if (bgm.isPlaying) {
+            bgm.stop();
+          }
+          bgm.destroy();
+        }
+      });
+      this.tgm2_stage1 = null;
+      this.tgm2_stage2 = null;
+      this.tgm2_stage3 = null;
+      this.tgm2_stage4 = null;
+    }
 
     // Hidden/disappearing rolls reveal the stack on topout; visible-stack rolls fade out normally.
     if (this.creditsFadeInDone) {
@@ -11550,6 +11800,12 @@ class GameScene extends Phaser.Scene {
     // Handle game over in game mode (for TGM2, powerup minos, etc.)
     if (this.gameMode && this.gameMode.onGameOver) {
       this.gameMode.onGameOver(this);
+    }
+    if (
+      this.versusController &&
+      typeof this.versusController.handlePlayerGameOver === "function"
+    ) {
+      this.versusController.handlePlayerGameOver();
     }
   }
 
@@ -11741,6 +11997,23 @@ class GameScene extends Phaser.Scene {
           });
         return;
       }
+    }
+
+    if (this.shouldHideGameplayHudLevelDisplay()) {
+      [
+        this.levelLabel,
+        this.levelDisplayLabel,
+        this.levelDisplayText,
+        this.currentLevelText,
+        this.capLevelText,
+        this.levelBar,
+      ]
+        .filter(Boolean)
+        .forEach((el) => {
+          el.setVisible(false);
+          if (el.clear) el.clear();
+        });
+      return;
     }
 
     const uiX = Math.max(20, this.borderOffsetX - 200) + 50;
@@ -12285,17 +12558,12 @@ class GameScene extends Phaser.Scene {
           possible: "#ffff88",
           impossible: "#ff8888",
         };
-        const hint = this.gameMode?.minosaHint || this.minosaHint || null;
-        const hintSuffix =
-          status === "possible" && hint?.usedHold && hint?.piece
-            ? ` ${hint.piece}`
-            : "";
         const shouldShowKita =
           !this.konohaMinosaSuppressDisplay &&
           (status === "possible" || status === "achieved" || status === "impossible");
         this.asukaKitaText.setVisible(shouldShowKita);
         if (shouldShowKita) {
-          this.asukaKitaText.setText(`${iconByStatus[status] || iconByStatus.impossible}${hintSuffix}`);
+          this.asukaKitaText.setText(iconByStatus[status] || iconByStatus.impossible);
           this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
         }
       } else {
@@ -12524,7 +12792,7 @@ class GameScene extends Phaser.Scene {
     }
 
     // Draw NEXT label - positioned to the right of border
-    const nextX = this.borderOffsetX + this.cellSize * this.board.cols + 20;
+    const nextX = this.getNextPanelX();
     const nextY = this.borderOffsetY;
     const nextFontSize = Math.max(
       16,
@@ -12610,8 +12878,7 @@ class GameScene extends Phaser.Scene {
       nextPiece.x = 0;
       nextPiece.y = 2; // Start from the top visible row
       // Position the next piece area to the right of the playfield
-      const nextAreaOffsetX =
-        this.borderOffsetX + this.cellSize * this.board.cols + 20;
+      const nextAreaOffsetX = this.getNextPanelX();
       const nextAreaOffsetY =
         this.borderOffsetY + 30 + i * (previewCellSize * 3 + 4); // Closer spacing
       nextPiece.draw(this, nextAreaOffsetX, nextAreaOffsetY, previewCellSize, false, 1, false);
@@ -12645,7 +12912,7 @@ class GameScene extends Phaser.Scene {
 
     // Draw HOLD label and piece for modes that support hold
     if (this.holdEnabled) {
-      const holdX = this.borderOffsetX - 80;
+      const holdX = this.getHoldPanelX();
       const holdY = this.borderOffsetY;
       const holdFontSize = Math.max(
         16,

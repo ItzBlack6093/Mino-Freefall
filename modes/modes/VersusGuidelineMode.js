@@ -38,6 +38,16 @@ class VersusGuidelineMode extends BaseMode {
     };
   }
 
+  getBgmConfig(gameScene) {
+    return {
+      progressSource: "level",
+      stopSource: "level",
+      useStopBuffer: false,
+      transitionStopOffset: 0,
+      segments: [{ key: "mf_konohaez" }],
+    };
+  }
+
   getTimedGravity() {
     // Gravity increases every 30 seconds, capped at 20G (5120)
     const step = Math.floor(this.matchElapsed / 30);
@@ -64,7 +74,10 @@ class VersusGuidelineMode extends BaseMode {
     this.linesCleared += count;
     // Notify network of line clears for garbage
     if (gameScene.networkManager && gameScene.networkManager.inMatch) {
-      gameScene.networkManager.sendLinesCleared(count);
+      gameScene.networkManager.sendLinesCleared(
+        count,
+        Math.max(0, Number(gameScene.lastVersusAttackSent) || 0),
+      );
     }
   }
 

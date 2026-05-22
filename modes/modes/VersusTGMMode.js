@@ -40,6 +40,16 @@ class VersusTGMMode extends BaseMode {
     };
   }
 
+  getBgmConfig(gameScene) {
+    return {
+      progressSource: "level",
+      stopSource: "level",
+      useStopBuffer: false,
+      transitionStopOffset: 0,
+      segments: [{ key: "mf_konohaez" }],
+    };
+  }
+
   initializeForGameScene(gameScene) {
     this.matchElapsed = 0;
     this.linesCleared = 0;
@@ -75,7 +85,10 @@ class VersusTGMMode extends BaseMode {
   handleLineClear(gameScene, count, pieceType) {
     this.linesCleared += count;
     if (gameScene.networkManager && gameScene.networkManager.inMatch) {
-      gameScene.networkManager.sendLinesCleared(count);
+      gameScene.networkManager.sendLinesCleared(
+        count,
+        Math.max(0, Number(gameScene.lastVersusAttackSent) || 0),
+      );
     }
   }
 

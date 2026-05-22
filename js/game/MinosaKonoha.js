@@ -17,7 +17,9 @@ if (!MinosaBase) {
 class MinosaKonoha extends MinosaBase {
     evaluateGameScene(gameScene) {
         const variant = this.getVariant(gameScene);
-        const pieceBudget = this.getPieceBudget(variant);
+        const pieceBudget = this.getPieceBudget(gameScene, variant);
+        const targetDepths = this.getSceneTargetDepths(gameScene, variant, pieceBudget);
+        const targetRows = this.getTargetRowCount(variant);
         const boardRows = gameScene?.board?.rows || (Array.isArray(gameScene?.board?.grid) ? gameScene.board.grid.length : 0);
         const pieceWindow = this.getPieceWindow(gameScene, pieceBudget);
 
@@ -25,8 +27,8 @@ class MinosaKonoha extends MinosaBase {
             return this.decorateResult(this.createResult(MinosaBase.STATUS_IMPOSSIBLE), {
                 variant,
                 pieceBudget,
-                targetRows: variant === 'easy' ? 4 : boardRows,
-                targetStartRow: variant === 'easy' ? Math.max(0, boardRows - 4) : 0,
+                targetRows,
+                targetStartRow: Math.max(0, boardRows - targetRows),
             });
         }
 
@@ -34,21 +36,31 @@ class MinosaKonoha extends MinosaBase {
             return this.decorateResult(this.createResult(MinosaBase.STATUS_ACHIEVED), {
                 variant,
                 pieceBudget,
-                targetRows: variant === 'easy' ? 4 : boardRows,
-                targetStartRow: variant === 'easy' ? Math.max(0, boardRows - 4) : 0,
+                targetRows,
+                targetStartRow: Math.max(0, boardRows - targetRows),
             });
         }
 
         const solveWindow = variant === 'easy'
             ? this.getEasySolveWindow(gameScene)
-            : this.getStandardSolveWindow(gameScene);
+            : this.getHardSolveWindow(gameScene);
 
         if (!solveWindow) {
             return this.decorateResult(this.createResult(MinosaBase.STATUS_IMPOSSIBLE), {
                 variant,
                 pieceBudget,
-                targetRows: variant === 'easy' ? 4 : boardRows,
-                targetStartRow: variant === 'easy' ? Math.max(0, boardRows - 4) : 0,
+                targetRows,
+                targetStartRow: Math.max(0, boardRows - targetRows),
+            });
+        }
+
+        if (pieceBudget <= 0 || (Array.isArray(targetDepths) && targetDepths.length === 0)) {
+            return this.decorateResult(this.createResult(MinosaBase.STATUS_IMPOSSIBLE), {
+                variant,
+                pieceBudget,
+                targetRows: solveWindow.targetRows,
+                targetStartRow: solveWindow.rowOffset,
+                rowOffset: solveWindow.rowOffset,
             });
         }
 
@@ -62,6 +74,7 @@ class MinosaKonoha extends MinosaBase {
             holdType: pieceWindow.holdType,
             canHold: pieceWindow.canHold,
             pieceBudget,
+            ...(Array.isArray(targetDepths) ? { targetDepths } : {}),
             searchFromEmpty: variant === 'easy' || this.isEmptyGrid(solveWindow.grid),
         });
 
@@ -87,8 +100,30 @@ class MinosaKonoha extends MinosaBase {
         return typeof modeId === 'string' && modeId.toLowerCase().includes('easy') ? 'easy' : 'hard';
     }
 
-    getPieceBudget(variant) {
+    getPieceBudget(gameScene, variant = this.getVariant(gameScene)) {
+        const modeBudget = gameScene?.gameMode && typeof gameScene.gameMode.getMinosaPieceBudget === 'function'
+            ? gameScene.gameMode.getMinosaPieceBudget(gameScene)
+            : null;
+        if (Number.isInteger(modeBudget)) {
+            return Math.max(0, modeBudget);
+        }
         return variant === 'easy' ? 5 : 7;
+    }
+
+    getTargetRowCount(variant) {
+        return variant === 'easy' ? 4 : 7;
+    }
+
+    getSceneTargetDepths(gameScene, variant = this.getVariant(gameScene), pieceBudget = this.getPieceBudget(gameScene, variant)) {
+        const modeTargetDepths = gameScene?.gameMode && typeof gameScene.gameMode.getMinosaTargetDepths === 'function'
+            ? gameScene.gameMode.getMinosaTargetDepths(gameScene)
+            : null;
+        if (Array.isArray(modeTargetDepths)) {
+            return modeTargetDepths
+                .filter(depth => Number.isInteger(depth) && depth > 0 && depth <= pieceBudget)
+                .sort((a, b) => a - b);
+        }
+        return variant === 'hard' && pieceBudget > 0 ? [pieceBudget] : null;
     }
 
     hasAchievedAllClear(gameScene) {
@@ -112,23 +147,20 @@ class MinosaKonoha extends MinosaBase {
         };
     }
 
-    getStandardSolveWindow(gameScene) {
-        const grid = this.cloneGrid(gameScene.board.grid || []);
-        return {
-            grid,
-            cols: gameScene.board.cols,
-            rows: gameScene.board.rows,
-            targetRows: gameScene.board.rows,
-            rowOffset: 0,
-        };
+    getEasySolveWindow(gameScene) {
+        return this.getSolveWindowForTargetRows(gameScene, 4);
     }
 
-    getEasySolveWindow(gameScene) {
-        const grid = this.cloneGrid(gameScene.board.grid || []);
+    getHardSolveWindow(gameScene) {
+        return this.getSolveWindowForTargetRows(gameScene, 7);
+    }
+
+    getSolveWindowForTargetRows(gameScene, targetRows) {
+        const grid = this.cloneGrid(gameScene?.board?.grid || []);
         const rows = gameScene?.board?.rows || grid.length;
         const cols = gameScene?.board?.cols || (grid[0] ? grid[0].length : 0);
-        if (cols !== 5 || rows < 4) return null;
-        const rowOffset = rows - 4;
+        if (cols !== 5 || rows < targetRows) return null;
+        const rowOffset = rows - targetRows;
         for (let row = 0; row < rowOffset; row++) {
             if (Array.isArray(grid[row]) && grid[row].some(cell => cell)) {
                 return null;
@@ -137,8 +169,8 @@ class MinosaKonoha extends MinosaBase {
         return {
             grid: grid.slice(rowOffset, rows),
             cols,
-            rows: 4,
-            targetRows: 4,
+            rows: targetRows,
+            targetRows,
             rowOffset,
         };
     }

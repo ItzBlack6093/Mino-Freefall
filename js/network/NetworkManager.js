@@ -220,7 +220,7 @@ class NetworkManager {
         break;
 
       case "opponent_board_update":
-        this._emit("opponent_board_update", msg.board);
+        this._emit("opponent_board_update", msg.payload || msg.board);
         break;
 
       case "opponent_level_update":
@@ -294,12 +294,16 @@ class NetworkManager {
     this.send({ type: "piece_placed", data });
   }
 
-  sendLinesCleared(count) {
-    this.send({ type: "lines_cleared", count });
+  sendLinesCleared(count, attack = null) {
+    this.send({
+      type: "lines_cleared",
+      count,
+      attack,
+    });
   }
 
-  sendBoardUpdate(board) {
-    this.send({ type: "board_update", board });
+  sendBoardUpdate(payload) {
+    this.send({ type: "board_update", payload });
   }
 
   sendBoardChecksum(checksum) {

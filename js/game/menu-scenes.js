@@ -2104,7 +2104,7 @@ class MenuScene extends Phaser.Scene {
    * Display the player's Rating, Glicko, RD, and MR in the right-side panel
    * (replaces leaderboard for versus modes).
    */
-  updateVersusRatingDisplay() {
+  updateVersusRatingDisplay(modeId = "") {
     // Clear existing leaderboard entries
     if (this.leaderboardEntries && this.leaderboardEntries.length > 0) {
       this.leaderboardEntries.forEach((entry) => {
@@ -2112,6 +2112,84 @@ class MenuScene extends Phaser.Scene {
       });
     }
     this.leaderboardEntries = [];
+
+    const isLocalAiMode =
+      typeof modeId === "string" && modeId.toLowerCase().includes("_ai");
+    if (isLocalAiMode && typeof getLocalVersusAiSummary === "function") {
+      const summary = getLocalVersusAiSummary();
+      const baseX = this.leaderboardContainer.x;
+      const baseY = this.leaderboardContainer.y;
+      const ratingValue = Number(summary?.rating ?? summary?.profile?.rating ?? 20);
+      const tierLabel = summary?.profile?.tierLabel || "1 / 40";
+      const isProvisional = !!summary?.provisional;
+
+      const ladderLabel = this.add
+        .text(baseX, baseY - 40, "MINOSA LADDER", {
+          fontSize: "14px",
+          fill: "#888888",
+          fontFamily: "Courier New",
+        })
+        .setOrigin(0.5, 0.5);
+
+      const ladderValue = this.add
+        .text(baseX, baseY - 10, isProvisional ? "PROVISIONAL" : ratingValue.toFixed(2), {
+          fontSize: isProvisional ? "24px" : "34px",
+          fill: isProvisional ? "#ffffff" : "#ffcc00",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5, 0.5);
+
+      const tierText = this.add
+        .text(
+          baseX,
+          baseY + 26,
+          isProvisional
+            ? `${summary.matchesPlayed || 0}/${10} decisive matches`
+            : `Tier ${tierLabel}`,
+          {
+          fontSize: "14px",
+          fill: isProvisional ? "#ffcc00" : "#00ffff",
+          fontFamily: "Courier New",
+          },
+        )
+        .setOrigin(0.5, 0.5);
+
+      const recordText = this.add
+        .text(
+          baseX,
+          baseY + 56,
+          `W ${summary.wins || 0}  L ${summary.losses || 0}`,
+          {
+            fontSize: "14px",
+            fill: "#ffffff",
+            fontFamily: "Courier New",
+          },
+        )
+        .setOrigin(0.5, 0.5);
+
+      const roundsText = this.add
+        .text(
+          baseX,
+          baseY + 84,
+          `Matches: ${summary.matchesPlayed || 0}  |  Rounds: ${summary.roundsPlayed || 0}`,
+          {
+            fontSize: "12px",
+            fill: "#888888",
+            fontFamily: "Courier New",
+          },
+        )
+        .setOrigin(0.5, 0.5);
+
+      this.leaderboardEntries.push({
+        ladderLabel,
+        ladderValue,
+        tierText,
+        recordText,
+        roundsText,
+      });
+      return;
+    }
 
     // Read player stats from localStorage / NetworkManager
     const nm = window.__minoNetworkManager;
@@ -2222,7 +2300,8 @@ class MenuScene extends Phaser.Scene {
     this.createModeTypeListDisplay();
 
     // Update leaderboard / rating panel
-    const isVersusMode = modeId === "versus_guideline" || modeId === "versus_tgm";
+    const isVersusMode = typeof modeId === "string" && modeId.startsWith("versus_");
+    const isLocalAiMode = typeof modeId === "string" && modeId.includes("_ai");
     if (modeId === "zen") {
       if (this.leaderboardEntries && this.leaderboardEntries.length > 0) {
         this.leaderboardEntries.forEach((entry) => {
@@ -2240,10 +2319,10 @@ class MenuScene extends Phaser.Scene {
         this.leaderboardPlaceholder.setVisible(false);
       if (this.leaderboardContainer) this.leaderboardContainer.setVisible(true);
       if (this.leaderboardTitle) {
-        this.leaderboardTitle.setText("PLAYER RATING");
+        this.leaderboardTitle.setText(isLocalAiMode ? "MINOSA LADDER" : "PLAYER RATING");
         this.leaderboardTitle.setVisible(true);
       }
-      this.updateVersusRatingDisplay();
+      this.updateVersusRatingDisplay(modeId);
     } else {
       if (this.leaderboardContainer) this.leaderboardContainer.setVisible(true);
       if (this.leaderboardTitle) {
@@ -2288,8 +2367,29 @@ class MenuScene extends Phaser.Scene {
       return;
     }
 
-    // Versus modes route through MatchmakingScene for online pairing
-    if (modeId === "versus_guideline" || modeId === "versus_tgm") {
+    // Versus modes route through MatchmakingScene for online pairing or straight into a local AI round
+    if (typeof modeId === "string" && modeId.startsWith("versus_")) {
+      const specialMechanics =
+        mode && typeof mode.getConfig === "function"
+          ? mode.getConfig().specialMechanics || {}
+          : {};
+      if (specialMechanics.localAiVersus) {
+        if (typeof createLocalVersusAiMatchData !== "function") {
+          console.error("[MenuScene] Local AI versus helpers are unavailable");
+          return;
+        }
+        window.__versusMatchData = createLocalVersusAiMatchData(modeId, 1);
+        const startScene =
+          typeof startPreparedGameScene === "function"
+            ? startPreparedGameScene
+            : (scene, payload) => scene.scene.start("AssetLoaderScene", payload);
+        startScene(this, {
+          mode: modeId,
+          gameMode: mode,
+          startingLevel: 0,
+        });
+        return;
+      }
       const queueType = modeId === "versus_tgm" ? "tgm" : "guideline";
       this.scene.start("MatchmakingScene", { queueType });
       return;
@@ -3148,6 +3248,8 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSliderKnob = null;
     this.forceMRollLabel = null;
     this.forceMRollText = null;
+    this.versusBoardLayoutLabel = null;
+    this.versusBoardLayoutText = null;
 
     // Zen sandbox toggles
     this.zenBagText = null;
@@ -4119,6 +4221,31 @@ class SettingsScene extends Phaser.Scene {
       y: hudZoomSliderY,
     });
 
+    const versusBoardLayoutX = centerX + 300;
+    const versusBoardLayoutY = hudZoomSliderY + 4;
+    this.versusBoardLayoutLabel = this.add
+      .text(versusBoardLayoutX, versusBoardLayoutY - 28, "Versus Opponent Board", {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.versusBoardLayoutText = this.add
+      .text(versusBoardLayoutX, versusBoardLayoutY, "", {
+        fontSize: "20px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    this.versusBoardLayoutText.on("pointerdown", () => {
+      const nextLayout = this.getVersusBoardLayoutMode() === "mini" ? "full" : "mini";
+      this.setVersusBoardLayoutMode(nextLayout);
+    });
+    this.updateVersusBoardLayoutDisplay();
+
     const forceMRollY = hudZoomSliderY + 70;
     const forceMRollEnabled = this.getForceMRollEnabled();
     this.forceMRollLabel = this.add
@@ -4237,6 +4364,8 @@ class SettingsScene extends Phaser.Scene {
         this.hudZoomSliderFill,
         this.hudZoomSliderKnob,
         this.hudZoomText,
+        this.versusBoardLayoutLabel,
+        this.versusBoardLayoutText,
         this.forceMRollLabel,
         this.forceMRollText,
       ],
@@ -5209,6 +5338,23 @@ class SettingsScene extends Phaser.Scene {
     });
   }
 
+  getVersusBoardLayoutMode() {
+    return localStorage.getItem("versusBoardLayout") === "mini" ? "mini" : "full";
+  }
+
+  setVersusBoardLayoutMode(mode) {
+    const normalized = mode === "mini" ? "mini" : "full";
+    localStorage.setItem("versusBoardLayout", normalized);
+    this.updateVersusBoardLayoutDisplay(normalized);
+  }
+
+  updateVersusBoardLayoutDisplay(mode = this.getVersusBoardLayoutMode()) {
+    if (!this.versusBoardLayoutText) return;
+    const isMini = mode === "mini";
+    this.versusBoardLayoutText.setText(isMini ? "Mini Preview" : "Side-by-Side");
+    this.versusBoardLayoutText.setFill(isMini ? "#ffffff" : "#00ff88");
+  }
+
   updateHudZoomFromPointer(pointer, slider) {
     if (!slider) return;
     const { x, width } = slider;
@@ -5372,6 +5518,7 @@ class SettingsScene extends Phaser.Scene {
     localStorage.removeItem("timing_line_are_frames");
     localStorage.removeItem("timing_sdf_mult");
     localStorage.removeItem("gameplayHudZoom");
+    localStorage.removeItem("versusBoardLayout");
     localStorage.removeItem("startingLevel");
     localStorage.removeItem("forceMRoll");
     // Refresh all keybind displays
@@ -5414,6 +5561,7 @@ class SettingsScene extends Phaser.Scene {
       width: this.hudZoomSlider ? this.hudZoomSlider.getBounds().width : 200,
       y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
     });
+    this.updateVersusBoardLayoutDisplay("full");
     this.updateForceMRollDisplay(false);
 
     this.applyEffectiveVolumes();
@@ -6492,6 +6640,7 @@ class AssetLoaderScene extends Phaser.Scene {
       maxLevel: getStartingLevelCapForMode(this.gameMode),
     });
     this.roundsDebugMedals = normalizeRoundsDebugMedalCount(data.roundsDebugMedals);
+    this.preserveVersusBgm = data.preserveVersusBgm === true;
   }
 
   buildRestartData() {
@@ -6501,6 +6650,7 @@ class AssetLoaderScene extends Phaser.Scene {
       mode: this.selectedMode,
       roundsDebugMedals: this.roundsDebugMedals,
       startingLevel: this.startingLevel,
+      preserveVersusBgm: this.preserveVersusBgm,
     };
   }
 
@@ -6544,6 +6694,7 @@ class AssetLoaderScene extends Phaser.Scene {
       gameMode: this.gameMode,
       startingLevel: this.startingLevel,
       roundsDebugMedals: this.roundsDebugMedals,
+      preserveVersusBgm: this.preserveVersusBgm,
     });
   }
 }

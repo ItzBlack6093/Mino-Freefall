@@ -484,7 +484,10 @@ wss.on("connection", (ws) => {
         const count = Math.min(4, Math.max(0, parseInt(msg.count, 10) || 0));
         // Standard garbage: single=0, double=1, triple=2, tetris=4
         const garbageTable = { 0: 0, 1: 0, 2: 1, 3: 2, 4: 4 };
-        const garbage = garbageTable[count] || 0;
+        const explicitAttack = Number(msg.attack);
+        const garbage = Number.isFinite(explicitAttack)
+          ? Math.max(0, explicitAttack)
+          : (garbageTable[count] || 0);
         if (garbage > 0) {
           const opp = room.opponent(ws);
           const holeCol = Math.floor(Math.random() * 10);
@@ -498,6 +501,7 @@ wss.on("connection", (ws) => {
         room.broadcast({
           type: "opponent_lines_cleared",
           count,
+          attack: garbage,
           playerId: c.id,
         }, ws);
         break;
@@ -508,8 +512,8 @@ wss.on("connection", (ws) => {
         if (!c || !c.room) return;
         const room = rooms.get(c.room);
         if (!room || room.ended) return;
-        // Relay compressed board snapshot to opponent for mini preview
-        room.broadcast({ type: "opponent_board_update", board: msg.board }, ws);
+        // Relay the opponent HUD snapshot (board colors, hold/next, garbage state).
+        room.broadcast({ type: "opponent_board_update", payload: msg.payload || msg.board }, ws);
         break;
       }
 

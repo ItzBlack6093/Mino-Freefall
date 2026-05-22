@@ -45,7 +45,9 @@ const MODE_COLORS = {
     tgm4_3_1: 0xff0000,
     tgm4_4_1: 0xff0000,
     versus_guideline: 0xffcc00,
-    versus_tgm: 0xffcc00
+    versus_tgm: 0xffcc00,
+    versus_guideline_ai: 0xffcc00,
+    versus_tgm_ai: 0xffcc00
 };
 
 const MODE_DEFINITIONS = {
@@ -322,6 +324,32 @@ const MODE_DEFINITIONS = {
         config: {
             difficulty: 'versus',
             description: 'Online 1v1 - TGM rules, 3-min timer, level tiebreaker.'
+        }
+    },
+    versus_guideline_ai: {
+        modeClass: 'VersusGuidelineMode',
+        name: 'Guideline VS Minosa',
+        category: 'VERSUS',
+        config: {
+            difficulty: 'versus',
+            description: 'Local 1v1 versus Minosa AI with a 40-step adaptive ladder.',
+            specialMechanics: {
+                localAiVersus: true,
+                localAiQueueType: 'guideline'
+            }
+        }
+    },
+    versus_tgm_ai: {
+        modeClass: 'VersusTGMMode',
+        name: 'TGM VS Minosa',
+        category: 'VERSUS',
+        config: {
+            difficulty: 'versus',
+            description: 'Local TGM versus Minosa AI. Ties advance to the next round.',
+            specialMechanics: {
+                localAiVersus: true,
+                localAiQueueType: 'tgm'
+            }
         }
     }
 };

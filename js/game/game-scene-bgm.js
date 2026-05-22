@@ -122,6 +122,7 @@
 
     startInitialBGM() {
       if (!this.bgmEnabled) return;
+      if (this.bgmStarted) return;
       this.bgmStarted = true;
       this.updateBGM();
     },
@@ -129,7 +130,12 @@
     updateBGM() {
       if (!this.bgmEnabled || !this.bgmStarted) return;
       if (this.gameOver && !this.creditsActive) {
-        this.stopAllBGMs?.();
+        const keepVersusBgmAlive =
+          typeof this.shouldPersistVersusBgmOnGameOver === "function" &&
+          this.shouldPersistVersusBgmOnGameOver();
+        if (!keepVersusBgmAlive) {
+          this.stopAllBGMs?.();
+        }
         return;
       }
       this.updateModeBGM();

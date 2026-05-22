@@ -20,7 +20,7 @@ class TGM4KonohaMode extends BaseMode {
         this.minosaHint = null;
         this.minosaSignature = null;
         this.minosaPieceBudget = this.getMinosaPieceBudget();
-        this.minosaTargetRows = variant === 'easy' ? 4 : null;
+        this.minosaTargetRows = variant === 'easy' ? 4 : 7;
     }
 
     getModeConfig() {
@@ -119,7 +119,7 @@ class TGM4KonohaMode extends BaseMode {
         this.minosaHint = null;
         this.minosaSignature = null;
         this.minosaPieceBudget = this.getMinosaPieceBudget();
-        this.minosaTargetRows = this.variant === 'easy' ? 4 : null;
+        this.minosaTargetRows = this.variant === 'easy' ? 4 : 7;
         gameScene.bravoCount = 0;
         gameScene.konohaMinosaRevision = 0;
         gameScene.minosaStatus = this.minosaStatus;
@@ -274,7 +274,19 @@ class TGM4KonohaMode extends BaseMode {
     }
 
     getMinosaPieceBudget() {
-        return this.variant === 'easy' ? 5 : 7;
+        return this.variant === 'easy' ? 5 : 12;
+    }
+
+    getMinosaTargetDepths() {
+        return this.variant === 'hard' ? [12] : null;
+    }
+
+    ensureMinosaQueueDepth(gameScene) {
+        if (!gameScene || typeof gameScene.generateNextPieces !== 'function') return;
+        const pieceBudget = this.getMinosaPieceBudget();
+        const queueLength = Array.isArray(gameScene.nextPieces) ? gameScene.nextPieces.length : 0;
+        if (queueLength >= pieceBudget) return;
+        gameScene.generateNextPieces(pieceBudget);
     }
 
     isBravoLineClear(gameScene, linesCleared = 0) {
@@ -296,6 +308,7 @@ class TGM4KonohaMode extends BaseMode {
 
     updateMinosaStatus(gameScene) {
         if (!gameScene) return this.minosaStatus;
+        this.ensureMinosaQueueDepth(gameScene);
         const signature = this.getMinosaSignature(gameScene);
         if (signature && signature === this.minosaSignature) return this.minosaStatus;
         this.minosaSignature = signature;
@@ -314,7 +327,7 @@ class TGM4KonohaMode extends BaseMode {
             : this.getMinosaPieceBudget();
         this.minosaTargetRows = Number.isInteger(result.targetRows) && result.targetRows > 0
             ? result.targetRows
-            : (this.variant === 'easy' ? 4 : null);
+            : (this.variant === 'easy' ? 4 : 7);
         gameScene.minosaStatus = this.minosaStatus;
         gameScene.minosaPath = path;
         gameScene.minosaHint = this.minosaHint;

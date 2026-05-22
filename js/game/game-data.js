@@ -221,6 +221,8 @@ const MODE_TYPE_BY_ID = {
   flashpoint: "PUZZLE",
   versus_guideline: "VERSUS",
   versus_tgm: "VERSUS",
+  versus_guideline_ai: "VERSUS",
+  versus_tgm_ai: "VERSUS",
 };
 const BASE_FPS = 60;
 
