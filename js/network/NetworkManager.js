@@ -1,6 +1,39 @@
 // NetworkManager — thin wrapper around WebSocket for the 1v1 versus system.
 // Handles connect, auto-reconnect, send queue, ping/pong latency tracking.
 
+function readConfiguredVersusServerUrl() {
+  if (typeof window === "undefined") return null;
+
+  const candidate =
+    window.minoDesktop?.versusServerUrl
+    || window.__MINO_CONFIG__?.versusServerUrl
+    || window.MINO_VERSUS_SERVER_URL;
+
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : null;
+}
+
+function buildSameOriginVersusServerUrl() {
+  if (typeof window === "undefined" || !window.location) return null;
+
+  const { protocol, host } = window.location;
+  if (!host) return null;
+  if (protocol !== "http:" && protocol !== "https:") return null;
+
+  const wsProtocol = protocol === "https:" ? "wss:" : "ws:";
+  return `${wsProtocol}//${host}/ws`;
+}
+
+function resolveMinoVersusServerUrl(explicitUrl) {
+  const override = typeof explicitUrl === "string" && explicitUrl.trim()
+    ? explicitUrl.trim()
+    : null;
+
+  return override
+    || readConfiguredVersusServerUrl()
+    || buildSameOriginVersusServerUrl()
+    || "ws://localhost:8080";
+}
+
 class NetworkManager {
   constructor() {
     this.ws = null;
@@ -68,9 +101,7 @@ class NetworkManager {
   // Connection
   // -----------------------------------------------------------------------
   connect(url) {
-    const desktopUrl =
-      typeof window !== "undefined" ? window.minoDesktop?.versusServerUrl : null;
-    this.serverUrl = url || desktopUrl || "ws://localhost:8080";
+    this.serverUrl = resolveMinoVersusServerUrl(url);
     this._doConnect();
   }
 
@@ -333,4 +364,5 @@ if (typeof module !== "undefined" && module.exports) {
 }
 if (typeof window !== "undefined") {
   window.NetworkManager = NetworkManager;
+  window.resolveMinoVersusServerUrl = resolveMinoVersusServerUrl;
 }

@@ -11,7 +11,8 @@
     "desktop:dist": "electron-builder",
     "desktop:dist:linux": "electron-builder --linux AppImage tar.gz",
     "desktop:dist:win": "electron-builder --win nsis portable",
-    "server:start": "node server/index.js"
+    "server:install": "npm --prefix server install",
+    "server:start": "npm --prefix server start"
   },
   "dependencies": {
     "phaser": "4.1.0"

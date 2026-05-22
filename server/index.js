@@ -2,6 +2,7 @@
 // Mino Freefall — Online 1v1 WebSocket Server
 // Handles matchmaking, room lifecycle, Glicko-2 ratings, and game-event relay.
 
+const http = require("node:http");
 const { WebSocketServer } = require("ws");
 const path = require("path");
 const Database = require("better-sqlite3");
@@ -15,12 +16,18 @@ const {
 // Configuration
 // ---------------------------------------------------------------------------
 const PORT = parseInt(process.env.PORT, 10) || 8080;
+const HOST = process.env.HOST || "0.0.0.0";
+const MAX_PAYLOAD_BYTES = parseInt(process.env.MAX_PAYLOAD_BYTES, 10) || 64 * 1024;
 const MATCHMAKING_INTERVAL_MS = 1000;
 const MATCHMAKING_INITIAL_WINDOW = 50;
 const MATCHMAKING_MAX_WINDOW = 200;
 const MATCHMAKING_WIDEN_INTERVAL_S = 10; // widen every N seconds
 const CHECKSUM_INTERVAL_MS = 5000;
 const DISCONNECT_FORFEIT_MS = 10000;
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 // ---------------------------------------------------------------------------
 // Database (SQLite)
@@ -115,6 +122,11 @@ function computeMR(glickoRating) {
   const r = Math.max(0, glickoRating);
   const mr = 40 * (1 - Math.exp(-r / 1500));
   return Math.round(mr * 100) / 100;
+}
+
+function isOriginAllowed(origin) {
+  if (!origin || ALLOWED_ORIGINS.length === 0) return true;
+  return ALLOWED_ORIGINS.includes(origin);
 }
 
 // ---------------------------------------------------------------------------
@@ -401,9 +413,49 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 // WebSocket Server
 // ---------------------------------------------------------------------------
-const wss = new WebSocketServer({ port: PORT });
+const server = http.createServer((req, res) => {
+  if (req.method === "GET" && req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+    res.end(JSON.stringify({
+      status: "ok",
+      clients: clients.size,
+      rooms: rooms.size,
+      queues: {
+        guideline: queues.guideline.length,
+        tgm: queues.tgm.length,
+      },
+    }));
+    return;
+  }
 
-console.log(`[Server] Listening on ws://localhost:${PORT}`);
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  res.end("Mino Freefall online PvP server is running.\n");
+});
+
+const wss = new WebSocketServer({
+  noServer: true,
+  maxPayload: MAX_PAYLOAD_BYTES,
+});
+
+server.on("upgrade", (req, socket, head) => {
+  if (!isOriginAllowed(req.headers.origin)) {
+    socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+    socket.destroy();
+    return;
+  }
+
+  wss.handleUpgrade(req, socket, head, (ws) => {
+    wss.emit("connection", ws, req);
+  });
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`[Server] Listening on http://${HOST}:${PORT}`);
+  console.log(`[Server] WebSocket endpoint ready on ws://${HOST}:${PORT}`);
+  if (ALLOWED_ORIGINS.length > 0) {
+    console.log(`[Server] Allowing origins: ${ALLOWED_ORIGINS.join(", ")}`);
+  }
+});
 
 wss.on("connection", (ws) => {
   ws.on("message", (raw) => {
@@ -626,10 +678,20 @@ wss.on("connection", (ws) => {
 });
 
 // Graceful shutdown
-process.on("SIGINT", () => {
+function shutdown() {
   console.log("[Server] Shutting down...");
-  wss.close(() => {
-    db.close();
-    process.exit(0);
+  for (const client of wss.clients) {
+    try {
+      client.close(1001, "Server shutting down");
+    } catch {}
+  }
+  server.close(() => {
+    wss.close(() => {
+      db.close();
+      process.exit(0);
+    });
   });
-});
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);

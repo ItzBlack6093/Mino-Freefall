@@ -1,0 +1,15 @@
+{$DOMAIN} {
+  encode zstd gzip
+
+  @health path /health
+  handle @health {
+    reverse_proxy mino-server:8080
+  }
+
+  @ws path /ws
+  handle @ws {
+    reverse_proxy mino-server:8080
+  }
+
+  respond "Mino Freefall online PvP server is running. Use wss://{$DOMAIN}/ws" 200
+}

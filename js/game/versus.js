@@ -9,6 +9,10 @@ function computeMRClient(glickoRating) {
 }
 
 function getDefaultVersusServerUrl() {
+  if (typeof window !== "undefined" && typeof window.resolveMinoVersusServerUrl === "function") {
+    return window.resolveMinoVersusServerUrl();
+  }
+
   const desktopUrl =
     typeof window !== "undefined" ? window.minoDesktop?.versusServerUrl : null;
   return desktopUrl || "ws://localhost:8080";

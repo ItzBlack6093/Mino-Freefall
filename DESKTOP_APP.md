@@ -44,18 +44,21 @@ Artifacts are written to `release/`.
 The desktop client still expects a WebSocket server for versus matchmaking.
 
 - Default server URL: `ws://127.0.0.1:8080`
+- Production server URL behind the included Caddy setup: `wss://your-server.example/ws`
 - Override at launch time:
 
   ```bash
-  MINO_VERSUS_SERVER_URL=wss://your-server.example npm run desktop:dev
+  MINO_VERSUS_SERVER_URL=wss://your-server.example/ws npm run desktop:dev
   ```
 
 - Run the repo's server locally:
 
   ```bash
-  npm --prefix server install
+  npm run server:install
   npm run server:start
   ```
+
+- Full free-hosting deployment steps: `ONLINE_PVP_DEPLOYMENT.md`
 
 ## Desktop controls
 
