@@ -100,8 +100,8 @@ class Minosa {
         const rows = options.rows || grid.length;
         const cols = options.cols || (grid[0] ? grid[0].length : 10);
         const guideMode = this.normalizeGuideMode(options.guideMode || options.mode || options.strategy);
-        const lookahead = Math.max(1, Math.min(5, Number.isInteger(options.lookahead) ? options.lookahead : 3));
-        const candidateLimit = Math.max(1, Math.min(16, Number.isInteger(options.candidateLimit) ? options.candidateLimit : 8));
+        const lookahead = Math.max(1, Math.min(7, Number.isInteger(options.lookahead) ? options.lookahead : 3));
+        const candidateLimit = Math.max(1, Math.min(28, Number.isInteger(options.candidateLimit) ? options.candidateLimit : 8));
         let activeType = this.normalizePieceType(options.currentType);
         let queue = Array.isArray(options.queue)
             ? options.queue.map(piece => this.normalizePieceType(piece)).filter(piece => piece)
@@ -309,6 +309,7 @@ class Minosa {
         const skill = Math.max(0, Math.min(1, Number(options.profile?.skill) || 0));
         const matchRating = Math.max(0, Number(options.matchRating) || 0);
         const pieceCount = Math.max(0, Number(options.pieceCount) || 0);
+        const aggressionMultiplier = Math.max(1, Number(options.profile?.aggressionMultiplier) || 1);
         const styleBand = typeof options.profile?.styleBand === 'string'
             ? options.profile.styleBand
             : skill < 0.2
@@ -328,9 +329,14 @@ class Minosa {
             favorsMess: styleBand === 'cheese',
             cleanupBias: styleBand === 'cleanup' ? 0.8 : styleBand === 'opener' ? 1.05 : 1.2,
             dependencyBias: styleBand === 'cleanup' ? 1 : styleBand === 'opener' ? 0.7 : 0.35,
-            openerBias: skill >= openerSkillGate ? 0.85 + skill * 0.75 : 0,
-            tspinBias: styleBand === 'spike' ? 1.4 + skill * 0.8 : styleBand === 'opener' ? 0.6 + skill * 0.35 : 0.15,
-            spikeBias: styleBand === 'spike' ? 1.35 + skill * 0.8 : styleBand === 'opener' ? 0.55 + skill * 0.4 : 0.1,
+            aggressionMultiplier,
+            openerBias: (skill >= openerSkillGate ? 0.85 + skill * 0.75 : 0) * aggressionMultiplier,
+            tspinBias: (
+                styleBand === 'spike' ? 1.4 + skill * 0.8 : styleBand === 'opener' ? 0.6 + skill * 0.35 : 0.15
+            ) * aggressionMultiplier,
+            spikeBias: (
+                styleBand === 'spike' ? 1.35 + skill * 0.8 : styleBand === 'opener' ? 0.55 + skill * 0.4 : 0.1
+            ) * aggressionMultiplier,
             stackCleanBias: styleBand === 'cheese' ? 0.45 : styleBand === 'cleanup' ? 1.05 : 1.3,
             prefersSinglesAndDoubles: styleBand === 'cheese',
             allowsOpeners: skill >= openerSkillGate && options.queueType !== 'tgm' && pieceCount <= 7,

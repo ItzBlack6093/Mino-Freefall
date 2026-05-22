@@ -2146,7 +2146,7 @@ class MenuScene extends Phaser.Scene {
           baseY + 26,
           isProvisional
             ? `${summary.matchesPlayed || 0}/${10} decisive matches`
-            : `Tier ${tierLabel}`,
+            : `Tier ${tierLabel}  |  RD ${Number(summary.rd || 0).toFixed(1)}`,
           {
           fontSize: "14px",
           fill: isProvisional ? "#ffcc00" : "#00ffff",

@@ -20,6 +20,12 @@ const LOCAL_VERSUS_AI_PROVISIONAL_MATCHES = 10;
 const LOCAL_VERSUS_AI_WINS_TO_FINISH = 2;
 const LOCAL_VERSUS_AI_PLAYER_ID = "local-player";
 const LOCAL_VERSUS_AI_OPPONENT_ID = "local-minosa";
+const LOCAL_VERSUS_AI_DEFAULT_RD = 350;
+const LOCAL_VERSUS_AI_DEFAULT_VOLATILITY = 0.06;
+const LOCAL_VERSUS_AI_OPPONENT_RD = 80;
+const LOCAL_VERSUS_AI_GLICKO2_SCALE = 173.7178;
+const LOCAL_VERSUS_AI_GLICKO2_TAU = 0.5;
+const LOCAL_VERSUS_AI_GLICKO2_EPSILON = 0.000001;
 const LOCAL_VERSUS_AI_RATINGS = Array.from({ length: LOCAL_VERSUS_AI_PROFILE_COUNT }, (_, index) =>
   Math.round((index * (40 / Math.max(1, LOCAL_VERSUS_AI_PROFILE_COUNT - 1))) * 100) / 100,
 );
@@ -34,9 +40,153 @@ function clampLocalVersusAiIndex(index) {
   return Math.max(0, Math.min(LOCAL_VERSUS_AI_PROFILE_COUNT - 1, normalized));
 }
 
+function clampLocalVersusAiTier(tier) {
+  const normalized = Number.isFinite(Number(tier)) ? Math.round(Number(tier)) : LOCAL_VERSUS_AI_START_INDEX + 1;
+  return Math.max(1, Math.min(LOCAL_VERSUS_AI_PROFILE_COUNT, normalized));
+}
+
 function clampLocalVersusAiRating(rating) {
   const normalized = Number.isFinite(Number(rating)) ? Number(rating) : 20;
   return Math.max(0, Math.min(40, Math.round(normalized * 100) / 100));
+}
+
+function normalizeLocalVersusAiRd(rd) {
+  const normalized = Number.isFinite(Number(rd)) ? Number(rd) : LOCAL_VERSUS_AI_DEFAULT_RD;
+  return Math.max(30, Math.min(350, Math.round(normalized * 10) / 10));
+}
+
+function normalizeLocalVersusAiVolatility(volatility) {
+  const normalized =
+    Number.isFinite(Number(volatility)) ? Number(volatility) : LOCAL_VERSUS_AI_DEFAULT_VOLATILITY;
+  return Math.max(0.01, Math.min(1, normalized));
+}
+
+function convertLocalVersusAiRatingToGlicko(rating) {
+  const clamped = Math.max(0, Math.min(39.9999, clampLocalVersusAiRating(rating)));
+  if (clamped <= 0) return 0;
+  return -1500 * Math.log(1 - clamped / 40);
+}
+
+function convertGlickoToLocalVersusAiRating(glickoRating) {
+  return clampLocalVersusAiRating(computeMRClient(Math.max(0, Number(glickoRating) || 0)));
+}
+
+function convertLocalVersusAiToGlicko2(rating, rd) {
+  return {
+    mu: (rating - 1500) / LOCAL_VERSUS_AI_GLICKO2_SCALE,
+    phi: rd / LOCAL_VERSUS_AI_GLICKO2_SCALE,
+  };
+}
+
+function convertGlicko2ToLocalVersusAi(mu, phi) {
+  return {
+    rating: mu * LOCAL_VERSUS_AI_GLICKO2_SCALE + 1500,
+    rd: phi * LOCAL_VERSUS_AI_GLICKO2_SCALE,
+  };
+}
+
+function computeLocalVersusAiGlickoG(phi) {
+  return 1 / Math.sqrt(1 + (3 * phi * phi) / (Math.PI * Math.PI));
+}
+
+function computeLocalVersusAiGlickoE(mu, opponentMu, opponentPhi) {
+  return 1 / (1 + Math.exp(-computeLocalVersusAiGlickoG(opponentPhi) * (mu - opponentMu)));
+}
+
+function computeLocalVersusAiGlickoVariance(mu, opponents) {
+  let sum = 0;
+  for (const opponent of opponents) {
+    const gPhi = computeLocalVersusAiGlickoG(opponent.phi);
+    const expected = computeLocalVersusAiGlickoE(mu, opponent.mu, opponent.phi);
+    sum += gPhi * gPhi * expected * (1 - expected);
+  }
+  return 1 / Math.max(Number.EPSILON, sum);
+}
+
+function computeLocalVersusAiGlickoDelta(mu, opponents, variance) {
+  let sum = 0;
+  for (const opponent of opponents) {
+    const gPhi = computeLocalVersusAiGlickoG(opponent.phi);
+    const expected = computeLocalVersusAiGlickoE(mu, opponent.mu, opponent.phi);
+    sum += gPhi * (opponent.score - expected);
+  }
+  return variance * sum;
+}
+
+function computeLocalVersusAiVolatility(sigma, delta, phi, variance) {
+  const a = Math.log(sigma * sigma);
+  const phiSquared = phi * phi;
+  const deltaSquared = delta * delta;
+
+  function f(value) {
+    const expValue = Math.exp(value);
+    const denominator = phiSquared + variance + expValue;
+    const p1 =
+      (expValue * (deltaSquared - phiSquared - variance - expValue)) /
+      (2 * denominator * denominator);
+    const p2 = (value - a) / (LOCAL_VERSUS_AI_GLICKO2_TAU * LOCAL_VERSUS_AI_GLICKO2_TAU);
+    return p1 - p2;
+  }
+
+  let lower = a;
+  let upper;
+  if (deltaSquared > phiSquared + variance) {
+    upper = Math.log(deltaSquared - phiSquared - variance);
+  } else {
+    let k = 1;
+    while (f(a - k * LOCAL_VERSUS_AI_GLICKO2_TAU) < 0) k += 1;
+    upper = a - k * LOCAL_VERSUS_AI_GLICKO2_TAU;
+  }
+
+  let fLower = f(lower);
+  let fUpper = f(upper);
+
+  while (Math.abs(upper - lower) > LOCAL_VERSUS_AI_GLICKO2_EPSILON) {
+    const next = lower + ((lower - upper) * fLower) / (fUpper - fLower);
+    const fNext = f(next);
+    if (fNext * fUpper <= 0) {
+      lower = upper;
+      fLower = fUpper;
+    } else {
+      fLower /= 2;
+    }
+    upper = next;
+    fUpper = fNext;
+  }
+
+  return Math.exp(lower / 2);
+}
+
+function computeLocalVersusAiGlickoUpdate(state, opponentRating, score) {
+  const playerRating = convertLocalVersusAiRatingToGlicko(state?.rating);
+  const playerRd = normalizeLocalVersusAiRd(state?.rd);
+  const playerVolatility = normalizeLocalVersusAiVolatility(state?.volatility);
+  const opponentGlickoRating = convertLocalVersusAiRatingToGlicko(opponentRating);
+  const opponentRd = LOCAL_VERSUS_AI_OPPONENT_RD;
+
+  const player = convertLocalVersusAiToGlicko2(playerRating, playerRd);
+  const opponent = convertLocalVersusAiToGlicko2(opponentGlickoRating, opponentRd);
+  opponent.score = score;
+
+  const variance = computeLocalVersusAiGlickoVariance(player.mu, [opponent]);
+  const delta = computeLocalVersusAiGlickoDelta(player.mu, [opponent], variance);
+  const nextVolatility = computeLocalVersusAiVolatility(playerVolatility, delta, player.phi, variance);
+  const phiStar = Math.sqrt(player.phi * player.phi + nextVolatility * nextVolatility);
+  const nextPhi = 1 / Math.sqrt(1 / (phiStar * phiStar) + 1 / variance);
+  const nextMu =
+    player.mu +
+    nextPhi *
+      nextPhi *
+      computeLocalVersusAiGlickoG(opponent.phi) *
+      (score - computeLocalVersusAiGlickoE(player.mu, opponent.mu, opponent.phi));
+  const nextGlicko = convertGlicko2ToLocalVersusAi(nextMu, nextPhi);
+
+  return {
+    glickoRating: nextGlicko.rating,
+    rating: convertGlickoToLocalVersusAiRating(nextGlicko.rating),
+    rd: normalizeLocalVersusAiRd(nextGlicko.rd),
+    volatility: nextVolatility,
+  };
 }
 
 function getLocalVersusAiProfile(index = LOCAL_VERSUS_AI_START_INDEX) {
@@ -52,6 +202,7 @@ function getLocalVersusAiProfile(index = LOCAL_VERSUS_AI_START_INDEX) {
           : "spike";
   return {
     index: profileIndex,
+    tier: profileIndex + 1,
     rating: LOCAL_VERSUS_AI_RATINGS[profileIndex],
     skill,
     tierLabel: `${profileIndex + 1}/${LOCAL_VERSUS_AI_PROFILE_COUNT}`,
@@ -81,6 +232,14 @@ function getLocalVersusAiProfile(index = LOCAL_VERSUS_AI_START_INDEX) {
         : styleBand === "cleanup"
           ? Math.max(0.08, 0.26 - (skill - 0.2) * 0.28)
           : Math.max(0.01, 0.12 - (skill - 0.5) * 0.17),
+    attackMultiplier: 1,
+    aggressionMultiplier: 1,
+    apmTarget:
+      styleBand === "cheese"
+        ? 12 + skill * 18
+        : styleBand === "cleanup"
+          ? 22 + (skill - 0.2) * 35
+          : 40 + Math.max(0, skill - 0.5) * 70,
   };
 }
 
@@ -92,6 +251,73 @@ function getLocalVersusAiProfileForRating(rating = 20) {
     0,
   );
   return getLocalVersusAiProfile(profileIndex);
+}
+
+function getLocalVersusAiProfileForTier(tier = LOCAL_VERSUS_AI_START_INDEX + 1) {
+  return getLocalVersusAiProfile(clampLocalVersusAiTier(tier) - 1);
+}
+
+function normalizeLocalVersusAiMatchRating(rating = 20, provisional = false) {
+  const hiddenRating = clampLocalVersusAiRating(rating);
+  if (provisional) {
+    return clampLocalVersusAiTier(Math.floor(hiddenRating));
+  }
+  if (hiddenRating >= 39) {
+    return hiddenRating;
+  }
+  return clampLocalVersusAiTier(Math.round(hiddenRating));
+}
+
+function interpolateLocalVersusAiProfile(progress, matchRating) {
+  const clampedProgress = Math.max(0, Math.min(1, Number(progress) || 0));
+  const eliteProgress = Math.pow(clampedProgress, 4);
+  const eliteProfile = getLocalVersusAiProfileForTier(39);
+  const maxProfile = {
+    ...getLocalVersusAiProfileForTier(40),
+    guidelinePps: 5.35,
+    tgmPps: 5.05,
+    lookahead: 7,
+    candidateLimit: 28,
+    mistakeChance: 0,
+    attackMultiplier: 2.8,
+    aggressionMultiplier: 3.2,
+    apmTarget: 220,
+  };
+  const interpolate = (from, to) => from + (to - from) * eliteProgress;
+
+  return {
+    ...eliteProfile,
+    index: interpolate(eliteProfile.index, maxProfile.index),
+    tier: clampLocalVersusAiRating(matchRating),
+    rating: clampLocalVersusAiRating(matchRating),
+    skill: interpolate(eliteProfile.skill, maxProfile.skill),
+    tierLabel: `${clampLocalVersusAiRating(matchRating).toFixed(2)}/${LOCAL_VERSUS_AI_PROFILE_COUNT}`,
+    lookahead: Math.round(interpolate(eliteProfile.lookahead, maxProfile.lookahead)),
+    candidateLimit: Math.round(interpolate(eliteProfile.candidateLimit, maxProfile.candidateLimit)),
+    guidelinePps: interpolate(eliteProfile.guidelinePps, maxProfile.guidelinePps),
+    tgmPps: interpolate(eliteProfile.tgmPps, maxProfile.tgmPps),
+    mistakeChance: interpolate(eliteProfile.mistakeChance, maxProfile.mistakeChance),
+    attackMultiplier: interpolate(eliteProfile.attackMultiplier, maxProfile.attackMultiplier),
+    aggressionMultiplier: interpolate(
+      eliteProfile.aggressionMultiplier,
+      maxProfile.aggressionMultiplier,
+    ),
+    apmTarget: interpolate(eliteProfile.apmTarget, maxProfile.apmTarget),
+  };
+}
+
+function getLocalVersusAiProfileForMatchRating(matchRating = 20) {
+  const normalizedMatchRating = clampLocalVersusAiRating(matchRating);
+  if (normalizedMatchRating >= 39) {
+    return interpolateLocalVersusAiProfile(normalizedMatchRating - 39, normalizedMatchRating);
+  }
+  return getLocalVersusAiProfileForTier(normalizedMatchRating);
+}
+
+function formatLocalVersusAiMatchLabel(value) {
+  const normalized = Number(value);
+  if (!Number.isFinite(normalized)) return "20";
+  return normalized >= 39 ? normalized.toFixed(2) : `${Math.round(normalized)}`;
 }
 
 function isLocalVersusAiProvisional(stateOrMatches = null) {
@@ -108,6 +334,8 @@ function createDefaultLocalVersusAiState() {
   return {
     difficultyIndex: profile.index,
     rating,
+    rd: LOCAL_VERSUS_AI_DEFAULT_RD,
+    volatility: LOCAL_VERSUS_AI_DEFAULT_VOLATILITY,
     wins: 0,
     losses: 0,
     draws: 0,
@@ -124,6 +352,8 @@ function normalizeLocalVersusAiState(rawState = null) {
     ...base,
     difficultyIndex: profile.index,
     rating,
+    rd: normalizeLocalVersusAiRd(rawState?.rd ?? base.rd),
+    volatility: normalizeLocalVersusAiVolatility(rawState?.volatility ?? base.volatility),
     wins: Math.max(0, Number(rawState?.wins) || 0),
     losses: Math.max(0, Number(rawState?.losses) || 0),
     draws: Math.max(0, Number(rawState?.draws) || 0),
@@ -176,10 +406,28 @@ function recordLocalVersusAiDrawRound() {
   };
 }
 
+function getLocalVersusAiProvisionalDelta(decisiveMatchNumber = 1) {
+  const normalizedMatchNumber = Math.max(1, Math.floor(Number(decisiveMatchNumber) || 1));
+  return Math.round((10 / Math.pow(2, normalizedMatchNumber - 1)) * 100) / 100;
+}
+
+function getNextLocalVersusAiProvisionalRating(rating, outcome, decisiveMatchNumber = 1) {
+  const currentRating = clampLocalVersusAiRating(rating);
+  const delta = getLocalVersusAiProvisionalDelta(decisiveMatchNumber);
+  if (outcome === "win") {
+    return clampLocalVersusAiRating(currentRating + delta);
+  }
+  if (outcome === "loss") {
+    return clampLocalVersusAiRating(currentRating - delta);
+  }
+  return currentRating;
+}
+
 function recordLocalVersusAiMatch(outcome, roundsPlayed = 1) {
   const previousState = loadLocalVersusAiState();
   const oldProfile = getLocalVersusAiProfileForRating(previousState.rating);
   const wasProvisional = isLocalVersusAiProvisional(previousState);
+  const oldRd = normalizeLocalVersusAiRd(previousState.rd);
   const nextState = {
     ...previousState,
     roundsPlayed: previousState.roundsPlayed + Math.max(1, Number(roundsPlayed) || 1),
@@ -188,11 +436,23 @@ function recordLocalVersusAiMatch(outcome, roundsPlayed = 1) {
   if (outcome === "win") {
     nextState.wins += 1;
     nextState.matchesPlayed += 1;
-    nextState.rating = clampLocalVersusAiRating(previousState.rating + 1);
+    const decisiveMatchNumber = nextState.matchesPlayed;
+    const glickoUpdate = computeLocalVersusAiGlickoUpdate(previousState, previousState.rating, 1);
+    nextState.rd = glickoUpdate.rd;
+    nextState.volatility = glickoUpdate.volatility;
+    nextState.rating = wasProvisional
+      ? getNextLocalVersusAiProvisionalRating(previousState.rating, outcome, decisiveMatchNumber)
+      : glickoUpdate.rating;
   } else if (outcome === "loss") {
     nextState.losses += 1;
     nextState.matchesPlayed += 1;
-    nextState.rating = clampLocalVersusAiRating(previousState.rating - 1);
+    const decisiveMatchNumber = nextState.matchesPlayed;
+    const glickoUpdate = computeLocalVersusAiGlickoUpdate(previousState, previousState.rating, 0);
+    nextState.rd = glickoUpdate.rd;
+    nextState.volatility = glickoUpdate.volatility;
+    nextState.rating = wasProvisional
+      ? getNextLocalVersusAiProvisionalRating(previousState.rating, outcome, decisiveMatchNumber)
+      : glickoUpdate.rating;
   }
 
   const storedState = saveLocalVersusAiState(nextState);
@@ -204,6 +464,8 @@ function recordLocalVersusAiMatch(outcome, roundsPlayed = 1) {
     newProfile,
     state: storedState,
     ratingDelta: Math.round((storedState.rating - previousState.rating) * 100) / 100,
+    oldRd,
+    newRd: normalizeLocalVersusAiRd(storedState.rd),
     wasProvisional,
     provisional: isLocalVersusAiProvisional(storedState),
   };
@@ -227,8 +489,8 @@ function buildLocalVersusAiOpponent(queueType, profile, provisional = false) {
   const label = queueType === "tgm" ? "Minosa TGM" : "Minosa AI";
   return {
     id: `${LOCAL_VERSUS_AI_OPPONENT_ID}-${queueType}`,
-    name: provisional ? label : `${label} ${profile.rating.toFixed(2)}`,
-    rating: profile.rating,
+    name: provisional ? label : `${label} ${formatLocalVersusAiMatchLabel(profile.tier)}`,
+    rating: profile.tier,
     provisional,
   };
 }
@@ -245,10 +507,10 @@ function createLocalVersusAiMatchData(modeId, options = 1) {
     typeof normalizedOptions.provisional === "boolean"
       ? normalizedOptions.provisional
       : summary.provisional;
-  const aiProfile = {
-    ...getLocalVersusAiProfileForRating(aiRating),
-    rating: aiRating,
-  };
+  const aiMatchRating = clampLocalVersusAiRating(
+    normalizedOptions.aiMatchRating ?? normalizeLocalVersusAiMatchRating(aiRating, provisional),
+  );
+  const aiProfile = getLocalVersusAiProfileForMatchRating(aiMatchRating);
   return {
     localAi: true,
     modeId,
@@ -259,6 +521,7 @@ function createLocalVersusAiMatchData(modeId, options = 1) {
     opponentWins: Math.max(0, Number(normalizedOptions.opponentWins) || 0),
     drawRounds: Math.max(0, Number(normalizedOptions.drawRounds) || 0),
     aiRating,
+    aiMatchRating,
     provisional,
     seed: Date.now(),
     startTimestamp: Date.now(),
@@ -309,44 +572,141 @@ function scaleVersusGarbageAttack(attack, elapsedSeconds = 0) {
   return normalizedAttack * getVersusGarbageMultiplier(elapsedSeconds);
 }
 
-function updatePlayerVersusGarbageQueueHud(gameScene) {
-  if (!gameScene?.versusHUD || typeof gameScene.versusHUD.updatePlayerGarbageQueue !== "function") return;
-  gameScene.versusHUD.updatePlayerGarbageQueue(getNormalizedVersusGarbageQueue(gameScene.versusGarbageQueue));
+function ensurePlayerVersusGarbageChunks(gameScene) {
+  if (!gameScene) return [];
+  if (!Array.isArray(gameScene.versusGarbageChunks)) {
+    const legacyQueue = getNormalizedVersusGarbageQueue(gameScene.versusGarbageQueue);
+    gameScene.versusGarbageChunks = legacyQueue > 0 ? [{ rows: legacyQueue, hole: null }] : [];
+  }
+  return gameScene.versusGarbageChunks;
 }
 
-function enqueuePlayerVersusGarbage(gameScene, rows) {
+function getPlayerVersusGarbageQueueTotal(gameScene) {
+  return ensurePlayerVersusGarbageChunks(gameScene).reduce(
+    (total, chunk) => total + getNormalizedVersusGarbageQueue(chunk?.rows),
+    0,
+  );
+}
+
+function getNextPlayerVersusGarbageHole(gameScene) {
+  const cols = Math.max(1, Number(gameScene?.board?.cols) || 10);
+  if (!Number.isInteger(gameScene?.versusGarbageHoleCol)) {
+    gameScene.versusGarbageHoleCol = Math.floor(Math.random() * cols);
+    return gameScene.versusGarbageHoleCol;
+  }
+  let nextHole =
+    (gameScene.versusGarbageHoleCol + 1 + Math.floor(Math.random() * Math.max(1, cols - 1))) % cols;
+  if (nextHole === gameScene.versusGarbageHoleCol && cols > 1) {
+    nextHole = (nextHole + 1) % cols;
+  }
+  gameScene.versusGarbageHoleCol = nextHole;
+  return nextHole;
+}
+
+function normalizePlayerVersusGarbageHole(gameScene, hole) {
+  if (!Number.isInteger(hole)) return getNextPlayerVersusGarbageHole(gameScene);
+  const cols = Math.max(1, Number(gameScene?.board?.cols) || 10);
+  const normalizedHole = ((hole % cols) + cols) % cols;
+  gameScene.versusGarbageHoleCol = normalizedHole;
+  return normalizedHole;
+}
+
+function syncPlayerVersusGarbageQueue(gameScene) {
   if (!gameScene) return 0;
-  const incomingRows = getNormalizedVersusGarbageQueue(rows);
-  gameScene.versusGarbageQueue =
-    getNormalizedVersusGarbageQueue(gameScene.versusGarbageQueue) + incomingRows;
+  gameScene.versusGarbageQueue = getPlayerVersusGarbageQueueTotal(gameScene);
   updatePlayerVersusGarbageQueueHud(gameScene);
   return gameScene.versusGarbageQueue;
+}
+
+function updatePlayerVersusGarbageQueueHud(gameScene) {
+  if (!gameScene?.versusHUD || typeof gameScene.versusHUD.updatePlayerGarbageQueue !== "function") return;
+  gameScene.versusHUD.updatePlayerGarbageQueue(getPlayerVersusGarbageQueueTotal(gameScene));
+}
+
+function enqueuePlayerVersusGarbageChunk(gameScene, rows, hole = null) {
+  if (!gameScene) return 0;
+  const incomingRows = getNormalizedVersusGarbageQueue(rows);
+  if (incomingRows <= 0) return 0;
+  ensurePlayerVersusGarbageChunks(gameScene).push({
+    rows: incomingRows,
+    hole: normalizePlayerVersusGarbageHole(gameScene, hole),
+  });
+  return incomingRows;
+}
+
+function enqueuePlayerVersusGarbage(gameScene, rows, hole = null) {
+  if (!gameScene) return 0;
+  enqueuePlayerVersusGarbageChunk(gameScene, rows, hole);
+  return syncPlayerVersusGarbageQueue(gameScene);
+}
+
+function enqueuePlayerVersusGarbageChunks(gameScene, chunks = []) {
+  if (!gameScene) return 0;
+  for (const chunk of Array.isArray(chunks) ? chunks : []) {
+    enqueuePlayerVersusGarbageChunk(gameScene, chunk?.rows, chunk?.hole ?? chunk?.holeCol);
+  }
+  return syncPlayerVersusGarbageQueue(gameScene);
 }
 
 function cancelPlayerVersusGarbage(gameScene, attack) {
   if (!gameScene) return 0;
   let remainingAttack = getNormalizedVersusGarbageQueue(attack);
-  let queuedGarbage = getNormalizedVersusGarbageQueue(gameScene.versusGarbageQueue);
-  if (queuedGarbage > 0 && remainingAttack > 0) {
-    const canceled = Math.min(queuedGarbage, remainingAttack);
-    queuedGarbage -= canceled;
+  const chunks = ensurePlayerVersusGarbageChunks(gameScene);
+  while (remainingAttack > 0 && chunks.length > 0) {
+    const headRows = getNormalizedVersusGarbageQueue(chunks[0]?.rows);
+    if (headRows <= 0) {
+      chunks.shift();
+      continue;
+    }
+    const canceled = Math.min(headRows, remainingAttack);
     remainingAttack -= canceled;
-    gameScene.versusGarbageQueue = queuedGarbage;
-    updatePlayerVersusGarbageQueueHud(gameScene);
+    const nextRows = headRows - canceled;
+    if (nextRows > 0) {
+      chunks[0].rows = nextRows;
+    } else {
+      chunks.shift();
+    }
   }
+  syncPlayerVersusGarbageQueue(gameScene);
   return remainingAttack;
 }
 
 function applyPlayerVersusGarbageEntry(gameScene, maxRows = MAX_VERSUS_GARBAGE_ENTRY) {
   if (!gameScene?.board || typeof gameScene.board.addCheeseRows !== "function") return 0;
-  const queuedGarbage = getNormalizedVersusGarbageQueue(gameScene.versusGarbageQueue);
-  const availableRows = getIntegralVersusGarbageRows(queuedGarbage);
+  const chunks = ensurePlayerVersusGarbageChunks(gameScene);
+  const availableRows = getIntegralVersusGarbageRows(getPlayerVersusGarbageQueueTotal(gameScene));
   if (availableRows <= 0) return 0;
-  const rows = Math.min(availableRows, getIntegralVersusGarbageRows(maxRows) || MAX_VERSUS_GARBAGE_ENTRY);
-  gameScene.versusGarbageQueue = queuedGarbage - rows;
-  gameScene.board.addCheeseRows(rows, 50);
-  updatePlayerVersusGarbageQueueHud(gameScene);
-  return rows;
+  let entryBudget = Math.min(availableRows, getIntegralVersusGarbageRows(maxRows) || MAX_VERSUS_GARBAGE_ENTRY);
+  let appliedRows = 0;
+  let chunkIndex = 0;
+  while (entryBudget > 0 && chunkIndex < chunks.length) {
+    const chunk = chunks[chunkIndex] || {};
+    const chunkRows = getNormalizedVersusGarbageQueue(chunk.rows);
+    const integralChunkRows = getIntegralVersusGarbageRows(chunkRows);
+    if (chunkRows <= 0) {
+      chunks.splice(chunkIndex, 1);
+      continue;
+    }
+    if (integralChunkRows <= 0) {
+      chunkIndex += 1;
+      continue;
+    }
+    const rows = Math.min(entryBudget, integralChunkRows);
+    gameScene.board.addCheeseRows(rows, 0, chunk.hole);
+    appliedRows += rows;
+    entryBudget -= rows;
+    const nextRows = chunkRows - rows;
+    if (nextRows > 0) {
+      chunk.rows = nextRows;
+      if (getIntegralVersusGarbageRows(nextRows) <= 0) {
+        chunkIndex += 1;
+      }
+    } else {
+      chunks.splice(chunkIndex, 1);
+    }
+  }
+  syncPlayerVersusGarbageQueue(gameScene);
+  return appliedRows;
 }
 
 function resolvePlayerVersusGarbageAfterLock(gameScene, linesCleared, attack) {
@@ -584,7 +944,7 @@ function buildVersusPreviewPayload(gameScene) {
     holdType,
     nextQueue,
     canHold: !!gameScene?.holdEnabled,
-    incomingGarbageQueue: Math.max(0, Number(gameScene?.versusGarbageQueue) || 0),
+    incomingGarbageQueue: getPlayerVersusGarbageQueueTotal(gameScene),
     rotationSystem: gameScene?.rotationSystem || "SRS",
     stats: buildVersusStatsPayload(gameScene),
   };
@@ -596,8 +956,14 @@ class LocalVersusAiController {
     this.matchData = matchData || {};
     this.queueType = this.matchData.queueType || "guideline";
     this.rotationSystem = this.queueType === "tgm" ? "ARS" : "SRS";
-    this.profile = this.matchData.aiProfile || getLocalVersusAiSummary().profile;
-    this.matchRating = Number(this.matchData?.aiRating ?? this.matchData?.opponent?.rating ?? this.profile?.rating ?? 20) || 20;
+    const summary = getLocalVersusAiSummary();
+    this.hiddenRating = Number(this.matchData?.aiRating ?? summary.rating ?? 20) || 20;
+    this.matchRating = clampLocalVersusAiRating(
+      this.matchData?.aiMatchRating ??
+        this.matchData?.opponent?.rating ??
+        normalizeLocalVersusAiMatchRating(this.hiddenRating, !!this.matchData?.provisional),
+    );
+    this.profile = this.matchData.aiProfile || getLocalVersusAiProfileForMatchRating(this.matchRating);
     this.winsToFinish = Math.max(1, Number(this.matchData?.winsToFinish) || LOCAL_VERSUS_AI_WINS_TO_FINISH);
     this.playerWins = Math.max(0, Number(this.matchData?.playerWins) || 0);
     this.opponentWins = Math.max(0, Number(this.matchData?.opponentWins) || 0);
@@ -818,11 +1184,7 @@ class LocalVersusAiController {
     );
     if (attack > 0) {
       this.totalAttack += attack;
-      this.scene.versusGarbageQueue =
-        getNormalizedVersusGarbageQueue(this.scene.versusGarbageQueue) + attack;
-      if (this.scene.versusHUD) {
-        this.scene.versusHUD.updateGarbageQueue(this.scene.versusGarbageQueue);
-      }
+      enqueuePlayerVersusGarbage(this.scene, attack);
     }
 
     this.pushBoardToHud();
@@ -1131,6 +1493,7 @@ class LocalVersusAiController {
 
   computeAttack(lines, isTSpin) {
     const baseTable = [0, 0, 1, 2, 4];
+    const attackMultiplier = Math.max(1, Number(this.profile?.attackMultiplier) || 1);
     const isDifficult = (lines >= 4 || (isTSpin && lines > 0)) && lines > 0;
     let base = 0;
 
@@ -1164,7 +1527,7 @@ class LocalVersusAiController {
       this.backToBack = isDifficult;
     }
 
-    return Math.max(0, attack);
+    return Math.max(0, attack * attackMultiplier);
   }
 
   freezeScene() {
@@ -1206,7 +1569,8 @@ class LocalVersusAiController {
           playerWins: nextPlayerWins,
           opponentWins: nextOpponentWins,
           drawRounds: this.drawRounds,
-          aiRating: this.matchRating,
+          aiRating: this.hiddenRating,
+          aiMatchRating: this.matchRating,
           provisional: !!this.matchData?.provisional,
         });
         this.startNextRound(nextMatch);
@@ -1226,6 +1590,8 @@ class LocalVersusAiController {
       ratingDelta: ladderUpdate.ratingDelta,
       oldRating: ladderUpdate.oldRating,
       newRating: ladderUpdate.newRating,
+      oldRd: ladderUpdate.oldRd,
+      newRd: ladderUpdate.newRd,
       ladderState: ladderUpdate.state,
       provisional: ladderUpdate.provisional,
       wasProvisional: ladderUpdate.wasProvisional,
@@ -1258,7 +1624,8 @@ class LocalVersusAiController {
         playerWins: this.playerWins,
         opponentWins: this.opponentWins,
         drawRounds: nextDrawRounds,
-        aiRating: this.matchRating,
+        aiRating: this.hiddenRating,
+        aiMatchRating: this.matchRating,
         provisional: !!this.matchData?.provisional,
       });
       this.startNextRound(nextMatch);
@@ -2320,6 +2687,8 @@ function cleanupVersusMode(gameScene) {
   gameScene.versusMatchData = null;
   gameScene.versusMatchResult = null;
   gameScene.versusGarbageQueue = 0;
+  gameScene.versusGarbageChunks = [];
+  gameScene.versusGarbageHoleCol = null;
   gameScene.versusBoardTimer = 0;
   gameScene.versusSeed = null;
   gameScene.versusPieceSource = null;
@@ -2352,6 +2721,8 @@ function initVersusMode(gameScene) {
   gameScene.versusController = null;
   gameScene.versusActive = true;
   gameScene.versusGarbageQueue = 0;
+  gameScene.versusGarbageChunks = [];
+  gameScene.versusGarbageHoleCol = null;
   gameScene.versusSeed = matchData.seed;
   gameScene.versusPieceSource = createVersusPieceSourceForScene(gameScene, matchData);
 
@@ -2391,7 +2762,11 @@ function initVersusMode(gameScene) {
 
   // Network event listeners for GameScene
   registerNetworkListener("garbage_incoming", (data) => {
-    enqueuePlayerVersusGarbage(gameScene, data.rows);
+    if (Array.isArray(data?.chunks) && data.chunks.length > 0) {
+      enqueuePlayerVersusGarbageChunks(gameScene, data.chunks);
+      return;
+    }
+    enqueuePlayerVersusGarbage(gameScene, data?.rows, data?.hole ?? data?.holeCol);
   });
 
   registerNetworkListener("opponent_board_update", (payload) => {
@@ -2543,7 +2918,7 @@ function showVersusResult(gameScene, data) {
     ? (
       data.provisional
         ? `Calibration: ${Math.max(0, Number(data.decisiveMatchesPlayed) || 0)}/${LOCAL_VERSUS_AI_PROVISIONAL_MATCHES} decisive matches`
-        : `Ladder: ${formatLocalVersusAiRating(data.oldRating)} -> ${formatLocalVersusAiRating(data.newRating)} (${deltaStr} tier)`
+        : `Ladder: ${formatLocalVersusAiRating(data.oldRating)} -> ${formatLocalVersusAiRating(data.newRating)} (${deltaStr})  |  RD: ${normalizeLocalVersusAiRd(data.newRd).toFixed(1)}`
     )
     : data.provisional
       ? `Rating: ? (provisional) (${deltaStr})`
@@ -2723,7 +3098,7 @@ function showVersusTieRoundTransition(gameScene, data) {
       centerY - 6,
       data.provisional
         ? `Round ${data.roundNumber} tied`
-        : `Round ${data.roundNumber} tied at ${formatLocalVersusAiRating(data.rating)}`,
+        : `Round ${data.roundNumber} tied at ${formatLocalVersusAiMatchLabel(data.rating)}`,
       {
         fontSize: "18px",
         fill: "#ffffff",

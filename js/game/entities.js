@@ -142,7 +142,7 @@ class Board {
     return linesToClear.length;
   }
 
-  addCheeseRows(count = 1, cheesePercent = 0) {
+  addCheeseRows(count = 1, cheesePercent = 0, fixedHoleCol = null) {
     // Initialize grid/fadeGrid if missing to allow early preview insertion
     const cols = Number.isFinite(this.cols) && this.cols > 0 ? this.cols : 10;
     if (!Number.isFinite(this.cols) || this.cols <= 0) {
@@ -173,6 +173,11 @@ class Board {
       if (this.scene) this.scene.zenCheeseHoleCol = this.cheeseHoleCol;
     }
     let holeCol = this.cheeseHoleCol;
+    if (Number.isInteger(fixedHoleCol)) {
+      holeCol = ((fixedHoleCol % cols) + cols) % cols;
+      this.cheeseHoleCol = holeCol;
+      if (this.scene) this.scene.zenCheeseHoleCol = holeCol;
+    }
     for (let i = 0; i < rowsToAdd; i++) {
       // Remove top row to make space
       this.grid.shift();
@@ -180,7 +185,7 @@ class Board {
       if (Array.isArray(this.frozenGrid)) this.frozenGrid.shift();
 
       // Decide hole column for this row
-      if (clampedPercent > 0) {
+      if (!Number.isInteger(fixedHoleCol) && clampedPercent > 0) {
         this.cheeseHoleShiftAccumulator += shiftChance;
         if (this.cheeseHoleShiftAccumulator >= 1) {
           this.cheeseHoleShiftAccumulator -= 1;

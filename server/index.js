@@ -484,17 +484,40 @@ wss.on("connection", (ws) => {
         const count = Math.min(4, Math.max(0, parseInt(msg.count, 10) || 0));
         // Standard garbage: single=0, double=1, triple=2, tetris=4
         const garbageTable = { 0: 0, 1: 0, 2: 1, 3: 2, 4: 4 };
+        const chunkList = Array.isArray(msg.chunks)
+          ? msg.chunks
+              .map((chunk) => ({
+                rows: Math.max(0, Number(chunk?.rows) || 0),
+                hole: Number.isInteger(chunk?.hole)
+                  ? Math.max(0, Math.min(9, chunk.hole))
+                  : Number.isInteger(chunk?.holeCol)
+                    ? Math.max(0, Math.min(9, chunk.holeCol))
+                    : null,
+              }))
+              .filter((chunk) => chunk.rows > 0)
+          : [];
         const explicitAttack = Number(msg.attack);
+        const chunkAttack = chunkList.reduce((total, chunk) => total + chunk.rows, 0);
         const garbage = Number.isFinite(explicitAttack)
           ? Math.max(0, explicitAttack)
-          : (garbageTable[count] || 0);
+          : chunkList.length > 0
+            ? chunkAttack
+            : (garbageTable[count] || 0);
         if (garbage > 0) {
           const opp = room.opponent(ws);
-          const holeCol = Math.floor(Math.random() * 10);
+          const chunks =
+            chunkList.length > 0
+              ? chunkList.map((chunk) => ({
+                  rows: chunk.rows,
+                  hole: chunk.hole != null ? chunk.hole : Math.floor(Math.random() * 10),
+                }))
+              : [{ rows: garbage, hole: Math.floor(Math.random() * 10) }];
+          const firstHole = chunks[0]?.hole ?? Math.floor(Math.random() * 10);
           room.send(opp, {
             type: "garbage_incoming",
             rows: garbage,
-            holeCol,
+            holeCol: firstHole,
+            chunks,
           });
         }
         // Relay line clear info

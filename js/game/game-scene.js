@@ -9939,7 +9939,7 @@ class GameScene extends Phaser.Scene {
     if (base > 0) {
       // comboVal is -1 before first clear, 0 on first clear, 1 on second clear, etc.
       attack = Math.floor(base * (1 + 0.25 * Math.max(0, comboVal)));
-    } else if (comboVal >= 2) {
+    } else if (lines > 0 && comboVal >= 2) {
       attack = Math.floor(Math.log(1 + 1.25 * comboVal));
     }
 

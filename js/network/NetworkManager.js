@@ -294,12 +294,16 @@ class NetworkManager {
     this.send({ type: "piece_placed", data });
   }
 
-  sendLinesCleared(count, attack = null) {
-    this.send({
+  sendLinesCleared(count, attack = null, chunks = null) {
+    const payload = {
       type: "lines_cleared",
       count,
       attack,
-    });
+    };
+    if (Array.isArray(chunks) && chunks.length > 0) {
+      payload.chunks = chunks;
+    }
+    this.send(payload);
   }
 
   sendBoardUpdate(payload) {
