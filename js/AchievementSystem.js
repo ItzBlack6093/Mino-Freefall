@@ -29,6 +29,32 @@ class AchievementSystem {
       U: 8,
       X: 10
     };
+    this.ratingPoorCompletionThreshold = 0.1;
+    this.ratingModeCompletionTargets = {
+      sprint_40: { field: "lines", target: 40 },
+      sprint_100: { field: "lines", target: 100 },
+      marathon: { field: "lines", target: 150 },
+      tgm2_normal: { field: "level", target: 300 },
+      tgm1: { field: "level", target: 999 },
+      tgm2: { field: "level", target: 999 },
+      tgm2_master: { field: "level", target: 999 },
+      tgm3: { field: "level", target: 999 },
+      tgm3_master: { field: "level", target: 999 },
+      tgm4: { field: "level", target: 999 },
+      tgm4_normal: { field: "level", target: 999 },
+      tgm4_master: { field: "level", target: 2600 },
+      master_20g: { field: "level", target: 999 },
+      tadeath: { field: "level", target: 999 },
+      ta_death: { field: "level", target: 999 },
+      shirase: { field: "level", target: 1300 },
+      tgm3_shirase: { field: "level", target: 1300 },
+      tgm4_rounds: { field: "level", target: 2600 },
+      tgm4_2_1: { field: "level", target: 999 },
+      tgm4_3_1: { field: "level", target: 2000 },
+      tgm4_4_1: { field: "level", target: 999 },
+      konoha_easy: { field: "allClears", target: 110 },
+      konoha_hard: { field: "allClears", target: 25 },
+    };
     this.ratingMilestones = this.defineRatingMilestones();
     this.loadFromStorage();
     this.ensureRatingProfile();
@@ -168,6 +194,39 @@ class AchievementSystem {
     medal.gauge = this.roundRatingProgress(
       Math.max(0, (Number(medal.gauge) || 0) - this.getRatingMedalProgressLoss(profile))
     );
+  }
+
+  getRatingRunCompletionRate(modeId, entry = {}) {
+    const explicitRate = Number(entry?.completionRate);
+    if (Number.isFinite(explicitRate)) {
+      return Math.max(0, explicitRate > 1 ? explicitRate / 100 : explicitRate);
+    }
+
+    const target = this.ratingModeCompletionTargets[String(modeId || "").toLowerCase()];
+    if (!target) return null;
+
+    const progress = Math.max(0, Number(entry?.[target.field]) || 0);
+    return progress / Math.max(1, target.target);
+  }
+
+  getRatingSkillsetsForMode(modeId) {
+    const normalized = String(modeId || "").toLowerCase();
+    const skillsets = new Set();
+    this.ratingMilestones.forEach((milestone) => {
+      if (milestone.skillset === "versus") return;
+      if (milestone.modeIds.includes(normalized)) {
+        skillsets.add(milestone.skillset);
+      }
+    });
+    return skillsets;
+  }
+
+  getPoorRatingRunPenaltySkillsets(modeId, entry = {}) {
+    const completionRate = this.getRatingRunCompletionRate(modeId, entry);
+    if (completionRate === null || completionRate >= this.ratingPoorCompletionThreshold) {
+      return new Set();
+    }
+    return this.getRatingSkillsetsForMode(modeId);
   }
 
   getGradeLabel(profile = this.ratingProfile) {
@@ -373,7 +432,13 @@ class AchievementSystem {
     const promotions = [];
 
     runs.forEach((run) => {
+      const penalizedSkillsets = this.getPoorRatingRunPenaltySkillsets(run.modeId, run.entry);
+      penalizedSkillsets.forEach((skillset) => {
+        this.removeRatingMedalProgress(profile.medals[skillset], profile);
+      });
+
       this.ratingMilestones.forEach((milestone) => {
+        if (penalizedSkillsets.has(milestone.skillset)) return;
         if (milestone.skillset === "versus") return;
         if (!milestone.modeIds.includes(run.modeId)) return;
         if (!milestone.predicate(run.entry || {})) return;
