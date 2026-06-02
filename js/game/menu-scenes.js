@@ -1510,71 +1510,79 @@ class MenuScene extends Phaser.Scene {
     ratingPane.appendChild(ratingInfo);
 
     const ratingList = this.applyInlineStyles(document.createElement("div"), {
-      display: "flex",
-      flexDirection: "column",
+      display: "grid",
+      gridTemplateColumns: "repeat(5, minmax(118px, 1fr))",
       gap: "8px",
+      overflowX: "auto",
+      paddingBottom: "4px",
     });
     ratingPane.appendChild(ratingList);
+
+    const getMedalStarText = (medal) => {
+      const stars = Math.max(0, Number(medal.stars) || 0);
+      if (medal.cap === Infinity) {
+        return stars > 0 ? "★".repeat(stars) : "☆";
+      }
+
+      const cap = Math.max(0, Number(medal.cap) || 0);
+      const filled = Math.min(stars, cap);
+      return `${"★".repeat(filled)}${"☆".repeat(Math.max(0, cap - filled))}`;
+    };
 
     const medalOrder = ["guideline", "grade", "20g", "bravo", "versus"];
     medalOrder.forEach((medalId) => {
       const medal = ratingSummary.medals?.[medalId];
       if (!medal) return;
       const row = this.applyInlineStyles(document.createElement("div"), {
-        display: "grid",
-        gridTemplateColumns: "68px minmax(0, 1fr) 92px",
+        minWidth: "0",
+        display: "flex",
+        flexDirection: "column",
         gap: "8px",
-        alignItems: "center",
+        alignItems: "stretch",
+        justifyContent: "space-between",
         padding: "10px",
         background: palette.surfaceAlt,
         border: `1px solid ${medal.tierColor || tabThemes.rating.accent}`,
       });
 
-      const badge = this.applyInlineStyles(document.createElement("div"), {
-        width: "56px",
-        height: "56px",
-        borderRadius: "50%",
-        border: `2px solid ${medal.tierColor || tabThemes.rating.accent}`,
-        background: `radial-gradient(circle at 30% 30%, ${medal.tierColor || tabThemes.rating.accent}, #101010 78%)`,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        color: palette.text,
-        fontSize: "15px",
-        fontWeight: "700",
-        boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.08)`,
-        justifySelf: "center",
-      });
-      badge.textContent = medal.stars > 0 ? `${medal.stars}` : "0";
-      badge.title = `${medal.label} ${medal.tierLabel}`;
-      row.appendChild(badge);
-
-      const body = this.applyInlineStyles(document.createElement("div"), {
-        minWidth: "0",
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-      });
-      row.appendChild(body);
-
       const name = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "13px",
+        fontSize: "12px",
         fontWeight: "700",
         letterSpacing: "0.06em",
         textTransform: "uppercase",
         color: medal.tierColor || tabThemes.rating.accent,
+        textAlign: "center",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       });
       name.textContent = medal.label;
-      body.appendChild(name);
+      row.appendChild(name);
+
+      const stars = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "16px",
+        lineHeight: "1",
+        color: medal.tierColor || tabThemes.rating.accent,
+        letterSpacing: "0.03em",
+        textAlign: "center",
+        whiteSpace: "nowrap",
+      });
+      stars.textContent = getMedalStarText(medal);
+      stars.title = `${medal.tierLabel} ${medal.stars}/${medal.cap === Infinity ? "∞" : medal.cap}`;
+      row.appendChild(stars);
 
       const subline = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "12px",
+        fontSize: "11px",
         lineHeight: "1.35",
         color: palette.muted,
         minWidth: "0",
+        textAlign: "center",
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
       });
-      subline.textContent = `${medal.tierLabel} ${medal.stars}/${medal.cap === Infinity ? "∞" : medal.cap} · +${medal.contributionValue}`;
-      body.appendChild(subline);
+      subline.textContent = `${medal.tierLabel} · +${medal.contributionValue}`;
+      row.appendChild(subline);
 
       const progressShell = this.applyInlineStyles(document.createElement("div"), {
         height: "8px",
@@ -1589,14 +1597,13 @@ class MenuScene extends Phaser.Scene {
         background: medal.tierColor || tabThemes.rating.accent,
       });
       progressShell.appendChild(progressFill);
-      body.appendChild(progressShell);
+      row.appendChild(progressShell);
 
       const value = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "16px",
+        fontSize: "13px",
         fontWeight: "700",
         color: palette.text,
-        textAlign: "right",
-        justifySelf: "end",
+        textAlign: "center",
       });
       value.textContent = medalId === "versus"
         ? `W ${medal.wins || 0} / L ${medal.losses || 0}`
