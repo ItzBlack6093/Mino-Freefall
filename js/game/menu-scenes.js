@@ -414,6 +414,12 @@ class MenuScene extends Phaser.Scene {
     this.startingLevelPromptRoundsMedalLeftArrow = null;
     this.startingLevelPromptRoundsMedalRightArrow = null;
     this.profileOverlayElement = null;
+    this.profileBadgeWidth = 184;
+    this.profileBadgeHeight = 72;
+    this.profileBadgeBackground = null;
+    this.profileBadgeBorder = null;
+    this.profileBadgeHover = false;
+    this.profileBadgeTheme = null;
   }
 
   init(data = {}) {
@@ -622,24 +628,20 @@ class MenuScene extends Phaser.Scene {
   }
 
   createProfileBadge() {
-    const badgeWidth = 160;
-    const badgeHeight = 60;
+    const badgeWidth = this.profileBadgeWidth;
+    const badgeHeight = this.profileBadgeHeight;
     const padding = 20;
-    const x = this.cameras.main.width - padding - 100;
+    const x = this.cameras.main.width - padding - badgeWidth / 2;
     const y = padding + 50;
 
     this.profileBadgeGroup = this.add.container(x, y);
 
-    // Border rectangle
+    this.profileBadgeBackground = this.add.graphics();
+    this.profileBadgeGroup.add(this.profileBadgeBackground);
+
     this.profileBadgeBorder = this.add.graphics();
-    this.profileBadgeBorder.lineStyle(1, 0xffffff);
-    this.profileBadgeBorder.strokeRect(
-      -badgeWidth / 2,
-      -badgeHeight / 2,
-      badgeWidth,
-      badgeHeight
-    );
     this.profileBadgeGroup.add(this.profileBadgeBorder);
+    this.renderProfileBadgeFrame(this.getProfileGradeTheme("F9"));
 
     // Player name
     this.profileBadgeName = this.add.text(0, -12, "Player", {
@@ -652,8 +654,8 @@ class MenuScene extends Phaser.Scene {
 
     // Grade rating
     this.profileBadgeRating = this.add.text(0, 12, "F9", {
-      fontSize: "18px",
-      fill: "#ffcc00",
+      fontSize: "22px",
+      fill: "#f8f8f8",
       fontFamily: "Courier New",
       fontStyle: "bold",
     }).setOrigin(0.5);
@@ -665,8 +667,14 @@ class MenuScene extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
     this.profileBadgeGroup.on("pointerdown", () => this.showAchievementOverlay());
-    this.profileBadgeGroup.on("pointerover", () => this.profileBadgeBorder.lineStyle(2, 0xffff00));
-    this.profileBadgeGroup.on("pointerout", () => this.profileBadgeBorder.lineStyle(1, 0xffffff));
+    this.profileBadgeGroup.on("pointerover", () => {
+      this.profileBadgeHover = true;
+      this.renderProfileBadgeFrame(this.profileBadgeTheme || this.getProfileGradeTheme("F9"));
+    });
+    this.profileBadgeGroup.on("pointerout", () => {
+      this.profileBadgeHover = false;
+      this.renderProfileBadgeFrame(this.profileBadgeTheme || this.getProfileGradeTheme("F9"));
+    });
 
     this.updateProfileBadge();
   }
@@ -682,7 +690,122 @@ class MenuScene extends Phaser.Scene {
       : { grade: "F9" };
 
     this.profileBadgeName.setText(playerName);
-    this.profileBadgeRating.setText(ratingSummary.grade || "F9");
+    const grade = ratingSummary.grade || "F9";
+    const gradeTheme = this.getProfileGradeTheme(grade);
+    this.profileBadgeTheme = gradeTheme;
+    this.profileBadgeRating.setText(grade);
+    this.profileBadgeRating.setColor(gradeTheme.fill);
+    this.profileBadgeRating.setStroke(gradeTheme.outline, gradeTheme.crystal ? 5 : 3);
+    this.profileBadgeRating.setShadow(
+      0,
+      0,
+      gradeTheme.crystal ? gradeTheme.outline : "#000000",
+      gradeTheme.crystal ? 8 : 2,
+      false,
+      true
+    );
+    this.renderProfileBadgeFrame(gradeTheme);
+  }
+
+  getProfileGradeTier(grade) {
+    const normalized = String(grade || "F").toUpperCase();
+    if (normalized === "X+") return "X+";
+    return normalized.replace(/[0-9+]/g, "") || "F";
+  }
+
+  getProfileGradeTheme(grade) {
+    const tier = this.getProfileGradeTier(grade);
+    const outlineByTier = {
+      F: "#b87333",
+      E: "#b87333",
+      D: "#b87333",
+      C: "#b87333",
+      B: "#c0c8d2",
+      A: "#c0c8d2",
+      S: "#c0c8d2",
+      SS: "#ffd966",
+      U: "#ffd966",
+      X: "#ffd966",
+      "X+": "#8ff7ff",
+    };
+    const fillByTier = {
+      F: "#f8f8f8",
+      E: "#f8f8f8",
+      D: "#f8f8f8",
+      C: "#33e66b",
+      B: "#33e66b",
+      A: "#35a8ff",
+      S: "#35a8ff",
+      SS: "#a55cff",
+      U: "#a55cff",
+      X: "#ffcc33",
+      "X+": "#ff4040",
+    };
+    const outline = outlineByTier[tier] || outlineByTier.F;
+    const fill = fillByTier[tier] || fillByTier.F;
+    const crystal = ["S", "SS", "U", "X", "X+"].includes(tier);
+    return {
+      fill,
+      outline,
+      crystal,
+      textColor: "#f8f8f8",
+      background: crystal
+        ? `linear-gradient(135deg, #050505 0%, ${outline} 38%, #ffffff 50%, ${fill} 64%, #080808 100%)`
+        : fill,
+    };
+  }
+
+  colorStringToNumber(color, fallback = 0xffffff) {
+    const normalized = String(color || "").replace("#", "");
+    const parsed = parseInt(normalized, 16);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  renderProfileBadgeFrame(theme) {
+    if (!this.profileBadgeBackground || !this.profileBadgeBorder) return;
+    const badgeWidth = this.profileBadgeWidth;
+    const badgeHeight = this.profileBadgeHeight;
+    const left = -badgeWidth / 2;
+    const top = -badgeHeight / 2;
+    const outline = this.colorStringToNumber(theme?.outline, 0xffffff);
+    const fill = this.colorStringToNumber(theme?.fill, 0xffffff);
+
+    this.profileBadgeBackground.clear();
+    this.profileBadgeBackground.fillStyle(0x050505, 0.94);
+    this.profileBadgeBackground.fillRect(left, top, badgeWidth, badgeHeight);
+    this.profileBadgeBackground.fillStyle(fill, theme?.crystal ? 0.2 : 0.1);
+    this.profileBadgeBackground.fillRect(left, 0, badgeWidth, badgeHeight / 2);
+
+    if (theme?.crystal) {
+      this.profileBadgeBackground.fillStyle(0xffffff, 0.18);
+      this.profileBadgeBackground.fillTriangle(left, top, left + 46, top, left, top + 46);
+      this.profileBadgeBackground.fillStyle(outline, 0.22);
+      this.profileBadgeBackground.fillTriangle(
+        left + badgeWidth,
+        top + badgeHeight,
+        left + badgeWidth - 54,
+        top + badgeHeight,
+        left + badgeWidth,
+        top + badgeHeight - 54
+      );
+      this.profileBadgeBackground.fillStyle(fill, 0.18);
+      this.profileBadgeBackground.fillTriangle(
+        left + badgeWidth * 0.42,
+        top,
+        left + badgeWidth * 0.68,
+        top,
+        left + badgeWidth * 0.28,
+        top + badgeHeight
+      );
+    }
+
+    this.profileBadgeBorder.clear();
+    this.profileBadgeBorder.lineStyle(this.profileBadgeHover ? 5 : 3, outline, 1);
+    this.profileBadgeBorder.strokeRect(left, top, badgeWidth, badgeHeight);
+    if (theme?.crystal) {
+      this.profileBadgeBorder.lineStyle(1, 0xffffff, 0.75);
+      this.profileBadgeBorder.strokeRect(left + 5, top + 5, badgeWidth - 10, badgeHeight - 10);
+    }
   }
 
   applyInlineStyles(element, styles) {
@@ -871,52 +994,7 @@ class MenuScene extends Phaser.Scene {
         surface: "#111b12",
       },
     };
-    const getGradeTier = (grade) => {
-      const normalized = String(grade || "F").toUpperCase();
-      if (normalized === "X+") return "X+";
-      return normalized.replace(/[0-9+]/g, "") || "F";
-    };
-    const getGradeTheme = (grade) => {
-      const tier = getGradeTier(grade);
-      const outlineByTier = {
-        F: "#b87333",
-        E: "#b87333",
-        D: "#b87333",
-        C: "#b87333",
-        B: "#c0c8d2",
-        A: "#c0c8d2",
-        S: "#c0c8d2",
-        SS: "#ffd966",
-        U: "#ffd966",
-        X: "#ffd966",
-        "X+": "#8ff7ff",
-      };
-      const fillByTier = {
-        F: "#f8f8f8",
-        E: "#f8f8f8",
-        D: "#f8f8f8",
-        C: "#33e66b",
-        B: "#33e66b",
-        A: "#35a8ff",
-        S: "#35a8ff",
-        SS: "#a55cff",
-        U: "#a55cff",
-        X: "#ffcc33",
-        "X+": "#ff4040",
-      };
-      const outline = outlineByTier[tier] || outlineByTier.F;
-      const fill = fillByTier[tier] || fillByTier.F;
-      const crystal = ["S", "SS", "U", "X", "X+"].includes(tier);
-      return {
-        fill,
-        outline,
-        crystal,
-        textColor: "#f8f8f8",
-        background: crystal
-          ? `linear-gradient(135deg, #050505 0%, ${outline} 38%, #ffffff 50%, ${fill} 64%, #080808 100%)`
-          : fill,
-      };
-    };
+    const getGradeTheme = (grade) => this.getProfileGradeTheme(grade);
     const getGradeFillWidth = () => {
       if (!ratingSummary.gradeCost) return 100;
       return Math.max(0, Math.min(100, (ratingSummary.gradeGauge / ratingSummary.gradeCost) * 100));
