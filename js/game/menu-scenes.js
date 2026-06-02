@@ -871,24 +871,51 @@ class MenuScene extends Phaser.Scene {
         surface: "#111b12",
       },
     };
-    const gradeColors = {
-      F: "#6c757d",
-      E: "#7d7a5b",
-      D: "#9e6a47",
-      C: "#c47f2c",
-      B: "#d5b93a",
-      A: "#61d14f",
-      S: "#27c98e",
-      SS: "#27b8ff",
-      U: "#7f7dff",
-      X: "#ff8a4c",
-      "X+": "#f5f5f5",
+    const getGradeTier = (grade) => {
+      const normalized = String(grade || "F").toUpperCase();
+      if (normalized === "X+") return "X+";
+      return normalized.replace(/[0-9+]/g, "") || "F";
     };
-    const getGradeColor = (grade) => {
-      if (!grade) return gradeColors.F;
-      const normalized = String(grade).toUpperCase();
-      const letter = normalized.replace(/[0-9+]/g, "");
-      return gradeColors[normalized] || gradeColors[letter] || gradeColors.F;
+    const getGradeTheme = (grade) => {
+      const tier = getGradeTier(grade);
+      const outlineByTier = {
+        F: "#b87333",
+        E: "#b87333",
+        D: "#b87333",
+        C: "#b87333",
+        B: "#c0c8d2",
+        A: "#c0c8d2",
+        S: "#c0c8d2",
+        SS: "#ffd966",
+        U: "#ffd966",
+        X: "#ffd966",
+        "X+": "#8ff7ff",
+      };
+      const fillByTier = {
+        F: "#f8f8f8",
+        E: "#f8f8f8",
+        D: "#f8f8f8",
+        C: "#33e66b",
+        B: "#33e66b",
+        A: "#35a8ff",
+        S: "#35a8ff",
+        SS: "#a55cff",
+        U: "#a55cff",
+        X: "#ffcc33",
+        "X+": "#ff4040",
+      };
+      const outline = outlineByTier[tier] || outlineByTier.F;
+      const fill = fillByTier[tier] || fillByTier.F;
+      const crystal = ["S", "SS", "U", "X", "X+"].includes(tier);
+      return {
+        fill,
+        outline,
+        crystal,
+        textColor: "#f8f8f8",
+        background: crystal
+          ? `linear-gradient(135deg, #050505 0%, ${outline} 38%, #ffffff 50%, ${fill} 64%, #080808 100%)`
+          : fill,
+      };
     };
     const getGradeFillWidth = () => {
       if (!ratingSummary.gradeCost) return 100;
@@ -1037,7 +1064,11 @@ class MenuScene extends Phaser.Scene {
       card.appendChild(label);
 
       if (item.label === "Grade") {
-        const gradeColor = getGradeColor(ratingSummary.grade);
+        const gradeTheme = getGradeTheme(ratingSummary.grade);
+        card.style.borderColor = gradeTheme.outline;
+        card.style.boxShadow = gradeTheme.crystal
+          ? `0 0 14px ${gradeTheme.outline}, inset 0 0 14px rgba(255,255,255,0.08)`
+          : `0 0 8px ${gradeTheme.outline}`;
         const gradeWrap = this.applyInlineStyles(document.createElement("div"), {
           display: "flex",
           flexDirection: "column",
@@ -1047,16 +1078,22 @@ class MenuScene extends Phaser.Scene {
         const gradeBar = this.applyInlineStyles(document.createElement("div"), {
           position: "relative",
           height: "24px",
-          border: `1px solid ${gradeColor}`,
+          border: `2px solid ${gradeTheme.outline}`,
           background: "#0f0f0f",
           overflow: "hidden",
+          boxShadow: gradeTheme.crystal
+            ? `inset 0 0 10px rgba(255,255,255,0.22), 0 0 12px ${gradeTheme.outline}`
+            : `0 0 6px ${gradeTheme.outline}`,
         });
 
         const gradeFill = this.applyInlineStyles(document.createElement("div"), {
           position: "absolute",
           inset: "0 auto 0 0",
           width: `${getGradeFillWidth()}%`,
-          background: gradeColor,
+          background: gradeTheme.background,
+          boxShadow: gradeTheme.crystal
+            ? `inset 0 0 12px rgba(255,255,255,0.55), 0 0 12px ${gradeTheme.fill}`
+            : "none",
         });
         gradeBar.appendChild(gradeFill);
 
@@ -1067,10 +1104,12 @@ class MenuScene extends Phaser.Scene {
           alignItems: "center",
           justifyContent: "space-between",
           padding: "0 8px",
-          color: palette.surfaceAlt,
+          color: gradeTheme.textColor,
           fontSize: "18px",
           fontWeight: "700",
-          mixBlendMode: "screen",
+          textShadow: gradeTheme.crystal
+            ? "0 0 3px rgba(255,255,255,0.9), 1px 1px 0 rgba(0,0,0,0.45)"
+            : "0 1px 0 rgba(255,255,255,0.25)",
         });
         const gradeValue = this.applyInlineStyles(document.createElement("div"), {
           fontSize: "18px",
