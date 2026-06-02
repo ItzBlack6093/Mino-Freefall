@@ -286,8 +286,14 @@ class NetworkManager {
         this.provisional = msg.provisional;
         if (msg.winnerId === this.playerId) {
           this.wins++;
+          if (typeof window !== "undefined" && window.achievementSystem?.recordVersusMatch) {
+            msg.versusRating = window.achievementSystem.recordVersusMatch("win");
+          }
         } else {
           this.losses++;
+          if (typeof window !== "undefined" && window.achievementSystem?.recordVersusMatch) {
+            msg.versusRating = window.achievementSystem.recordVersusMatch("loss");
+          }
         }
         this.gamesPlayed++;
         this._emit("match_end", msg);

@@ -650,8 +650,8 @@ class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
     this.profileBadgeGroup.add(this.profileBadgeName);
 
-    // Achievement rating
-    this.profileBadgeRating = this.add.text(0, 12, "AR 0", {
+    // Grade rating
+    this.profileBadgeRating = this.add.text(0, 12, "F9", {
       fontSize: "18px",
       fill: "#ffcc00",
       fontFamily: "Courier New",
@@ -677,12 +677,12 @@ class MenuScene extends Phaser.Scene {
     const playerName = typeof window.achievementSystem !== "undefined"
       ? (window.achievementSystem.getPlayerName() || "Player")
       : "Player";
-    const rating = typeof window.achievementSystem !== "undefined"
-      ? window.achievementSystem.getScore()
-      : 0;
+    const ratingSummary = typeof window.achievementSystem !== "undefined" && window.achievementSystem.getRatingSummary
+      ? window.achievementSystem.getRatingSummary()
+      : { grade: "F9" };
 
     this.profileBadgeName.setText(playerName);
-    this.profileBadgeRating.setText(`AR ${rating}`);
+    this.profileBadgeRating.setText(ratingSummary.grade || "F9");
   }
 
   applyInlineStyles(element, styles) {
@@ -831,12 +831,9 @@ class MenuScene extends Phaser.Scene {
     if (typeof window.achievementSystem === "undefined" || this.profileOverlayElement) return;
 
     const playerName = window.achievementSystem.getPlayerName() || "Player";
-    const rating = window.achievementSystem.getScore();
-    const groupedAchievements = window.achievementSystem.getAllByGroup();
-    const allAchievements = Object.values(groupedAchievements).flat();
-    const completedCount = allAchievements.filter((achievement) =>
-      window.achievementSystem.isCompleted(achievement.id),
-    ).length;
+    const ratingSummary = window.achievementSystem.getRatingSummary
+      ? window.achievementSystem.getRatingSummary()
+      : { grade: "F9", gradeGauge: 0, gradeCost: 1, medals: {} };
     const illustrationProgress = this.getKonohaIllustrationProgress();
     const modeTypes = this.getProfileModeTypes();
     const palette = {
@@ -868,11 +865,34 @@ class MenuScene extends Phaser.Scene {
         frame: "#290825",
         surface: "#1d111b",
       },
-      achievements: {
+      rating: {
         accent: palette.minoS,
         frame: "#08260c",
         surface: "#111b12",
       },
+    };
+    const gradeColors = {
+      F: "#6c757d",
+      E: "#7d7a5b",
+      D: "#9e6a47",
+      C: "#c47f2c",
+      B: "#d5b93a",
+      A: "#61d14f",
+      S: "#27c98e",
+      SS: "#27b8ff",
+      U: "#7f7dff",
+      X: "#ff8a4c",
+      "X+": "#f5f5f5",
+    };
+    const getGradeColor = (grade) => {
+      if (!grade) return gradeColors.F;
+      const normalized = String(grade).toUpperCase();
+      const letter = normalized.replace(/[0-9+]/g, "");
+      return gradeColors[normalized] || gradeColors[letter] || gradeColors.F;
+    };
+    const getGradeFillWidth = () => {
+      if (!ratingSummary.gradeCost) return 100;
+      return Math.max(0, Math.min(100, (ratingSummary.gradeGauge / ratingSummary.gradeCost) * 100));
     };
 
     const overlay = this.applyInlineStyles(document.createElement("div"), {
@@ -939,7 +959,7 @@ class MenuScene extends Phaser.Scene {
       color: palette.muted,
     });
     subtitle.textContent =
-      "Detailed run history, Konoha illustration unlocks, and achievement progress in three tabs.";
+      "Detailed run history, Konoha illustration unlocks, and rating progress in three tabs.";
     titleGroup.appendChild(subtitle);
 
     const closeButton = this.applyInlineStyles(document.createElement("button"), {
@@ -976,14 +996,16 @@ class MenuScene extends Phaser.Scene {
         surface: "#061432",
       },
       {
-        label: "AR",
-        value: rating.toString(),
+        label: "Grade",
+        value: ratingSummary.grade || "F9",
         accent: palette.minoO,
         surface: "#2a2400",
       },
       {
-        label: "Achievements",
-        value: `${completedCount}/${allAchievements.length}`,
+        label: "Gauge",
+        value: ratingSummary.gradeCost > 0
+          ? `${ratingSummary.gradeGauge}/${ratingSummary.gradeCost}`
+          : "MAX",
         accent: palette.minoS,
         surface: "#0b240d",
       },
@@ -1014,16 +1036,82 @@ class MenuScene extends Phaser.Scene {
       label.textContent = item.label;
       card.appendChild(label);
 
-      const value = this.applyInlineStyles(document.createElement("div"), {
-        fontSize: "22px",
-        fontWeight: "700",
-        color: palette.text,
-        whiteSpace: "nowrap",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-      });
-      value.textContent = item.value;
-      card.appendChild(value);
+      if (item.label === "Grade") {
+        const gradeColor = getGradeColor(ratingSummary.grade);
+        const gradeWrap = this.applyInlineStyles(document.createElement("div"), {
+          display: "flex",
+          flexDirection: "column",
+          gap: "6px",
+        });
+
+        const gradeBar = this.applyInlineStyles(document.createElement("div"), {
+          position: "relative",
+          height: "24px",
+          border: `1px solid ${gradeColor}`,
+          background: "#0f0f0f",
+          overflow: "hidden",
+        });
+
+        const gradeFill = this.applyInlineStyles(document.createElement("div"), {
+          position: "absolute",
+          inset: "0 auto 0 0",
+          width: `${getGradeFillWidth()}%`,
+          background: gradeColor,
+        });
+        gradeBar.appendChild(gradeFill);
+
+        const gradeText = this.applyInlineStyles(document.createElement("div"), {
+          position: "absolute",
+          inset: "0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "0 8px",
+          color: palette.surfaceAlt,
+          fontSize: "18px",
+          fontWeight: "700",
+          mixBlendMode: "screen",
+        });
+        const gradeValue = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "18px",
+          fontWeight: "700",
+        });
+        gradeValue.textContent = item.value;
+        gradeText.appendChild(gradeValue);
+
+        const gaugeValue = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "11px",
+          fontWeight: "700",
+        });
+        gaugeValue.textContent = ratingSummary.gradeCost > 0
+          ? `${ratingSummary.gradeGauge}/${ratingSummary.gradeCost}`
+          : "MAX";
+        gradeText.appendChild(gaugeValue);
+
+        gradeBar.appendChild(gradeText);
+        gradeWrap.appendChild(gradeBar);
+
+        const gradeFoot = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "11px",
+          color: palette.muted,
+          letterSpacing: "0.04em",
+        });
+        gradeFoot.textContent = `Main rating gauge`;
+        gradeWrap.appendChild(gradeFoot);
+
+        card.appendChild(gradeWrap);
+      } else {
+        const value = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "22px",
+          fontWeight: "700",
+          color: palette.text,
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        });
+        value.textContent = item.value;
+        card.appendChild(value);
+      }
 
       summaryRow.appendChild(card);
     });
@@ -1129,7 +1217,7 @@ class MenuScene extends Phaser.Scene {
 
     createTab("scores", "BEST SCORES", tabThemes.scores.accent);
     createTab("illustrations", "ILLUSTRATIONS", tabThemes.illustrations.accent);
-    createTab("achievements", "ACHIEVEMENTS", tabThemes.achievements.accent);
+    createTab("rating", "RATING", tabThemes.rating.accent);
 
     const scorePane = createPane(
       "scores",
@@ -1404,89 +1492,118 @@ class MenuScene extends Phaser.Scene {
       illustrationGrid.appendChild(cell);
     }
 
-    const achievementPane = createPane(
-      "achievements",
-      "Achievements",
-      tabThemes.achievements.accent,
+    const ratingPane = createPane(
+      "rating",
+      "Rating",
+      tabThemes.rating.accent,
     );
 
-    const achievementInfo = this.applyInlineStyles(document.createElement("div"), {
+    const ratingInfo = this.applyInlineStyles(document.createElement("div"), {
       fontSize: "12px",
       lineHeight: "1.45",
       color: palette.text,
-      border: `1px solid ${tabThemes.achievements.accent}`,
-      background: tabThemes.achievements.surface,
+      border: `1px solid ${tabThemes.rating.accent}`,
+      background: tabThemes.rating.surface,
       padding: "8px",
     });
-    achievementInfo.textContent = `${completedCount} completed for ${rating} AR total.`;
-    achievementPane.appendChild(achievementInfo);
+    ratingInfo.textContent = "Cumulative rating from stored runs.";
+    ratingPane.appendChild(ratingInfo);
 
-    const achievementList = this.applyInlineStyles(document.createElement("div"), {
+    const ratingList = this.applyInlineStyles(document.createElement("div"), {
       display: "flex",
       flexDirection: "column",
       gap: "8px",
     });
-    achievementPane.appendChild(achievementList);
+    ratingPane.appendChild(ratingList);
 
-    Object.entries(groupedAchievements).forEach(([game, achievements]) => {
-      const group = this.applyInlineStyles(document.createElement("div"), {
+    const medalOrder = ["guideline", "grade", "20g", "bravo", "versus"];
+    medalOrder.forEach((medalId) => {
+      const medal = ratingSummary.medals?.[medalId];
+      if (!medal) return;
+      const row = this.applyInlineStyles(document.createElement("div"), {
+        display: "grid",
+        gridTemplateColumns: "68px minmax(0, 1fr) 92px",
+        gap: "8px",
+        alignItems: "center",
+        padding: "10px",
+        background: palette.surfaceAlt,
+        border: `1px solid ${medal.tierColor || tabThemes.rating.accent}`,
+      });
+
+      const badge = this.applyInlineStyles(document.createElement("div"), {
+        width: "56px",
+        height: "56px",
+        borderRadius: "50%",
+        border: `2px solid ${medal.tierColor || tabThemes.rating.accent}`,
+        background: `radial-gradient(circle at 30% 30%, ${medal.tierColor || tabThemes.rating.accent}, #101010 78%)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: palette.text,
+        fontSize: "15px",
+        fontWeight: "700",
+        boxShadow: `inset 0 0 0 2px rgba(255,255,255,0.08)`,
+        justifySelf: "center",
+      });
+      badge.textContent = medal.stars > 0 ? `${medal.stars}` : "0";
+      badge.title = `${medal.label} ${medal.tierLabel}`;
+      row.appendChild(badge);
+
+      const body = this.applyInlineStyles(document.createElement("div"), {
+        minWidth: "0",
         display: "flex",
         flexDirection: "column",
-        gap: "8px",
+        gap: "6px",
       });
+      row.appendChild(body);
 
-      const groupTitle = this.applyInlineStyles(document.createElement("div"), {
+      const name = this.applyInlineStyles(document.createElement("div"), {
         fontSize: "13px",
         fontWeight: "700",
-        letterSpacing: "0.08em",
+        letterSpacing: "0.06em",
         textTransform: "uppercase",
-        color: palette.minoO,
+        color: medal.tierColor || tabThemes.rating.accent,
       });
-      groupTitle.textContent = game;
-      group.appendChild(groupTitle);
+      name.textContent = medal.label;
+      body.appendChild(name);
 
-      achievements.forEach((achievement) => {
-        const completed = window.achievementSystem.isCompleted(achievement.id);
-        const row = this.applyInlineStyles(document.createElement("div"), {
-          display: "grid",
-          gridTemplateColumns: "18px minmax(0, 1fr) auto",
-          gap: "8px",
-          alignItems: "start",
-          padding: "8px",
-          background: completed ? "#102410" : palette.surfaceAlt,
-          border: `1px solid ${completed ? tabThemes.achievements.accent : palette.border}`,
-        });
-
-        const marker = this.applyInlineStyles(document.createElement("div"), {
-          fontSize: "14px",
-          fontWeight: "700",
-          color: completed ? tabThemes.achievements.accent : palette.muted,
-          lineHeight: "1.2",
-        });
-        marker.textContent = completed ? "Y" : "-";
-        row.appendChild(marker);
-
-        const desc = this.applyInlineStyles(document.createElement("div"), {
-          fontSize: "12px",
-          lineHeight: "1.4",
-          color: completed ? palette.text : palette.muted,
-        });
-        desc.textContent = achievement.description;
-        row.appendChild(desc);
-
-        const points = this.applyInlineStyles(document.createElement("div"), {
-          fontSize: "12px",
-          fontWeight: "700",
-          color: palette.minoO,
-          whiteSpace: "nowrap",
-        });
-        points.textContent = `+${achievement.points}`;
-        row.appendChild(points);
-
-        group.appendChild(row);
+      const subline = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "12px",
+        lineHeight: "1.35",
+        color: palette.muted,
+        minWidth: "0",
       });
+      subline.textContent = `${medal.tierLabel} ${medal.stars}/${medal.cap === Infinity ? "∞" : medal.cap} · +${medal.contributionValue}`;
+      body.appendChild(subline);
 
-      achievementList.appendChild(group);
+      const progressShell = this.applyInlineStyles(document.createElement("div"), {
+        height: "8px",
+        borderRadius: "999px",
+        overflow: "hidden",
+        background: "#0a0a0a",
+        border: `1px solid ${medal.tierColor || palette.border}`,
+      });
+      const progressFill = this.applyInlineStyles(document.createElement("div"), {
+        height: "100%",
+        width: `${Math.max(0, Math.min(100, (medal.gauge / Math.max(1, ratingSummary.starProgressThreshold || 10)) * 100))}%`,
+        background: medal.tierColor || tabThemes.rating.accent,
+      });
+      progressShell.appendChild(progressFill);
+      body.appendChild(progressShell);
+
+      const value = this.applyInlineStyles(document.createElement("div"), {
+        fontSize: "16px",
+        fontWeight: "700",
+        color: palette.text,
+        textAlign: "right",
+        justifySelf: "end",
+      });
+      value.textContent = medalId === "versus"
+        ? `W ${medal.wins || 0} / L ${medal.losses || 0}`
+        : `+${medal.contributionValue}`;
+      row.appendChild(value);
+
+      ratingList.appendChild(row);
     });
 
     setTabActive("scores");
@@ -2113,6 +2230,15 @@ class MenuScene extends Phaser.Scene {
     }
     this.leaderboardEntries = [];
 
+    const ratingSummary = typeof window !== "undefined" && window.achievementSystem?.getRatingSummary
+      ? window.achievementSystem.getRatingSummary()
+      : null;
+    const versusMedal = ratingSummary?.medals?.versus;
+    const versusBadge = versusMedal
+      ? `${versusMedal.tierLabel.toUpperCase()} ${versusMedal.stars}${versusMedal.cap === Infinity ? "" : `/${versusMedal.cap}`}★`
+      : "WHITE 0/1★";
+    const versusBadgeColor = versusMedal?.tierColor || "#ffcc00";
+
     const isLocalAiMode =
       typeof modeId === "string" && modeId.toLowerCase().includes("_ai");
     if (isLocalAiMode && typeof getLocalVersusAiSummary === "function") {
@@ -2124,7 +2250,7 @@ class MenuScene extends Phaser.Scene {
       const isProvisional = !!summary?.provisional;
 
       const ladderLabel = this.add
-        .text(baseX, baseY - 40, "MINOSA LADDER", {
+        .text(baseX, baseY - 40, "VERSUS MEDAL", {
           fontSize: "14px",
           fill: "#888888",
           fontFamily: "Courier New",
@@ -2132,9 +2258,9 @@ class MenuScene extends Phaser.Scene {
         .setOrigin(0.5, 0.5);
 
       const ladderValue = this.add
-        .text(baseX, baseY - 10, isProvisional ? "PROVISIONAL" : ratingValue.toFixed(2), {
-          fontSize: isProvisional ? "24px" : "34px",
-          fill: isProvisional ? "#ffffff" : "#ffcc00",
+        .text(baseX, baseY - 10, versusBadge, {
+          fontSize: "26px",
+          fill: versusBadgeColor,
           fontFamily: "Courier New",
           fontStyle: "bold",
         })
@@ -2146,7 +2272,7 @@ class MenuScene extends Phaser.Scene {
           baseY + 26,
           isProvisional
             ? `${summary.matchesPlayed || 0}/${10} decisive matches`
-            : `Tier ${tierLabel}  |  RD ${Number(summary.rd || 0).toFixed(1)}`,
+            : `AI ${ratingValue.toFixed(2)}  |  Tier ${tierLabel}`,
           {
           fontSize: "14px",
           fill: isProvisional ? "#ffcc00" : "#00ffff",
@@ -2172,7 +2298,7 @@ class MenuScene extends Phaser.Scene {
         .text(
           baseX,
           baseY + 84,
-          `Matches: ${summary.matchesPlayed || 0}  |  Rounds: ${summary.roundsPlayed || 0}`,
+          `RD ${Number(summary.rd || 0).toFixed(1)}  |  Rounds ${summary.roundsPlayed || 0}`,
           {
             fontSize: "12px",
             fill: "#888888",
@@ -2202,29 +2328,25 @@ class MenuScene extends Phaser.Scene {
     const baseX = this.leaderboardContainer.x;
     const baseY = this.leaderboardContainer.y;
 
-    // MR (prominent)
+    // Versus medal (prominent)
     const mrLabel = this.add
-      .text(baseX, baseY - 40, "MR", {
+      .text(baseX, baseY - 40, "VERSUS MEDAL", {
         fontSize: "16px",
         fill: "#888888",
         fontFamily: "Courier New",
       })
       .setOrigin(0.5, 0.5);
 
-    const mrColor = provisional
-      ? "#ff0000"
-      : this.hsvToHex(Math.max(95 - (mr / 40) * 150, -50), 0.9, 0.9);
-
     const mrValue = this.add
-      .text(baseX, baseY - 15, provisional ? "?.??" : mr.toFixed(2), {
-        fontSize: "36px",
-        fill: mrColor,
+      .text(baseX, baseY - 15, versusBadge, {
+        fontSize: "26px",
+        fill: versusBadgeColor,
         fontFamily: "Courier New",
         fontStyle: "bold",
       })
       .setOrigin(0.5, 0.5);
 
-    // Glicko (same as rating value but labeled explicitly)
+    // Glicko remains the hidden matchmaking strength, shown as secondary detail.
     const glickoLabel = this.add
       .text(baseX - 60, baseY + 30, "Glicko", {
         fontSize: "14px",
@@ -2272,9 +2394,17 @@ class MenuScene extends Phaser.Scene {
       this.leaderboardEntries.push({ provText });
     }
 
+    const mrTechText = this.add
+      .text(baseX, baseY + 86, provisional ? "MR ?.??" : `MR ${mr.toFixed(2)}`, {
+        fontSize: "12px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5, 0.5);
+
     this.leaderboardEntries.push({
       mrLabel, mrValue,
-      glickoLabel, glickoValue, rdLabel, rdValue,
+      glickoLabel, glickoValue, rdLabel, rdValue, mrTechText,
     });
   }
 
@@ -2319,7 +2449,7 @@ class MenuScene extends Phaser.Scene {
         this.leaderboardPlaceholder.setVisible(false);
       if (this.leaderboardContainer) this.leaderboardContainer.setVisible(true);
       if (this.leaderboardTitle) {
-        this.leaderboardTitle.setText(isLocalAiMode ? "MINOSA LADDER" : "PLAYER RATING");
+        this.leaderboardTitle.setText("VERSUS RATING");
         this.leaderboardTitle.setVisible(true);
       }
       this.updateVersusRatingDisplay(modeId);
@@ -2841,6 +2971,9 @@ class MenuScene extends Phaser.Scene {
 
   saveLeaderboardEntryToModeId(modeId, entry) {
     if ((this.startingLevel || 0) > 0) return;
+    if (typeof window !== "undefined" && window.achievementSystem?.appendRatingRun) {
+      window.achievementSystem.appendRatingRun(modeId, entry);
+    }
     const key = `leaderboard_${modeId}`;
     const list = this.getLeaderboard(modeId);
     list.push(entry);

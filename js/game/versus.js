@@ -8,6 +8,23 @@ function computeMRClient(glickoRating) {
   return Math.round(mr * 100) / 100;
 }
 
+function getVersusMedalDisplay() {
+  const summary =
+    typeof window !== "undefined" && window.achievementSystem?.getRatingSummary
+      ? window.achievementSystem.getRatingSummary()
+      : null;
+  const medal = summary?.medals?.versus;
+  if (!medal) {
+    return { label: "WHITE 0/1★", color: "#ffcc00", summary: null };
+  }
+  const cap = medal.cap === Infinity ? "" : `/${medal.cap}`;
+  return {
+    label: `${String(medal.tierLabel || "White").toUpperCase()} ${medal.stars}${cap}★`,
+    color: medal.tierColor || "#ffcc00",
+    summary
+  };
+}
+
 function getDefaultVersusServerUrl() {
   if (typeof window !== "undefined" && typeof window.resolveMinoVersusServerUrl === "function") {
     return window.resolveMinoVersusServerUrl();
@@ -1583,6 +1600,10 @@ class LocalVersusAiController {
     }
 
     const ladderUpdate = recordLocalVersusAiMatch(outcome, roundNumber);
+    const versusRating =
+      typeof window !== "undefined" && window.achievementSystem?.recordVersusMatch
+        ? window.achievementSystem.recordVersusMatch(outcome)
+        : null;
     showVersusResult(this.scene, {
       localAi: true,
       outcome,
@@ -1600,6 +1621,7 @@ class LocalVersusAiController {
       provisional: ladderUpdate.provisional,
       wasProvisional: ladderUpdate.wasProvisional,
       decisiveMatchesPlayed: ladderUpdate.state.matchesPlayed,
+      versusRating,
       winnerId: outcome === "win" ? LOCAL_VERSUS_AI_PLAYER_ID : LOCAL_VERSUS_AI_OPPONENT_ID,
     });
   }
@@ -1829,7 +1851,7 @@ class MatchmakingScene extends Phaser.Scene {
       this.scene.start("MenuScene");
     });
 
-    // MR display
+    // Versus medal display
     this.mrText = this.add
       .text(centerX, 90, "", {
         fontSize: "28px",
@@ -1842,16 +1864,14 @@ class MatchmakingScene extends Phaser.Scene {
     // Network event handlers
     this.networkManager.on("identified", (data) => {
       const mr = computeMRClient(data.rating);
+      const versusMedal = getVersusMedalDisplay();
       this.ratingText.setText(
         data.provisional
           ? "Rating: ? (provisional)"
           : `Rating: ${data.rating}  |  Glicko: ${data.rating}  |  RD: ${data.rd}`
       );
-      this.mrText.setText(
-        data.provisional
-          ? "MR: ?.??"
-          : `MR: ${(data.mr != null ? data.mr : mr).toFixed(2)}`
-      );
+      this.mrText.setText(versusMedal.label);
+      this.mrText.setFill(versusMedal.color);
       this.statsText.setText(`W: ${data.wins}  L: ${data.losses}  Games: ${data.gamesPlayed}`);
       // Join queue after identification
       this.networkManager.joinQueue(this.queueType);
@@ -2898,20 +2918,13 @@ function showVersusResult(gameScene, data) {
 
   const deltaValue = Number(data.ratingDelta) || 0;
   const deltaStr = deltaValue >= 0 ? `+${deltaValue}` : `${deltaValue}`;
-  const mrLine = isLocalAi
-    ? (
-      data.provisional
-        ? "AI Rating: PROVISIONAL"
-        : `AI Rating: ${formatLocalVersusAiRating(data.newRating)}`
-    )
-    : data.provisional
-      ? "MR: ?.??"
-      : `MR: ${(data.newMR != null ? data.newMR : computeMRClient(data.newRating || 1500)).toFixed(2)}`;
+  const versusMedal = getVersusMedalDisplay();
+  const mrLine = `Versus ${versusMedal.label}`;
 
   gameScene.add
     .text(centerX, centerY - 10, mrLine, {
       fontSize: "28px",
-      fill: "#ffcc00",
+      fill: versusMedal.color,
       fontFamily: "Courier New",
       fontStyle: "bold",
     })
@@ -2922,11 +2935,11 @@ function showVersusResult(gameScene, data) {
     ? (
       data.provisional
         ? `Calibration: ${Math.max(0, Number(data.decisiveMatchesPlayed) || 0)}/${LOCAL_VERSUS_AI_PROVISIONAL_MATCHES} decisive matches`
-        : `Ladder: ${formatLocalVersusAiRating(data.oldRating)} -> ${formatLocalVersusAiRating(data.newRating)} (${deltaStr})  |  RD: ${normalizeLocalVersusAiRd(data.newRd).toFixed(1)}`
+        : `AI: ${formatLocalVersusAiRating(data.oldRating)} -> ${formatLocalVersusAiRating(data.newRating)} (${deltaStr})  |  RD: ${normalizeLocalVersusAiRd(data.newRd).toFixed(1)}`
     )
     : data.provisional
       ? `Rating: ? (provisional) (${deltaStr})`
-      : `Rating: ${data.newRating} (${deltaStr})  |  RD: ${data.newRd}`;
+      : `Glicko: ${data.newRating} (${deltaStr})  |  RD: ${data.newRd}`;
 
   gameScene.add
     .text(centerX, centerY + 20, ratingLine, {

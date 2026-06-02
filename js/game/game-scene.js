@@ -2691,6 +2691,9 @@ class GameScene extends Phaser.Scene {
 
   saveLeaderboardEntryToModeId(modeId, entry) {
     if ((this.startingLevel || 0) > 0) return;
+    if (typeof window !== "undefined" && window.achievementSystem?.appendRatingRun) {
+      window.achievementSystem.appendRatingRun(modeId, entry);
+    }
     const key = `leaderboard_${modeId}`;
     const list = this.getLeaderboard(modeId);
     list.push(entry);
