@@ -134,6 +134,42 @@ class AchievementSystem {
     return this.ratingGradeCosts[letter] || 10;
   }
 
+  getRatingMedalProgressGain(points = 1, profile = this.ratingProfile) {
+    const basePoints = Math.max(0, Number(points) || 0);
+    if (basePoints <= 0) return 0;
+    const cost = this.getCurrentGradeScalingCost(profile);
+    const gainDivisor = Math.max(1, Math.ceil(cost / 3));
+    return this.roundRatingProgress(basePoints / gainDivisor);
+  }
+
+  getRatingMedalProgressLoss(profile = this.ratingProfile) {
+    const cost = this.getCurrentGradeScalingCost(profile);
+    return Math.max(1, Math.ceil(cost / 2));
+  }
+
+  getCurrentGradeScalingCost(profile = this.ratingProfile) {
+    const cost = this.getCurrentGradeCost(profile);
+    return cost > 0 ? cost : this.ratingGradeCosts.X;
+  }
+
+  roundRatingProgress(value) {
+    return Math.round(Math.max(0, Number(value) || 0) * 100) / 100;
+  }
+
+  addRatingMedalProgress(medal, points, profile = this.ratingProfile) {
+    if (!medal) return;
+    medal.gauge = this.roundRatingProgress(
+      (Number(medal.gauge) || 0) + this.getRatingMedalProgressGain(points, profile)
+    );
+  }
+
+  removeRatingMedalProgress(medal, profile = this.ratingProfile) {
+    if (!medal) return;
+    medal.gauge = this.roundRatingProgress(
+      Math.max(0, (Number(medal.gauge) || 0) - this.getRatingMedalProgressLoss(profile))
+    );
+  }
+
   getGradeLabel(profile = this.ratingProfile) {
     const ladder = this.getGradeLadder();
     return ladder[Math.max(0, Math.min(ladder.length - 1, Number(profile?.gradeIndex) || 0))] || "F9";
@@ -343,7 +379,7 @@ class AchievementSystem {
         if (!milestone.predicate(run.entry || {})) return;
         const medal = profile.medals[milestone.skillset];
         if (!medal) return;
-        medal.gauge += Math.max(0, Number(milestone.points) || 0);
+        this.addRatingMedalProgress(medal, milestone.points, profile);
       });
 
       this.ratingSkillsets.forEach((skillset) => {
@@ -375,10 +411,10 @@ class AchievementSystem {
 
     if (normalizedOutcome === "win") {
       medal.wins += 1;
-      medal.gauge += 1;
+      this.addRatingMedalProgress(medal, 1, profile);
     } else {
       medal.losses += 1;
-      medal.gauge = Math.max(0, medal.gauge - 1);
+      this.removeRatingMedalProgress(medal, profile);
     }
 
     const promotions = [];
