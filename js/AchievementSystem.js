@@ -160,12 +160,22 @@ class AchievementSystem {
     return this.ratingGradeCosts[letter] || 10;
   }
 
-  getRatingMedalProgressGain(points = 1, profile = this.ratingProfile) {
+  getRatingMedalGradeGainMultiplier(profile = this.ratingProfile) {
+    const cost = this.getCurrentGradeScalingCost(profile);
+    return Math.max(1, this.ratingGradeCosts.X + 1 - cost);
+  }
+
+  getRatingMedalTierGainMultiplier(medal) {
+    const tierMultipliers = [1.2, 1.1, 1, 0.9, 0.8, 0.7];
+    const tierIndex = Math.max(0, Math.min(tierMultipliers.length - 1, Number(medal?.tierIndex) || 0));
+    return tierMultipliers[tierIndex];
+  }
+
+  getRatingMedalProgressGain(points = 1, profile = this.ratingProfile, medal = null) {
     const basePoints = Math.max(0, Number(points) || 0);
     if (basePoints <= 0) return 0;
-    const cost = this.getCurrentGradeScalingCost(profile);
-    const gainDivisor = Math.max(1, Math.ceil(cost / 3));
-    return this.roundRatingProgress(basePoints / gainDivisor);
+    const multiplier = this.getRatingMedalGradeGainMultiplier(profile) * this.getRatingMedalTierGainMultiplier(medal);
+    return this.roundRatingProgress(basePoints * multiplier);
   }
 
   getRatingMedalProgressLoss(profile = this.ratingProfile) {
@@ -185,7 +195,7 @@ class AchievementSystem {
   addRatingMedalProgress(medal, points, profile = this.ratingProfile) {
     if (!medal) return;
     medal.gauge = this.roundRatingProgress(
-      (Number(medal.gauge) || 0) + this.getRatingMedalProgressGain(points, profile)
+      (Number(medal.gauge) || 0) + this.getRatingMedalProgressGain(points, profile, medal)
     );
   }
 
