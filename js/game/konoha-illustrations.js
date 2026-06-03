@@ -52,6 +52,59 @@
     "watame",
   ];
 
+  const CHARACTER_NAMES = {
+    "ame": { name1: "ワトソン・アメリア（わとそん あめりあ）", name2: "Watson Amelia" },
+    "ao": { name1: "火威青（ひおどし あお）", name2: "Hiodoshi Ao" },
+    "aqua": { name1: "湊あくあ（みなと あくあ）", name2: "Minato Aqua" },
+    "azki": { name1: "あずき（あずき）", name2: "AZKi" },
+    "bae": { name1: "ハコス・ベールズ（はこす べーるず）", name2: "Hakos Baelz" },
+    "bijou": { name1: "古石ビジュー（こせき びじゅー）", name2: "Koseki Bijou" },
+    "calli": { name1: "森カリオペ（もり かりおぺ）", name2: "Mori Calliope" },
+    "ceci": { name1: "セシリア・イマーグリーン（せしりあ いまーぐりーん）", name2: "Cecilia Immergreen" },
+    "chihaya": { name1: "輪堂千速（りんどう ちはや）", name2: "Rindo Chihaya" },
+    "fauna": { name1: "セレス・ファウナ（せれす ふぁうな）", name2: "Ceres Fauna" },
+    "flare": { name1: "不知火フレア（しらぬい ふれあ）", name2: "Shiranui Flare" },
+    "fubuki": { name1: "白上フブキ（しらかみ ふぶき）", name2: "Shirakami Fubuki" },
+    "fuwawa": { name1: "フワワ・アビスガード（ふわわ あびすがーど）", name2: "Fuwawa Abyssgard" },
+    "gigi": { name1: "ジジ・ムリン（じじ むりん）", name2: "Gigi Murin" },
+    "gura": { name1: "がうる・ぐら（がうる ぐら）", name2: "Gawr Gura" },
+    "hajime": { name1: "轟はじめ（とどろき はじめ）", name2: "Todoroki Hajime" },
+    "ina": { name1: "一伊那尓栖（にのまえ いなにす）", name2: "Ninomae Ina'nis" },
+    "irys": { name1: "アイリス（あいりす）", name2: "IRyS" },
+    "kanade": { name1: "音乃瀬奏（おとのせ かなで）", name2: "Otonose Kanade" },
+    "kanata": { name1: "天音かなた（あまね かなた）", name2: "Amane Kanata" },
+    "kiara": { name1: "小鳥遊キアラ（たかなし きあら）", name2: "Takanashi Kiara" },
+    "korone": { name1: "戌神ころね（いぬがみ ころね）", name2: "Inugami Korone" },
+    "kronii": { name1: "オーロ・クロニー（おーろ くろにー）", name2: "Ouro Kronii" },
+    "liz": { name1: "エリザベス・ローズ・ブラッドフレイム（えりざべす ろーず ぶらっどふれいむ）", name2: "Elizabeth Rose Bloodflame" },
+    "luna": { name1: "姫森ルーナ（ひめもり るーな）", name2: "Himemori Luna" },
+    "marine": { name1: "宝鐘マリン（ほうしょう まりん）", name2: "Houshou Marine" },
+    "miko": { name1: "さくらみこ（さくら みこ）", name2: "Sakura Miko" },
+    "mio": { name1: "大神ミオ（おおかみ みお）", name2: "Ookami Mio" },
+    "mococo": { name1: "モココ・アビスガード（もここ あびすがーど）", name2: "Mococo Abyssgard" },
+    "mumei": { name1: "七詩ムメイ（ななし むめい）", name2: "Nanashi Mumei" },
+    "nerissa": { name1: "ネリッサ・レイヴンクロフト （ねりっさ れいゔんくろふと）", name2: "Nerissa Ravencroft" },
+    "niko": { name1: "虎金妃笑虎（こがねい にこ）", name2: "Koganei Niko" },
+    "noel": { name1: "白銀ノエル（しろがね のえる）", name2: "Shirogane Noel" },
+    "okayu": { name1: "猫又おかゆ（ねこまた おかゆ）", name2: "Nekomata Okayu" },
+    "pekora": { name1: "兎田ぺこら（うさだ ぺこら）", name2: "Usada Pekora" },
+    "raden": { name1: "儒烏風亭らでん（じゅうふうてい らでん）", name2: "Juufuutei Raden" },
+    "raora": { name1: "ラオーラ・パンテーラ（らおーら ぱんてーら）", name2: "Raora Panthera" },
+    "riona": { name1: "響咲リオナ（いさき りおな）", name2: "Isaki Riona" },
+    "ririka": { name1: "一条莉々華（いちじょう りりか）", name2: "Ichijou Ririka" },
+    "roboco": { name1: "ロボ子さん（ろぼこさん）", name2: "Robocosan" },
+    "sana": { name1: "九十九佐命（つくも さな）", name2: "Tsukumo Sana" },
+    "shion": { name1: "紫咲シオン（むらさき しおん）", name2: "Murasaki Shion" },
+    "shiori": { name1: "シオリ・ノヴェラ（しおり のゔぇら）", name2: "Shiori Novella" },
+    "sora": { name1: "ときのそら（ときのそら）", name2: "Tokino Sora" },
+    "su": { name1: "水宮枢（みずみや すう）", name2: "Mizumiya Su" },
+    "subaru": { name1: "大空スバル（おおぞら すばる）", name2: "Oozora Subaru" },
+    "suisei": { name1: "星街すいせい（ほしまち すいせい）", name2: "Hoshimachi Suisei" },
+    "towa": { name1: "常闇トワ（とこやみ とわ）", name2: "Tokoyami Towa" },
+    "vivi": { name1: "綺々羅々ヴィヴィ（ききらら ゔぃゔぃ）", name2: "Kikirara Vivi" },
+    "watame": { name1: "角巻わため（つのまき わため）", name2: "Tsunomaki Watame" }
+  };
+
   const EASY_POOL_SIZE = 37;
   const EASY_CHARACTER_IDS = CHARACTER_IDS.slice(0, EASY_POOL_SIZE);
   const HARD_LATE_CHARACTER_IDS = CHARACTER_IDS.slice(EASY_POOL_SIZE);
@@ -899,6 +952,7 @@
 
   const api = {
     CHARACTER_IDS,
+    CHARACTER_NAMES,
     EASY_CHARACTER_IDS,
     HARD_LATE_CHARACTER_IDS,
     EASY_RUN_ILLUSTRATION_TOTAL,

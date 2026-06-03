@@ -3478,7 +3478,7 @@ class GameScene extends Phaser.Scene {
         fontStyle: "bold",
       })
       .setOrigin(0, 0)
-      .setVisible(false);
+      .setVisible(showAsukaKitas);
     this.asukaKitaText = this.add
       .text(ppsX, kitaTextY, showKonohaMinosa ? "🦊" : "0", {
         fontSize: `${largeFontSize - 4}px`,
@@ -10582,6 +10582,38 @@ class GameScene extends Phaser.Scene {
 
   goToMenu() {
     // Centralized safe return to menu to avoid stale scenes causing blank screens
+    if (this.gameOver || this.sprintCompleted) {
+      this.exitingToMenu = true;
+      const mgr = this.scene;
+      const rootMgr = this.game && this.game.scene ? this.game.scene : mgr;
+
+      const resultsData = {
+        level: this.level,
+        score: this.score,
+        grade: this.grade,
+        hasGrading: this.modeUsesGrading(),
+        modeId: this.selectedMode,
+        isVersus: this.isVersusModeScene?.() || false
+      };
+
+      if (!rootMgr.getScene("ResultsScene")) {
+        try {
+          rootMgr.add("ResultsScene", new ResultsScene(), false);
+        } catch (e) {
+          console.error("[goToMenu] failed to add ResultsScene", e);
+        }
+      }
+
+      ["AssetLoaderScene", "LoadingScreenScene", "GameScene"].forEach((key) => {
+        if (rootMgr.isActive(key)) {
+          rootMgr.stop(key);
+        }
+      });
+
+      rootMgr.start("ResultsScene", resultsData);
+      return;
+    }
+
     this.exitingToMenu = true;
     const mgr = this.scene;
     const rootMgr = this.game && this.game.scene ? this.game.scene : mgr;
@@ -12508,6 +12540,10 @@ class GameScene extends Phaser.Scene {
       const isKonohaMode =
         typeof modeId === "string" &&
         (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
+      
+      if (this.bravoCountLabel) this.bravoCountLabel.setVisible(isKonohaMode);
+      this.bravoCountText.setVisible(isKonohaMode);
+
       if (isKonohaMode) {
         const bravoCount =
           this.gameMode && typeof this.gameMode.bravoCount === "number"
@@ -12519,6 +12555,7 @@ class GameScene extends Phaser.Scene {
       }
     }
     if (this.asukaKitaText) {
+      if (this.asukaKitaLabel) this.asukaKitaLabel.setVisible(false);
       const modeId = this.gameMode && typeof this.gameMode.getModeId === "function"
         ? this.gameMode.getModeId()
         : this.selectedMode;
@@ -12555,8 +12592,9 @@ class GameScene extends Phaser.Scene {
           typeof modeId === "string" &&
           (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
         const kitaDisplayText =
-          isAsukaMode && kitaCount > 0 ? `🦊x${kitaCount}` : kitaCount.toString();
-        this.asukaKitaText.setVisible(true);
+          isAsukaMode ? `🦊x${kitaCount}` : "";
+        if (this.asukaKitaLabel) this.asukaKitaLabel.setVisible(isAsukaMode);
+        this.asukaKitaText.setVisible(isAsukaMode);
         this.asukaKitaText.setText(kitaDisplayText);
         this.asukaKitaText.setColor("#ffff88");
       }

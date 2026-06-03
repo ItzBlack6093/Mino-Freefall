@@ -14,6 +14,7 @@ const config = {
     AssetLoaderScene,
     LoadingScreenScene,
     GameScene,
+    ResultsScene,
   ],
   backgroundColor: "#000000",
   fps: 60,

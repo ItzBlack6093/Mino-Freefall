@@ -166,7 +166,7 @@ class AchievementSystem {
   }
 
   getRatingMedalTierGainMultiplier(medal) {
-    const tierMultipliers = [1.2, 1.1, 1, 0.9, 0.8, 0.7];
+    const tierMultipliers = [1.8, 1.5, 1.2, 1, 1, 1];
     const tierIndex = Math.max(0, Math.min(tierMultipliers.length - 1, Number(medal?.tierIndex) || 0));
     return tierMultipliers[tierIndex];
   }

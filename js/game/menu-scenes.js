@@ -1493,6 +1493,25 @@ class MenuScene extends Phaser.Scene {
       previewHint.textContent = `ILL ${String((slot?.number || 1)).padStart(2, "0")} • CLICK TO DISMISS`;
       previewFrame.appendChild(previewHint);
 
+      const characterId = slot?.characterId;
+      const characterNameData =
+        typeof window !== "undefined" &&
+        window.KonohaIllustrationSystem &&
+        window.KonohaIllustrationSystem.CHARACTER_NAMES
+          ? window.KonohaIllustrationSystem.CHARACTER_NAMES[characterId]
+          : null;
+      if (characterNameData) {
+        const nameElement = this.applyInlineStyles(document.createElement("div"), {
+          fontSize: "18px",
+          fontWeight: "700",
+          color: "#ffffff",
+          textAlign: "center",
+          letterSpacing: "0.04em",
+        });
+        nameElement.textContent = `${characterNameData.name2} / ${characterNameData.name1}`;
+        previewFrame.appendChild(nameElement);
+      }
+
       if (
         typeof window !== "undefined" &&
         window.KonohaIllustrationSystem &&
@@ -1506,7 +1525,7 @@ class MenuScene extends Phaser.Scene {
           previewNode.style.width = "auto";
           previewNode.style.height = "auto";
           previewNode.style.maxWidth = "min(1080px, calc(100vw - 40px))";
-          previewNode.style.maxHeight = "calc(100vh - 86px)";
+          previewNode.style.maxHeight = "calc(100vh - 120px)";
           previewNode.style.imageRendering = "pixelated";
           previewFrame.appendChild(previewNode);
         }
@@ -1577,7 +1596,15 @@ class MenuScene extends Phaser.Scene {
         boxSizing: "border-box",
         cursor: fullyUnlocked ? "pointer" : "default",
       });
-      cell.title = `ILL ${String(index + 1).padStart(2, "0")} • ${stateLabel}${fullyUnlocked ? " • Click to view" : ""}`;
+      const characterId = slot?.characterId;
+      const characterNameData =
+        typeof window !== "undefined" &&
+        window.KonohaIllustrationSystem &&
+        window.KonohaIllustrationSystem.CHARACTER_NAMES
+          ? window.KonohaIllustrationSystem.CHARACTER_NAMES[characterId]
+          : null;
+      const nameStr = (fullyUnlocked && characterNameData) ? ` • ${characterNameData.name2}` : "";
+      cell.title = `ILL ${String(index + 1).padStart(2, "0")} • ${stateLabel}${nameStr}${fullyUnlocked ? " • Click to view" : ""}`;
 
       if (
         typeof window !== "undefined" &&
@@ -6994,3 +7021,264 @@ class LoadingScreenScene extends Phaser.Scene {
     });
   }
 }
+
+class ResultsScene extends Phaser.Scene {
+  constructor() {
+    super({ key: "ResultsScene" });
+  }
+
+  init(data) {
+    this.level = data.level !== undefined ? data.level : 0;
+    this.score = data.score !== undefined ? data.score : 0;
+    this.grade = data.grade || null;
+    this.hasGrading = !!data.hasGrading;
+    this.modeId = data.modeId || "";
+    this.isVersus = !!data.isVersus;
+  }
+
+  create() {
+    const centerX = this.cameras.main.width / 2;
+    const centerY = this.cameras.main.height / 2;
+
+    // Dark premium background overlay
+    const bg = this.add.graphics();
+    bg.fillStyle(0x080810, 0.95);
+    bg.fillRect(0, 0, this.cameras.main.width, this.cameras.main.height);
+
+    // Neon accent borders/lines
+    const border = this.add.graphics();
+    border.lineStyle(2, 0x00f3ff, 0.4);
+    border.strokeRect(centerX - 400, centerY - 250, 800, 500);
+    // Middle divider
+    border.beginPath();
+    border.moveTo(centerX, centerY - 220);
+    border.lineTo(centerX, centerY + 220);
+    border.strokePath();
+
+    // Scene Title
+    this.add.text(centerX - 350, centerY - 220, "RESULTS", {
+      fontSize: "40px",
+      fill: "#00ffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+
+    // LEFT PANEL: Level, Score, Grade
+    let currentY = centerY - 120;
+    
+    // Level
+    this.add.text(centerX - 350, currentY, "LEVEL REACHED", {
+      fontSize: "14px",
+      fill: "#888888",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+    this.add.text(centerX - 350, currentY + 25, String(this.level), {
+      fontSize: "36px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+
+    currentY += 100;
+
+    // Score
+    this.add.text(centerX - 350, currentY, "FINAL SCORE", {
+      fontSize: "14px",
+      fill: "#888888",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+    this.add.text(centerX - 350, currentY + 25, String(this.score), {
+      fontSize: "36px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+
+    if (this.hasGrading && this.grade) {
+      currentY += 100;
+      // Grade
+      this.add.text(centerX - 350, currentY, "FINAL GRADE", {
+        fontSize: "14px",
+        fill: "#888888",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      });
+      this.add.text(centerX - 350, currentY + 25, String(this.grade), {
+        fontSize: "44px",
+        fill: "#ffaa00",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      });
+    }
+
+    // RIGHT PANEL: Rating Medals Progress
+    this.add.text(centerX + 50, centerY - 220, "MEDAL PROGRESS", {
+      fontSize: "20px",
+      fill: "#ffffff",
+      fontFamily: "Courier New",
+      fontStyle: "bold",
+    });
+
+    // Retrieve rating summary and filtered medals
+    const ratingSummary = window.achievementSystem ? window.achievementSystem.getRatingSummary() : null;
+    if (ratingSummary && ratingSummary.medals) {
+      // Determine which skillsets to display
+      const displayedSkillsets = [];
+      if (this.isVersus) {
+        displayedSkillsets.push("versus");
+      } else {
+        const matchingSkillsets = window.achievementSystem.getRatingSkillsetsForMode(this.modeId);
+        if (matchingSkillsets && matchingSkillsets.forEach) {
+          matchingSkillsets.forEach(s => displayedSkillsets.push(s));
+        }
+      }
+
+      // Draw each matching medal
+      let medalY = centerY - 150;
+      displayedSkillsets.forEach(skillsetId => {
+        const medal = ratingSummary.medals[skillsetId];
+        if (!medal) return;
+
+        const tierColorHex = parseInt((medal.tierColor || "#ffffff").replace("#", "0x"));
+
+        // Medal Icon/Label & Tier
+        this.add.text(centerX + 50, medalY, `${medal.label} - ${medal.tierLabel}`, {
+          fontSize: "16px",
+          fill: medal.tierColor || "#ffffff",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        });
+
+        // Stars representation
+        const getMedalStarText = (m) => {
+          const stars = Math.max(0, Number(m.stars) || 0);
+          if (m.cap === Infinity) {
+            return stars > 0 ? "★".repeat(stars) : "☆";
+          }
+          const cap = Math.max(0, Number(m.cap) || 0);
+          const filled = Math.min(stars, cap);
+          return `${"★".repeat(filled)}${"☆".repeat(Math.max(0, cap - filled))}`;
+        };
+
+        const starsText = getMedalStarText(medal);
+        this.add.text(centerX + 50, medalY + 25, starsText, {
+          fontSize: "20px",
+          fill: medal.tierColor || "#ffffff",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        });
+
+        // Progress bar for gauge (out of 10)
+        const barX = centerX + 50;
+        const barY = medalY + 55;
+        const barWidth = 300;
+        const barHeight = 8;
+
+        const progressBg = this.add.graphics();
+        progressBg.fillStyle(0x050505, 1);
+        progressBg.fillRect(barX, barY, barWidth, barHeight);
+        progressBg.lineStyle(1, tierColorHex, 0.6);
+        progressBg.strokeRect(barX, barY, barWidth, barHeight);
+
+        const progressFill = this.add.graphics();
+        const percent = Math.max(0, Math.min(1, medal.gauge / 10));
+        progressFill.fillStyle(tierColorHex, 1);
+        progressFill.fillRect(barX + 1, barY + 1, (barWidth - 2) * percent, barHeight - 2);
+
+        // Progress text or contribution value
+        const subtext = skillsetId === "versus" 
+          ? `Wins: ${medal.wins || 0} / Losses: ${medal.losses || 0}`
+          : `Star Progress: ${medal.gauge}/10`;
+        this.add.text(centerX + 50, medalY + 70, subtext, {
+          fontSize: "11px",
+          fill: "#888888",
+          fontFamily: "Courier New",
+        });
+
+        medalY += 120;
+      });
+
+      if (displayedSkillsets.length === 0) {
+        this.add.text(centerX + 50, centerY - 100, "No rating medals associated\nwith this mode.", {
+          fontSize: "14px",
+          fill: "#888888",
+          fontFamily: "Courier New",
+          align: "left",
+        });
+      }
+    }
+
+    // Return prompt
+    const returnBtn = this.add
+      .text(centerX, centerY + 280, "PRESS ENTER OR CLICK TO RETURN TO MENU", {
+        fontSize: "18px",
+        fill: "#00ff00",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+
+    const transitionBack = () => {
+      const mgr = this.scene;
+      const rootMgr = this.game && this.game.scene ? this.game.scene : mgr;
+      if (rootMgr.isActive("ResultsScene")) {
+        rootMgr.stop("ResultsScene");
+      }
+      
+      let menu = rootMgr.getScene("MenuScene");
+      const hasMenuKey = rootMgr.keys && rootMgr.keys["MenuScene"];
+      if (!menu || !hasMenuKey) {
+        try {
+          const menuInstance = new MenuScene({ key: "MenuScene" });
+          rootMgr.add("MenuScene", menuInstance, true);
+          menu = rootMgr.getScene("MenuScene");
+        } catch (e) {
+          console.error("[ResultsScene] failed to add MenuScene", e);
+        }
+      } else if (rootMgr.isActive("MenuScene") || rootMgr.isSleeping("MenuScene")) {
+        rootMgr.stop("MenuScene");
+        menu = null;
+      }
+
+      try {
+        if (!rootMgr.isActive("MenuScene")) {
+          rootMgr.start("MenuScene");
+        }
+      } catch (e) {
+        console.error("[ResultsScene] start MenuScene failed", e);
+      }
+      if (rootMgr.isActive("MenuScene")) {
+        rootMgr.bringToTop("MenuScene");
+        rootMgr.resume("MenuScene");
+      }
+      menu = rootMgr.getScene("MenuScene");
+      if (menu && menu.scene) {
+        menu.scene.setVisible(true);
+        menu.scene.wake();
+        if (typeof menu.setupKeyboardControls === "function") {
+          menu.setupKeyboardControls();
+        }
+      }
+    };
+
+    returnBtn.on("pointerdown", transitionBack);
+    returnBtn.on("pointerover", () => returnBtn.setStyle({ fill: "#ffffff" }));
+    returnBtn.on("pointerout", () => returnBtn.setStyle({ fill: "#00ff00" }));
+
+    // Input listeners
+    this.input.keyboard.on("keydown-ENTER", transitionBack);
+    this.input.keyboard.on("keydown-SPACE", transitionBack);
+    this.input.keyboard.on("keydown-ESC", transitionBack);
+    
+    // Fallback: click anywhere to proceed
+    this.input.on("pointerdown", (pointer) => {
+      // Don't double trigger if clicking directly on returnBtn
+      if (pointer.y > centerY + 250) return;
+      transitionBack();
+    });
+  }
+}
+
