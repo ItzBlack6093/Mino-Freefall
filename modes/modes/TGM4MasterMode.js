@@ -339,11 +339,11 @@ class TGM4MasterMode extends TGM3ShiraseMode {
 
     applyCycloneRotation(piece, gameScene) {
         if (!this.cycloneActive || !piece) return;
-        const arsRotations = typeof SEGA_ROTATIONS !== 'undefined' ? SEGA_ROTATIONS : null;
-        const srsRotations = typeof TETROMINOES !== 'undefined' ? TETROMINOES : null;
-        const rotations = gameScene?.rotationSystem === 'ARS'
-            ? arsRotations?.[piece.type]?.rotations
-            : srsRotations?.[piece.type]?.rotations;
+        const rotations = typeof RotationSystems !== 'undefined'
+            ? RotationSystems.getRotations(piece.type, gameScene?.rotationSystem || 'SRS')
+            : gameScene?.rotationSystem === 'ARS'
+                ? SEGA_ROTATIONS?.[piece.type]?.rotations
+                : TETROMINOES?.[piece.type]?.rotations;
         if (!rotations?.length) return;
         const queuedRotation = Number.isInteger(piece.tgm4CycloneRotation) ? piece.tgm4CycloneRotation : null;
         const rotation = queuedRotation !== null
@@ -357,11 +357,11 @@ class TGM4MasterMode extends TGM3ShiraseMode {
 
     getCycloneRotationForType(pieceType, gameScene) {
         if (!this.cycloneActive || !pieceType) return null;
-        const arsRotations = typeof SEGA_ROTATIONS !== 'undefined' ? SEGA_ROTATIONS : null;
-        const srsRotations = typeof TETROMINOES !== 'undefined' ? TETROMINOES : null;
-        const rotations = gameScene?.rotationSystem === 'ARS'
-            ? arsRotations?.[pieceType]?.rotations
-            : srsRotations?.[pieceType]?.rotations;
+        const rotations = typeof RotationSystems !== 'undefined'
+            ? RotationSystems.getRotations(pieceType, gameScene?.rotationSystem || 'SRS')
+            : gameScene?.rotationSystem === 'ARS'
+                ? SEGA_ROTATIONS?.[pieceType]?.rotations
+                : TETROMINOES?.[pieceType]?.rotations;
         if (!rotations?.length) return null;
         return Math.floor(Math.random() * rotations.length);
     }

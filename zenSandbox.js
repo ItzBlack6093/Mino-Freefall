@@ -76,7 +76,27 @@
     ];
   }
 
+  function getBagTypeOptions() {
+    if (typeof global.BagRandomizers !== "undefined") {
+      return global.BagRandomizers.list()
+        .filter((system) => system.id !== "tgm3")
+        .map((system) => ({ label: system.label, value: system.id }));
+    }
+    return [
+      { label: "7-Bag", value: "7bag" },
+      { label: "7+1", value: "7plus1" },
+      { label: "14-Bag", value: "14bag" },
+      { label: "History", value: "history" },
+      { label: "Classic (no dupes)", value: "classic" },
+      { label: "Pairs", value: "pairs" },
+      { label: "Pure Random", value: "random" },
+    ];
+  }
+
   function createShuffledBag() {
+    if (typeof global.BagRandomizers !== "undefined") {
+      return global.BagRandomizers.createShuffledBag();
+    }
     const bag = [...PIECES];
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -86,6 +106,15 @@
   }
 
   function refillBagQueue(runtime, bagType) {
+    if (typeof global.BagRandomizers !== "undefined") {
+      const activeBagType = global.BagRandomizers.normalize(bagType);
+      runtime.bagType = activeBagType;
+      if (activeBagType === "random" || activeBagType === "history") return;
+      if (runtime.bagQueue?.length > 0) return;
+      const piece = global.BagRandomizers.next(runtime, activeBagType);
+      if (piece) runtime.bagQueue.unshift(piece);
+      return;
+    }
     runtime.bagQueue = runtime.bagQueue || [];
     if (runtime.bagQueue.length > 0) return;
 
@@ -147,6 +176,15 @@
       runtime.bagType = configuredBagType;
     }
     const activeBagType = runtime.bagType || configuredBagType;
+
+    if (typeof global.BagRandomizers !== "undefined") {
+      const normalized = global.BagRandomizers.normalize(activeBagType);
+      runtime.bagType = normalized;
+      if (normalized === "history" && typeof scene.generateTGM1Piece === "function") {
+        return scene.generateTGM1Piece();
+      }
+      return global.BagRandomizers.next(runtime, normalized);
+    }
 
     // History/random paths bypass bag queue
     if (activeBagType === "random") {
@@ -379,15 +417,7 @@
       0,
       rowY,
       "Bag",
-      [
-        { label: "7-Bag", value: "7bag" },
-        { label: "7+1", value: "7plus1" },
-        { label: "14-Bag", value: "14bag" },
-        { label: "History", value: "history" },
-        { label: "Classic (no dupes)", value: "classic" },
-        { label: "Pairs", value: "pairs" },
-        { label: "Pure Random", value: "random" },
-      ],
+      getBagTypeOptions(),
       cfg.bagType,
       (val) => {
         if (val === currentBagType) return;
@@ -768,13 +798,7 @@
 
       radioRow(
         "Bag",
-        [
-          { label: "7-Bag", value: "7bag" },
-          { label: "14-Bag", value: "14bag" },
-          { label: "7+1", value: "7plus1" },
-          { label: "History", value: "history" },
-          { label: "Pure Random", value: "random" },
-        ],
+        getBagTypeOptions(),
         cfg.bagType,
         (val) => {
           if (val === currentBagType) return;

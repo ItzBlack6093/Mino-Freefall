@@ -11,7 +11,12 @@ class Board {
   }
 
   applyMonochromeTextures(scene) {
-    const textureKey = scene.rotationSystem === "ARS" ? "mono_ars" : "mono";
+    const textureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(scene.rotationSystem, true)
+        : scene.rotationSystem === "ARS"
+          ? "mono_ars"
+          : "mono";
     this.currentTextureKey = textureKey;
   }
 
@@ -292,9 +297,11 @@ class Board {
           const color = masterPikiiFrozen ? 0xffffff : isCellObj ? cellVal.color : cellVal;
           const textureKey = cellVal?.textureKey
             ? cellVal.textureKey
-            : scene.rotationSystem === "ARS"
-              ? "mino_ars"
-              : "mino_srs";
+            : typeof RotationSystems !== "undefined"
+              ? RotationSystems.getTextureKey(scene.rotationSystem)
+              : scene.rotationSystem === "ARS"
+                ? "mino_ars"
+                : "mino_srs";
           // Always dim placed stack relative to active piece (even during line clears)
           const baseAlpha = zenActive
             ? rowAlpha // already set to stackAlpha outside fade, or fading value during fade
@@ -374,18 +381,25 @@ class Board {
 class Piece {
   constructor(type, rotationSystem = "SRS", initialRotation = 0, textureKey = null) {
     this.type = type;
-    this.rotationSystem = rotationSystem;
+    this.rotationSystem =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.normalize(rotationSystem)
+        : rotationSystem;
     this.rotation = initialRotation;
     this.textureKey = textureKey;
-    // Use Sega rotations for ARS, SRS rotations for SRS
     const rotations =
-      rotationSystem === "ARS"
-        ? SEGA_ROTATIONS[type].rotations
-        : TETROMINOES[type].rotations;
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getRotations(type, rotationSystem)
+        : rotationSystem === "ARS"
+          ? SEGA_ROTATIONS[type].rotations
+          : TETROMINOES[type].rotations;
     this.shape = rotations[initialRotation].map((row) => [...row]); // Start with specified rotation
-    // Use ARS colors for ARS mode, SRS colors for SRS mode
     this.color =
-      rotationSystem === "ARS" ? ARS_COLORS[type] : TETROMINOES[type].color;
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getColor(type, rotationSystem)
+        : rotationSystem === "ARS"
+          ? ARS_COLORS[type]
+          : TETROMINOES[type].color;
     this.x = 3; // spawn position
     if (this.type === "O") this.x = 4; // Move O piece 1 column to the right
     this.y = 1; // Spawn at rows 18-19 from bottom (equivalent to rows 1-2 from top) - will be overridden in spawnPiece
@@ -400,13 +414,18 @@ class Piece {
 
   getRotatedShape() {
     const rotations =
-      this.rotationSystem === "ARS"
-        ? SEGA_ROTATIONS[this.type].rotations
-        : TETROMINOES[this.type].rotations;
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getRotations(this.type, this.rotationSystem)
+        : this.rotationSystem === "ARS"
+          ? SEGA_ROTATIONS[this.type].rotations
+          : TETROMINOES[this.type].rotations;
     return rotations[this.rotation] || rotations[0]; // Fallback to first rotation
   }
 
   rotate(board, direction, rotationSystem = "SRS") {
+    if (typeof RotationSystems !== "undefined") {
+      return RotationSystems.rotatePiece(this, board, direction, rotationSystem);
+    }
     const rotations =
       rotationSystem === "ARS"
         ? SEGA_ROTATIONS[this.type].rotations

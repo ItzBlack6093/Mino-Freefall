@@ -1267,3 +1267,11 @@ function ensureMonochromeMinoTextures(scene) {
     rt.destroy();
   });
 }
+
+if (typeof window !== "undefined") {
+  window.SEGA_ROTATIONS = SEGA_ROTATIONS;
+  window.ARS_COLORS = ARS_COLORS;
+  window.TETROMINOES = TETROMINOES;
+  window.SRS_KICKS = SRS_KICKS;
+  window.ARS_KICKS = ARS_KICKS;
+}

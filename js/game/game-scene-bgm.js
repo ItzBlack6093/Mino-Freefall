@@ -5,37 +5,93 @@
     },
 
     resolveBgmAssetKey(logicalKey) {
-      const fallbackKey = logicalKey;
-      if (this.getBgmStyleSetting() !== "legacy") {
-        return fallbackKey;
+      if (typeof BgmSystem !== "undefined") {
+        return BgmSystem.resolveAssetKey(logicalKey, this.getBgmStyleSetting(), this.cache);
       }
-
-      const legacyMap = {
-        mf1_1: "legacy_mf1_1",
-        mf1_2: "legacy_mf1_2",
-        mf1_endroll: "legacy_mf1_endroll",
-        mf2_3: "legacy_mf2_3",
-        mf2_4: "legacy_mf2_4",
-        mf3_4: "legacy_mf3_4",
-        mf3_6: "legacy_mf3_6",
-        mf_zen: "legacy_mf_std_1",
-        mf_std_1: "legacy_mf_std_1",
-        mf_std_2: "legacy_mf_std_2",
-        mf_std_3: "legacy_mf_std_3",
-      };
-      const legacyKey = legacyMap[logicalKey];
-      if (!legacyKey) {
-        return fallbackKey;
-      }
-
-      return this.cache?.audio?.exists(legacyKey) ? legacyKey : fallbackKey;
+      return logicalKey;
     },
 
     createBgmTrack(logicalKey, opts = {}) {
       const base = 0.5;
       const vol = base * this.getMasterVolumeSetting() * this.getBGMVolumeSetting();
       const assetKey = this.resolveBgmAssetKey(logicalKey);
-      return this.sound.add(assetKey, { loop: false, volume: vol, ...opts });
+      const track = this.sound.add(assetKey, { loop: false, volume: vol, ...opts });
+      track.minoLogicalBgmKey = logicalKey;
+      track.minoAssetBgmKey = assetKey;
+      return track;
+    },
+
+    getBgmLoopBounds(key, track = null) {
+      const duration =
+        track && typeof track.duration === "number" && Number.isFinite(track.duration)
+          ? track.duration
+          : 0;
+      if (typeof BgmSystem !== "undefined") {
+        return BgmSystem.getLoopBounds(key, duration);
+      }
+      return { start: 0, end: duration };
+    },
+
+    seekBgmTrack(track, seekSeconds) {
+      if (!track) return false;
+      const safeSeek = Math.max(0, Number(seekSeconds) || 0);
+      try {
+        if (typeof track.setSeek === "function") {
+          track.setSeek(safeSeek);
+          return true;
+        }
+        if ("seek" in track) {
+          track.seek = safeSeek;
+          return true;
+        }
+      } catch {}
+      try {
+        track.stop();
+        track.play({ seek: safeSeek, loop: false });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    configureManagedBgmLoop(track, key) {
+      if (!track) return;
+      track.minoManualLoop = true;
+      track.minoLoopKey = key;
+      if (track.minoLoopConfigured) return;
+      track.minoLoopConfigured = true;
+      if (typeof track.on === "function") {
+        track.on("complete", () => {
+          const isCurrentGameplayTrack = this.currentBGM === track && this.currentBgmKey === key;
+          const isCurrentCreditsTrack = this.creditsBGM === track && this.getCreditsBgmKey?.() === key;
+          if (!track.minoManualLoop || (!isCurrentGameplayTrack && !isCurrentCreditsTrack)) return;
+          const bounds = this.getBgmLoopBounds(key, track);
+          try {
+            track.play({ seek: bounds.start, loop: false });
+          } catch (error) {
+            console.warn("Failed to restart BGM loop:", key, error);
+          }
+        });
+      }
+    },
+
+    enforceManagedBgmLoop() {
+      const enforceTrack = (track, key) => {
+        if (!track || !track.minoManualLoop || !key) return;
+        const bounds = this.getBgmLoopBounds(key, track);
+        if (!bounds.end || bounds.end <= bounds.start) return;
+        const currentSeek =
+          typeof track.seek === "number" && Number.isFinite(track.seek)
+            ? track.seek
+            : typeof track.currentTime === "number" && Number.isFinite(track.currentTime)
+              ? track.currentTime
+              : null;
+        if (currentSeek !== null && currentSeek >= bounds.end - 0.02) {
+          this.seekBgmTrack(track, bounds.start);
+        }
+      };
+      enforceTrack(this.currentBGM, this.currentBgmKey);
+      enforceTrack(this.creditsBGM, this.getCreditsBgmKey?.());
     },
 
     safeStopSound(sound) {
@@ -56,7 +112,7 @@
       let track = this.bgmTracks[key];
       if (!track) {
         try {
-          track = this.createBgmTrack(key, { loop: true });
+          track = this.createBgmTrack(key, { loop: false });
           this.bgmTracks[key] = track;
         } catch (error) {
           console.warn("Failed to create BGM track:", key, error);
@@ -65,7 +121,9 @@
       }
 
       try {
-        track.play({ loop: true, ...opts });
+        this.configureManagedBgmLoop(track, key);
+        const bounds = this.getBgmLoopBounds(key, track);
+        track.play({ seek: bounds.start, loop: false, ...opts });
         return track;
       } catch (error) {
         try {
@@ -73,9 +131,11 @@
           track.destroy?.();
         } catch {}
         try {
-          track = this.createBgmTrack(key, { loop: true });
+          track = this.createBgmTrack(key, { loop: false });
           this.bgmTracks[key] = track;
-          track.play({ loop: true, ...opts });
+          this.configureManagedBgmLoop(track, key);
+          const bounds = this.getBgmLoopBounds(key, track);
+          track.play({ seek: bounds.start, loop: false, ...opts });
           return track;
         } catch (retryError) {
           console.warn("Failed to play BGM track:", key, retryError || error);
@@ -86,26 +146,31 @@
 
     initializeBGM() {
       try {
-        const trackKeys = [
-          "mf1_1",
-          "mf1_2",
-          "mf1_endroll",
-          "mf2_3",
-          "mf2_4",
-          "mf2_endroll",
-          "mf3_4",
-          "mf3_6",
-          "mf4_endgame",
-          "mf_zen",
-          "mf_std_1",
-          "mf_std_2",
-          "mf_std_3",
-          "mf_konohaez",
-          "mf_konohahard",
-          "mf_konohahard2",
-        ];
+        const trackKeys =
+          typeof BgmSystem !== "undefined"
+            ? BgmSystem.listTracks()
+                .filter((track) => !track.key.startsWith("legacy_"))
+                .map((track) => track.key)
+            : [
+                "mf1_1",
+                "mf1_2",
+                "mf1_endroll",
+                "mf2_3",
+                "mf2_4",
+                "mf2_endroll",
+                "mf3_4",
+                "mf3_6",
+                "mf4_endgame",
+                "mf_zen",
+                "mf_std_1",
+                "mf_std_2",
+                "mf_std_3",
+                "mf_konohaez",
+                "mf_konohahard",
+                "mf_konohahard2",
+              ];
         this.bgmTracks = trackKeys.reduce((tracks, key) => {
-          tracks[key] = this.createBgmTrack(key, { loop: true });
+          tracks[key] = this.createBgmTrack(key, { loop: false });
           return tracks;
         }, {});
         this.stage1BGM = this.bgmTracks.mf1_1;
@@ -139,6 +204,7 @@
         return;
       }
       this.updateModeBGM();
+      this.enforceManagedBgmLoop();
     },
 
     applyEffectiveVolumesScene() {
@@ -433,9 +499,10 @@
           this.creditsBGM?.destroy?.();
         } catch {}
         this.creditsBGM = this.createBgmTrack(creditsBGMKey, {
-          loop: true,
+          loop: false,
           volume: 0.3,
         });
+        this.configureManagedBgmLoop(this.creditsBGM, creditsBGMKey);
         // Start playback on first spawned credits piece.
       } catch (error) {
         console.warn("Credits BGM could not be loaded:", error);

@@ -802,6 +802,9 @@ function createVersusSeededRandom(seed = Date.now()) {
 function getVersusPreviewColorForPiece(pieceType, rotationSystem = "SRS") {
   const normalizedType = normalizeVersusPieceType(pieceType);
   if (!normalizedType) return 0xffffff;
+  if (typeof RotationSystems !== "undefined") {
+    return RotationSystems.getColor(normalizedType, rotationSystem);
+  }
   if (rotationSystem === "ARS" && typeof ARS_COLORS !== "undefined") {
     return ARS_COLORS[normalizedType] || 0xffffff;
   }
@@ -2548,9 +2551,11 @@ class VersusHUD {
     const normalizedType = normalizeVersusPieceType(pieceType);
     if (!normalizedType) return;
     const rotationSet =
-      rotationSystem === "ARS"
-        ? SEGA_ROTATIONS?.[normalizedType]?.rotations
-        : TETROMINOES?.[normalizedType]?.rotations;
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getRotations(normalizedType, rotationSystem)
+        : rotationSystem === "ARS"
+          ? SEGA_ROTATIONS?.[normalizedType]?.rotations
+          : TETROMINOES?.[normalizedType]?.rotations;
     const shape = Array.isArray(rotationSet) ? rotationSet[0] : null;
     if (!Array.isArray(shape)) return;
 
@@ -2571,7 +2576,12 @@ class VersusHUD {
     const offsetX = x + ((4 - width) * cellSize) / 2;
     const offsetY = y + ((2.5 - height) * cellSize) / 2;
     const color = getVersusPreviewColorForPiece(normalizedType, rotationSystem);
-    const textureKey = rotationSystem === "ARS" ? "mino_ars" : "mino_srs";
+    const textureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(rotationSystem)
+        : rotationSystem === "ARS"
+          ? "mino_ars"
+          : "mino_srs";
     const hasTexture = !!(this.scene?.textures && this.scene.textures.exists(textureKey));
 
     occupied.forEach((cell) => {

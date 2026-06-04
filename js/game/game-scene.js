@@ -466,12 +466,12 @@ class GameScene extends Phaser.Scene {
       this.clearBannerGroup.setDepth(2000);
     };
     this.getPieceColorHex = (type) => {
-      let colorInt = 0xffffff;
-      if (this.rotationSystem === "ARS") {
-        colorInt = ARS_COLORS[type] ?? colorInt;
-      } else if (TETROMINOES[type] && TETROMINOES[type].color != null) {
-        colorInt = TETROMINOES[type].color;
-      }
+      const colorInt =
+        typeof RotationSystems !== "undefined"
+          ? RotationSystems.getColor(type, this.rotationSystem)
+          : this.rotationSystem === "ARS" || this.rotationSystem === "DRS" || this.rotationSystem === "DTET"
+            ? ARS_COLORS[type] ?? 0xffffff
+            : TETROMINOES[type]?.color ?? 0xffffff;
       return `#${colorInt.toString(16).padStart(6, "0")}`;
     };
     this.hideClearBanner = () => {
@@ -738,7 +738,9 @@ class GameScene extends Phaser.Scene {
 
     // Rotation system selection
     this.rotationSystem =
-      localStorage.getItem("rotationSystem") || "SRS"; // 'SRS' or 'ARS'
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.normalize(localStorage.getItem("rotationSystem") || "SRS")
+        : localStorage.getItem("rotationSystem") || "SRS";
     this.arsMoveResetEnabled =
       (localStorage.getItem("arsMoveReset") || "false") === "true";
     this.rotationSystemDisplay = null;
@@ -1517,7 +1519,8 @@ class GameScene extends Phaser.Scene {
       this.bgmEnabled &&
       !this.isPaused
     ) {
-      this.creditsBGM.play();
+      const bounds = this.getBgmLoopBounds?.(this.getCreditsBgmKey?.(), this.creditsBGM) || { start: 0 };
+      this.creditsBGM.play({ seek: bounds.start, loop: false });
       this.creditsBgmStarted = true;
     }
     this.updateBGM();
@@ -2363,7 +2366,10 @@ class GameScene extends Phaser.Scene {
     // Rotation system + ARS reset behavior
     const storedRotation = localStorage.getItem("rotationSystem") || "SRS";
     const configRotation = config.rotationSystem || null;
-    this.rotationSystem = configRotation || storedRotation;
+    this.rotationSystem =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.normalize(configRotation || storedRotation)
+        : configRotation || storedRotation;
 
     const storedArsMoveReset =
       (localStorage.getItem("arsMoveReset") || "false") === "true";
@@ -2508,7 +2514,9 @@ class GameScene extends Phaser.Scene {
     const isUltraMode = this.selectedMode === "ultra";
     const isZenMode = this.selectedMode === "zen";
     this.finesseEnabled =
-      this.rotationSystem === "SRS" && (isSprintMode || isUltraMode || isZenMode);
+      (typeof RotationSystems !== "undefined"
+        ? RotationSystems.isSrsFamily(this.rotationSystem)
+        : this.rotationSystem === "SRS") && (isSprintMode || isUltraMode || isZenMode);
     if (!this.finesseEnabled) {
       this.finesseErrors = 0;
       this.finessePieces = 0;
@@ -5732,7 +5740,11 @@ class GameScene extends Phaser.Scene {
 
     if (this.gameOver) {
       // Skip any input-driven movement/rotation/drop.
-    } else if (this.rotationSystem === "ARS") {
+    } else if (
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.isArsFamily(this.rotationSystem)
+        : this.rotationSystem === "ARS"
+    ) {
 
       // Hold first (if supported and not in ARE)
       if (!this.areActive && this.holdEnabled && this.holdRequest) {
@@ -5773,9 +5785,7 @@ class GameScene extends Phaser.Scene {
       if (rotate180Down && !this.rotate180Pressed) {
         this.rotate180Pressed = true;
         if (this.currentPiece) {
-          const first = this.currentPiece.rotate(this.board, 1, this.rotationSystem);
-          const second = this.currentPiece.rotate(this.board, 1, this.rotationSystem);
-          if (first || second) {
+          if (this.currentPiece.rotate(this.board, 2, this.rotationSystem)) {
             this.resetLockDelay();
             if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
               this.markGroundedSpin();
@@ -6006,6 +6016,28 @@ class GameScene extends Phaser.Scene {
         this.lKeyPressed = false;
       }
 
+      // 180 rotation - immediate response
+      if (rotate180Down && !this.rotate180Pressed) {
+        this.rotate180Pressed = true;
+        if (
+          this.currentPiece &&
+          this.currentPiece.rotate(this.board, 2, this.rotationSystem)
+        ) {
+          this.incrementFinesseRotation();
+          this.recordFinesseInput(); // Count key press, not DAS
+          this.resetLockDelay();
+          if (this.currentPiece && !this.currentPiece.canMoveDown(this.board)) {
+            this.markGroundedSpin();
+          } else {
+            this.spinRotatedWhileGrounded = false;
+          }
+        } else if (this.currentPiece) {
+          this.isGrounded = !this.currentPiece.canMoveDown(this.board);
+        }
+      } else if (!rotate180Down && this.rotate180Pressed) {
+        this.rotate180Pressed = false;
+      }
+
       // X key for hard drop - immediate response
       if (xKeyDown && !this.xKeyPressed) {
         this.xKeyPressed = true;
@@ -6020,7 +6052,11 @@ class GameScene extends Phaser.Scene {
             this.spinRotatedWhileGrounded = false;
           }
           // For ARS, place without instant lock; for others, lock immediately
-          if (this.rotationSystem === "ARS") {
+          if (
+            typeof RotationSystems !== "undefined"
+              ? RotationSystems.isArsFamily(this.rotationSystem)
+              : this.rotationSystem === "ARS"
+          ) {
             this.isGrounded = true;
             this.lockDelay = this.deltaTime;
             this.lockDelayBufferedStart = false;
@@ -6521,7 +6557,11 @@ class GameScene extends Phaser.Scene {
               }
             } else {
               // Non-TGM1/20G modes: use original logic based on rotation system
-              if (this.rotationSystem === "ARS") {
+              if (
+                typeof RotationSystems !== "undefined"
+                  ? RotationSystems.isArsFamily(this.rotationSystem)
+                  : this.rotationSystem === "ARS"
+              ) {
                 if (
                   !this.wasGroundedDuringSoftDrop &&
                   this.currentPiece.isTouchingGround(this.board)
@@ -6569,7 +6609,11 @@ class GameScene extends Phaser.Scene {
           this.resetLockDelay();
           this.spinRotatedWhileGrounded = false;
         } else if (!this.isGrounded) {
-          if (this.rotationSystem === "ARS") {
+          if (
+            typeof RotationSystems !== "undefined"
+              ? RotationSystems.isArsFamily(this.rotationSystem)
+              : this.rotationSystem === "ARS"
+          ) {
             // Single-tap soft drop in ARS: lock on contact
             if (this.currentPiece.isTouchingGround(this.board)) {
               this.currentPiece.playGroundSound(this);
@@ -7024,7 +7068,8 @@ class GameScene extends Phaser.Scene {
       this.bgmEnabled &&
       !this.isPaused
     ) {
-      this.creditsBGM.play();
+      const bounds = this.getBgmLoopBounds?.(this.getCreditsBgmKey?.(), this.creditsBGM) || { start: 0 };
+      this.creditsBGM.play({ seek: bounds.start, loop: false });
       this.creditsBgmStarted = true;
     }
 
@@ -7689,7 +7734,12 @@ class GameScene extends Phaser.Scene {
     const isShiraseMode =
       modeId === "tgm3_shirase" || modeId === "shirase" || modeId === "tgm3_shirase_mode";
     const monoActive = isShiraseMode && this.level >= 1000;
-    const monoTextureKey = this.rotationSystem === "ARS" ? "mono_ars" : "mono";
+    const monoTextureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(this.rotationSystem, true)
+        : this.rotationSystem === "ARS"
+          ? "mono_ars"
+          : "mono";
 
     const isTgm3Mode =
       modeIdLower === "tgm3" ||
@@ -7812,30 +7862,33 @@ class GameScene extends Phaser.Scene {
   }
 
   generateClassicPiece() {
-    // Classic: random with no immediate repeats
+    if (typeof BagRandomizers !== "undefined") {
+      return BagRandomizers.next(this, "classic");
+    }
     const pieces = Object.keys(TETROMINOES);
-    const last = this.lastClassicPiece || null;
-    const pool = pieces.filter((p) => p !== last);
+    const pool = pieces.filter((p) => p !== (this.lastClassicPiece || null));
     const pick = pool[Math.floor(Math.random() * pool.length)];
     this.lastClassicPiece = pick;
     return pick;
   }
 
   generatePairsPiece() {
-    // Pairs: choose two minos at a time and emit A,B,B,A before choosing a new pair
+    if (typeof BagRandomizers !== "undefined") {
+      if (!Array.isArray(this.pairsQueue)) this.pairsQueue = [];
+      return BagRandomizers.next(this, "pairs");
+    }
     if (!Array.isArray(this.pairsQueue)) this.pairsQueue = [];
     if (this.pairsQueue.length === 0) {
       const bag = this.createShuffledBag();
-      for (let i = 0; i < bag.length; i += 2) {
-        const a = bag[i];
-        const b = bag[(i + 1) % bag.length];
-        this.pairsQueue.push(a, b, b, a);
-      }
+      for (let i = 0; i < bag.length; i += 2) this.pairsQueue.push(bag[i], bag[(i + 1) % bag.length], bag[(i + 1) % bag.length], bag[i]);
     }
     return this.pairsQueue.shift();
   }
 
   generateTGM1Piece() {
+    if (typeof BagRandomizers !== "undefined") {
+      return BagRandomizers.next(this, "history");
+    }
     // TGM1 randomizer algorithm:
     // 1. Keep a history of four recent pieces (start with [Z,Z,S,S])
     // 2. Generate a piece, then check if the piece is in the history
@@ -7874,6 +7927,9 @@ class GameScene extends Phaser.Scene {
   }
 
   generateTgm3Piece() {
+    if (typeof BagRandomizers !== "undefined") {
+      return BagRandomizers.next(this, "tgm3");
+    }
     const PIECES = ["I", "J", "L", "O", "S", "T", "Z"];
 
     if (!this.tgm3DroughtCounters) {
@@ -7988,6 +8044,9 @@ class GameScene extends Phaser.Scene {
   }
 
   createShuffledBag() {
+    if (typeof BagRandomizers !== "undefined") {
+      return BagRandomizers.createShuffledBag();
+    }
     const bag = ["I", "J", "L", "O", "S", "T", "Z"];
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -7997,6 +8056,9 @@ class GameScene extends Phaser.Scene {
   }
 
   generate7BagPiece() {
+    if (typeof BagRandomizers !== "undefined") {
+      return BagRandomizers.next(this, "7bag");
+    }
     if (!Array.isArray(this.bagQueue)) {
       this.bagQueue = [];
     }
@@ -8441,9 +8503,11 @@ class GameScene extends Phaser.Scene {
   // Reset piece to its default orientation (used when moving into hold)
   resetPieceToDefaultRotation(piece) {
     const rotations =
-      this.rotationSystem === "ARS"
-        ? SEGA_ROTATIONS[piece.type].rotations
-        : TETROMINOES[piece.type].rotations;
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getRotations(piece.type, this.rotationSystem)
+        : this.rotationSystem === "ARS" || this.rotationSystem === "DRS" || this.rotationSystem === "DTET"
+          ? SEGA_ROTATIONS[piece.type].rotations
+          : TETROMINOES[piece.type].rotations;
     piece.rotation = 0;
     piece.shape = rotations[0].map((row) => [...row]);
   }
@@ -8781,7 +8845,13 @@ class GameScene extends Phaser.Scene {
     }
 
     // SRS: limit lock delay resets to prevent infinite stalling (unless Zen infinite resets)
-    if (this.rotationSystem === "SRS" && isActuallyGrounded && !this.isZenInfiniteResets()) {
+    if (
+      (typeof RotationSystems !== "undefined"
+        ? RotationSystems.isSrsFamily(this.rotationSystem)
+        : this.rotationSystem === "SRS") &&
+      isActuallyGrounded &&
+      !this.isZenInfiniteResets()
+    ) {
       if (this.lockResetCount >= 15) {
         return;
       }
@@ -8789,7 +8859,12 @@ class GameScene extends Phaser.Scene {
     }
 
     // ARS: lock reset rules
-    if (this.rotationSystem === "ARS" && isActuallyGrounded) {
+    if (
+      (typeof RotationSystems !== "undefined"
+        ? RotationSystems.isArsFamily(this.rotationSystem)
+        : this.rotationSystem === "ARS") &&
+      isActuallyGrounded
+    ) {
       // If move-reset is enabled, behave like SRS (limited by 15 total resets unless Zen infinite)
       if (this.arsMoveResetEnabled) {
         if (!this.isZenInfiniteResets() && this.lockResetCount >= 15) {
@@ -9202,7 +9277,9 @@ class GameScene extends Phaser.Scene {
         {};
       const times =
         specMech.torikanTimes &&
-        (this.rotationSystem === "ARS" || this.rotationSystem === "classic"
+        (typeof RotationSystems !== "undefined"
+          ? RotationSystems.isArsFamily(this.rotationSystem)
+          : this.rotationSystem === "ARS" || this.rotationSystem === "classic"
           ? specMech.torikanTimes.classic
           : specMech.torikanTimes.world);
       if (times) {
@@ -12363,7 +12440,11 @@ class GameScene extends Phaser.Scene {
       for (const lineRow of this.clearedLines) {
         for (let col = 0; col < this.board.cols; col++) {
           const textureKey =
-            this.rotationSystem === "ARS" ? "mino_ars" : "mino_srs";
+            typeof RotationSystems !== "undefined"
+              ? RotationSystems.getTextureKey(this.rotationSystem)
+              : this.rotationSystem === "ARS"
+                ? "mino_ars"
+                : "mino_srs";
           const texture = this.textures ? this.textures.get(textureKey) : null;
           const textureSource = texture && texture.source ? texture.source[0] : null;
           const hasValidTextureSource =
@@ -12915,9 +12996,11 @@ class GameScene extends Phaser.Scene {
       const previewTextureKey =
         rawNext && typeof rawNext === "object" && rawNext.textureKey
           ? rawNext.textureKey
-          : this.rotationSystem === "ARS"
-            ? "mino_ars"
-            : "mino_srs";
+          : typeof RotationSystems !== "undefined"
+            ? RotationSystems.getTextureKey(this.rotationSystem)
+            : this.rotationSystem === "ARS"
+              ? "mino_ars"
+              : "mino_srs";
       const previewRotation = this.getStoredPieceRotation(rawNext, 0);
       const nextPiece = new Piece(
         previewType,

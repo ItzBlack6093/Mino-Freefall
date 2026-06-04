@@ -8,37 +8,8 @@ const SHARED_IMAGE_ASSETS = [
     : []),
 ];
 
-const SHARED_BGM_ASSETS = [
-  ["mf1_1", "bgm/mf1_1.mp3"],
-  ["mf1_2", "bgm/mf1_2.mp3"],
-  ["mf1_endroll", "bgm/mf1_endroll.mp3"],
-  ["mf2_3", "bgm/mf2_3.mp3"],
-  ["mf2_4", "bgm/mf2_4.mp3"],
-  ["mf2_endroll", "bgm/mf2_endroll.mp3"],
-  ["mf3_4", "bgm/mf3_4.mp3"],
-  ["mf3_6", "bgm/mf3_6.mp3"],
-  ["mf4_endgame", "bgm/mf4_endgame.mp3"],
-  ["mf_zen", "bgm/standard/mf_zen.mp3"],
-  ["mf_std_1", "bgm/standard/mf_std_1.mp3"],
-  ["mf_std_2", "bgm/standard/mf_std_2.mp3"],
-  ["mf_std_3", "bgm/standard/mf_std_3.mp3"],
-  ["mf_konohaez", "bgm/konoha/mf_konohaez.mp3"],
-  ["mf_konohahard", "bgm/konoha/mf_konohahard.mp3"],
-  ["mf_konohahard2", "bgm/konoha/mf_konohahard2.mp3"],
-];
-
-const SHARED_LEGACY_BGM_ASSETS = [
-  ["legacy_mf1_1", "bgm-old/tm1_1.mp3"],
-  ["legacy_mf1_2", "bgm-old/tm1_2.mp3"],
-  ["legacy_mf1_endroll", "bgm-old/tm1_endroll.mp3"],
-  ["legacy_mf2_3", "bgm-old/tm2_3.mp3"],
-  ["legacy_mf2_4", "bgm-old/tm2_4.mp3"],
-  ["legacy_mf3_4", "bgm-old/tm3_4.mp3"],
-  ["legacy_mf3_6", "bgm-old/tm3_6.mp3"],
-  ["legacy_mf_std_1", "bgm-old/standard/422_m1.mp3"],
-  ["legacy_mf_std_2", "bgm-old/standard/423_m2.mp3"],
-  ["legacy_mf_std_3", "bgm-old/standard/424_m3.mp3"],
-];
+const SHARED_BGM_ASSETS =
+  typeof BgmSystem !== "undefined" ? BgmSystem.getAudioAssets() : [];
 
 const SHARED_SFX_ASSETS = [
   ["ready", "sfx/ready.wav"],
@@ -71,52 +42,11 @@ const SHARED_SFX_ASSETS = [
 
 const SHARED_AUDIO_ASSETS = [
   ...SHARED_BGM_ASSETS,
-  ...SHARED_LEGACY_BGM_ASSETS,
   ...SHARED_SFX_ASSETS,
 ];
 
-const BGM_ROOM_PACKS = [
-  {
-    key: "modern",
-    label: "Mino Freefall",
-    color: "#00e5ff",
-    tracks: [
-      { key: "mf1_1", label: "TGM1 Stage 1" },
-      { key: "mf1_2", label: "TGM1 Stage 2" },
-      { key: "mf1_endroll", label: "TGM1 End Roll" },
-      { key: "mf2_3", label: "TGM2 Stage 3" },
-      { key: "mf2_4", label: "TGM2 Stage 4" },
-      { key: "mf2_endroll", label: "TGM2 End Roll" },
-      { key: "mf3_4", label: "TGM3 Stage 4" },
-      { key: "mf3_6", label: "TGM3 Stage 6" },
-      { key: "mf4_endgame", label: "TGM4 Endgame" },
-      { key: "mf_zen", label: "Zen" },
-      { key: "mf_std_1", label: "Standard 1" },
-      { key: "mf_std_2", label: "Standard 2" },
-      { key: "mf_std_3", label: "Standard 3" },
-      { key: "mf_konohaez", label: "Konoha Easy" },
-      { key: "mf_konohahard", label: "Konoha Hard" },
-      { key: "mf_konohahard2", label: "Konoha Hard 1000+" },
-    ],
-  },
-  {
-    key: "legacy",
-    label: "Legacy",
-    color: "#ffb347",
-    tracks: [
-      { key: "legacy_mf1_1", label: "TGM1 Stage 1" },
-      { key: "legacy_mf1_2", label: "TGM1 Stage 2" },
-      { key: "legacy_mf1_endroll", label: "TGM1 End Roll" },
-      { key: "legacy_mf2_3", label: "TGM2 Stage 3" },
-      { key: "legacy_mf2_4", label: "TGM2 Stage 4" },
-      { key: "legacy_mf3_4", label: "TGM3 Stage 4" },
-      { key: "legacy_mf3_6", label: "TGM3 Stage 6" },
-      { key: "legacy_mf_std_1", label: "Standard 1" },
-      { key: "legacy_mf_std_2", label: "Standard 2" },
-      { key: "legacy_mf_std_3", label: "Standard 3" },
-    ],
-  },
-];
+const BGM_ROOM_PACKS =
+  typeof BgmSystem !== "undefined" ? BgmSystem.getRoomPacks() : [];
 
 const BOOT_MARQUEE_SHAPES = [
   [[0, 1], [1, 1], [2, 1], [3, 1]], // I
@@ -3618,7 +3548,13 @@ class SettingsScene extends Phaser.Scene {
     });
 
     // Rotation system toggle - moved up 50px
-    const rotationSystem = localStorage.getItem("rotationSystem") || "SRS";
+    const rotationOptions =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.list().map((system) => system.id)
+        : ["SRS-X", "DRS"];
+    const normalizeRotationSystem = (system) =>
+      typeof RotationSystems !== "undefined" ? RotationSystems.normalize(system) : system || "SRS";
+    const rotationSystem = normalizeRotationSystem(localStorage.getItem("rotationSystem") || "SRS");
     this.rotationText = this.add
       .text(centerX, centerY - 95, `Rotation System: ${rotationSystem}`, {
         fontSize: "24px",
@@ -3629,8 +3565,9 @@ class SettingsScene extends Phaser.Scene {
       .setInteractive();
 
     this.rotationText.on("pointerdown", () => {
-      const currentSystem = localStorage.getItem("rotationSystem") || "SRS";
-      const newSystem = currentSystem === "SRS" ? "ARS" : "SRS";
+      const currentSystem = normalizeRotationSystem(localStorage.getItem("rotationSystem") || "SRS");
+      const currentIndex = rotationOptions.indexOf(currentSystem);
+      const newSystem = rotationOptions[(currentIndex + 1 + rotationOptions.length) % rotationOptions.length];
       localStorage.setItem("rotationSystem", newSystem);
       this.rotationSystem = newSystem;
       this.rotationText.setText(`Rotation System: ${newSystem}`);
@@ -6008,9 +5945,23 @@ class SettingsScene extends Phaser.Scene {
 
     // Get T piece shape and color based on rotation system
     const rotations =
-      system === "ARS" ? SEGA_ROTATIONS.T.rotations : TETROMINOES.T.rotations;
-    const color = system === "ARS" ? ARS_COLORS.T : TETROMINOES.T.color;
-    const textureKey = system === "ARS" ? "mino_ars" : "mino_srs";
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getRotations("T", system)
+        : system === "ARS"
+          ? SEGA_ROTATIONS.T.rotations
+          : TETROMINOES.T.rotations;
+    const color =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getColor("T", system)
+        : system === "ARS"
+          ? ARS_COLORS.T
+          : TETROMINOES.T.color;
+    const textureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(system)
+        : system === "ARS"
+          ? "mino_ars"
+          : "mino_srs";
 
     // T piece shape in rotation 0 (3-wide)
     const shape = rotations[0];
@@ -6088,8 +6039,18 @@ class SettingsScene extends Phaser.Scene {
 
   updateTPieceShape(tPiece, rotations, system) {
     const minoSize = 20;
-    const color = system === "ARS" ? ARS_COLORS.T : TETROMINOES.T.color;
-    const textureKey = system === "ARS" ? "mino_ars" : "mino_srs";
+    const color =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getColor("T", system)
+        : system === "ARS"
+          ? ARS_COLORS.T
+          : TETROMINOES.T.color;
+    const textureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(system)
+        : system === "ARS"
+          ? "mino_ars"
+          : "mino_srs";
 
     // Get current rotation (keep same rotation index)
     const currentRotation = tPiece.rotation;
@@ -6143,7 +6104,10 @@ class SettingsScene extends Phaser.Scene {
   }
 
   updateArsResetModeVisibility(rotationSystem) {
-    const visible = rotationSystem === "ARS" && this.activeSettingsTab === "rotation";
+    const visible =
+      (typeof RotationSystems !== "undefined"
+        ? RotationSystems.isArsFamily(rotationSystem)
+        : rotationSystem === "ARS") && this.activeSettingsTab === "rotation";
     if (this.arsResetModeText) this.arsResetModeText.setVisible(visible);
     if (this.arsResetLabel) this.arsResetLabel.setVisible(visible);
     if (this.arsResetModeText?.input) this.arsResetModeText.input.enabled = visible;
@@ -7281,4 +7245,3 @@ class ResultsScene extends Phaser.Scene {
     });
   }
 }
-

@@ -364,11 +364,16 @@
     <!-- Achievement System - Load before game.js -->
     <script src="js/AchievementSystem.js"></script>
 
+    <!-- Main Game shared systems - Load before helpers/scenes that consume them -->
+    <script src="js/game/game-data.js"></script>
+    <script src="js/game/rotation-systems.js"></script>
+    <script src="js/game/bag-randomizers.js"></script>
+    <script src="js/game/bgm-system.js"></script>
+
     <!-- Zen Sandbox helpers -->
     <script src="zenSandbox.js"></script>
 
     <!-- Main Game - Load before PowerupMino since it needs Piece class -->
-    <script src="js/game/game-data.js"></script>
     <script src="js/game/entities.js"></script>
     <script src="js/game/konoha-illustrations.js"></script>
     <script src="js/game/keybinds.js"></script>
