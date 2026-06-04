@@ -1026,6 +1026,32 @@ class GameScene extends Phaser.Scene {
     return modeConfig.hasGrading !== false && !isKonohaMode;
   }
 
+  // True when the active mode supplies its own grade (e.g. TGM2/TGM3/TGM4)
+  // by overriding BaseMode's getDisplayedGrade. Such modes must not have the
+  // engine's score-threshold grade advance their displayed grade.
+  modeProvidesOwnGrade() {
+    if (!this.gameMode || typeof this.gameMode.getDisplayedGrade !== "function") {
+      return false;
+    }
+
+    let proto = Object.getPrototypeOf(this.gameMode);
+    while (proto) {
+      if (Object.prototype.hasOwnProperty.call(proto, "getDisplayedGrade")) {
+        if (
+          typeof BaseMode !== "undefined" &&
+          BaseMode.prototype &&
+          typeof BaseMode.prototype.getDisplayedGrade === "function"
+        ) {
+          return proto.getDisplayedGrade !== BaseMode.prototype.getDisplayedGrade;
+        }
+        return proto.constructor?.name !== "BaseMode";
+      }
+      proto = Object.getPrototypeOf(proto);
+    }
+
+    return false;
+  }
+
   getCurrentSpecialMechanics() {
     return (
       (this.gameMode && typeof this.gameMode.getConfig === "function"
@@ -10124,6 +10150,13 @@ class GameScene extends Phaser.Scene {
     if (!this.modeUsesGrading()) {
       this.grade = null;
       this.internalGrade = null;
+      return;
+    }
+
+    // Modes with their own grading system manage grade/internalGrade via their
+    // getDisplayedGrade/getInternalGrade hooks. The score-threshold grade below
+    // does not apply to them and would otherwise advance their grade incorrectly.
+    if (this.modeProvidesOwnGrade()) {
       return;
     }
 
