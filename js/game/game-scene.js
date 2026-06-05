@@ -1590,9 +1590,17 @@ class GameScene extends Phaser.Scene {
     );
   }
 
-  getZenMinosaGuideSignature() {
+  markBoardDirty() {
+    if (this.board && typeof this.board.markDirty === "function") {
+      this.board.markDirty();
+    }
+  }
+
+  getBoardOccupancySignature() {
     if (!this.board?.grid) return "";
-    const config = this.getZenMinosaGuideConfig();
+    if (typeof this.board.getOccupancySignature === "function") {
+      return this.board.getOccupancySignature();
+    }
     let boardSignature = "";
     for (let r = 0; r < this.board.rows; r++) {
       const row = this.board.grid[r];
@@ -1600,6 +1608,13 @@ class GameScene extends Phaser.Scene {
         boardSignature += row[c] ? "1" : "0";
       }
     }
+    return boardSignature;
+  }
+
+  getZenMinosaGuideSignature() {
+    if (!this.board?.grid) return "";
+    const config = this.getZenMinosaGuideConfig();
+    const boardSignature = this.getBoardOccupancySignature();
     const queueSignature = Array.isArray(this.nextPieces)
       ? this.nextPieces
           .map((piece) => this.normalizeMinosaGuidePiece(piece))
@@ -1898,13 +1913,7 @@ class GameScene extends Phaser.Scene {
     const rows = this.board.rows;
     const cols = this.board.cols;
     const baseGrid = this.board.grid;
-    let boardSignature = "";
-    for (let r = 0; r < rows; r++) {
-      const row = baseGrid[r];
-      for (let c = 0; c < cols; c++) {
-        boardSignature += row[c] ? "1" : "0";
-      }
-    }
+    const boardSignature = this.getBoardOccupancySignature();
     const minosaHintSignature = minosaHint
       ? `${minosaHint.piece}|${minosaHint.x}|${minosaHint.y}|${minosaHint.rotation}|${minosaHint.usedHold ? "1" : "0"}|${minosaHint.source || ""}`
       : "";

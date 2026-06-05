@@ -8,6 +8,30 @@ class Board {
     }
     this.fadeGrid = Array.from({ length: rows }, () => Array(cols).fill(0));
     this.frozenGrid = Array.from({ length: rows }, () => Array(cols).fill(false));
+    this.occupancyRevision = 0;
+    this.cachedOccupancySignature = "";
+    this.cachedOccupancyRevision = -1;
+  }
+
+  markDirty() {
+    this.occupancyRevision = (this.occupancyRevision || 0) + 1;
+  }
+
+  getOccupancySignature() {
+    if (this.cachedOccupancyRevision === this.occupancyRevision) {
+      return this.cachedOccupancySignature;
+    }
+
+    let signature = "";
+    for (let r = 0; r < this.rows; r++) {
+      const row = this.grid[r];
+      for (let c = 0; c < this.cols; c++) {
+        signature += row[c] ? "1" : "0";
+      }
+    }
+    this.cachedOccupancySignature = signature;
+    this.cachedOccupancyRevision = this.occupancyRevision;
+    return signature;
   }
 
   applyMonochromeTextures(scene) {
@@ -49,6 +73,7 @@ class Board {
       piece.tgm4MasterPikii && Number.isFinite(piece.masterPikiiFreezeAt)
         ? piece.masterPikiiFreezeAt
         : null;
+    let changed = false;
     for (let r = 0; r < piece.shape.length; r++) {
       for (let c = 0; c < piece.shape[r].length; c++) {
         if (piece.shape[r][c]) {
@@ -80,9 +105,11 @@ class Board {
           if (this.frozenGrid[boardY]?.[boardX] !== undefined) {
             this.frozenGrid[boardY][boardX] = false;
           }
+          changed = true;
         }
       }
     }
+    if (changed) this.markDirty();
   }
 
   isFrozenCell(r, c) {
@@ -125,6 +152,7 @@ class Board {
       this.frozenGrid.pop();
       this.frozenGrid.unshift(Array(this.cols).fill(false));
     }
+    this.markDirty();
   }
 
   clearLines() {
@@ -144,6 +172,7 @@ class Board {
         this.frozenGrid.unshift(Array(this.cols).fill(false));
       }
     });
+    if (linesToClear.length > 0) this.markDirty();
     return linesToClear.length;
   }
 
@@ -214,6 +243,7 @@ class Board {
       this.fadeGrid.push(Array(cols).fill(0));
       if (Array.isArray(this.frozenGrid)) this.frozenGrid.push(Array(cols).fill(false));
     }
+    if (rowsToAdd > 0) this.markDirty();
     // Play garbage SFX when rows are injected, but only after gameplay has started spawning pieces
     if (rowsToAdd > 0 && this.scene && this.scene.hasSpawnedPiece) {
       if (typeof this.scene.playGarbageSfx === "function") {
@@ -233,6 +263,7 @@ class Board {
       this.fadeGrid[r] = Array(this.cols).fill(0);
       if (Array.isArray(this.frozenGrid)) this.frozenGrid[r] = Array(this.cols).fill(false);
     }
+    this.markDirty();
   }
 
   draw(scene, offsetX, offsetY, cellSize) {
