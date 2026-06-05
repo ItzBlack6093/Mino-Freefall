@@ -994,6 +994,15 @@ class GameScene extends Phaser.Scene {
     if (modeId === "tgm3_shirase") {
       return 13;
     }
+    const trackerMaxLevel =
+      this.gameMode && typeof this.gameMode.getGravityLevelCap === "function"
+        ? (typeof this.gameMode.getDisplayLevelCap === "function"
+            ? this.gameMode.getDisplayLevelCap()
+            : this.gameMode.getGravityLevelCap())
+        : this.gravityLevelCap || 999;
+    if (trackerMaxLevel > 999) {
+      return Math.max(1, Math.ceil(trackerMaxLevel / this.getSectionLength()));
+    }
     if (
       modeId === "tgm4_rounds" ||
       modeId === "tgm4_asuka_normal" ||
@@ -9791,9 +9800,15 @@ class GameScene extends Phaser.Scene {
     if (this.selectedMode === "marathon") {
       this.sectionCap = (section + 1) * 10;
     } else {
+      const trackerMaxLevel =
+        this.gameMode && typeof this.gameMode.getGravityLevelCap === "function"
+          ? (typeof this.gameMode.getDisplayLevelCap === "function"
+              ? this.gameMode.getDisplayLevelCap()
+              : this.gameMode.getGravityLevelCap())
+          : this.gravityLevelCap || 999;
       this.sectionCap = (section + 1) * 100;
-      if (section >= 9) {
-        this.sectionCap = 999;
+      if (this.sectionCap >= trackerMaxLevel) {
+        this.sectionCap = trackerMaxLevel;
       }
     }
   }
@@ -12848,19 +12863,50 @@ class GameScene extends Phaser.Scene {
           this.asukaKitaText.setColor(colorByStatus[status] || colorByStatus.impossible);
         }
       } else {
-        const kitaCount =
-          this.gameMode && typeof this.gameMode.kitas === "number"
-            ? this.gameMode.kitas
-            : this.kitas || 0;
         const isAsukaMode =
           typeof modeId === "string" &&
           (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
-        const kitaDisplayText =
-          isAsukaMode ? `🦊x${kitaCount}` : "";
-        if (this.asukaKitaLabel) this.asukaKitaLabel.setVisible(isAsukaMode);
-        this.asukaKitaText.setVisible(isAsukaMode);
-        this.asukaKitaText.setText(kitaDisplayText);
-        this.asukaKitaText.setColor("#ffff88");
+        if (isAsukaMode) {
+          if (!this.areActive && this.gameMode) {
+            this.gameMode.asukaTransitionStatus = null;
+          }
+          const transitionStatus = this.areActive ? (this.gameMode?.asukaTransitionStatus || null) : null;
+          const kitaCount =
+            this.gameMode && typeof this.gameMode.kitas === "number"
+              ? this.gameMode.kitas
+              : this.kitas || 0;
+
+          let emoji = "🦊";
+          let color = "#ffff88";
+          if (transitionStatus === "achieved") {
+            emoji = "🦊✓";
+            color = "#88ff88";
+          } else if (transitionStatus === "failed") {
+            emoji = "🦊✕";
+            color = "#ff8888";
+          }
+
+          const shouldShowKita = transitionStatus !== null || kitaCount > 0;
+          let kitaDisplayText = "";
+          if (shouldShowKita) {
+            if (kitaCount === 1) {
+              kitaDisplayText = emoji;
+            } else if (kitaCount >= 2) {
+              kitaDisplayText = `${emoji}x${kitaCount}`;
+            } else {
+              // kitaCount === 0 but transitionStatus is active
+              kitaDisplayText = emoji;
+            }
+          }
+
+          if (this.asukaKitaLabel) this.asukaKitaLabel.setVisible(false);
+          this.asukaKitaText.setVisible(shouldShowKita);
+          this.asukaKitaText.setText(kitaDisplayText);
+          this.asukaKitaText.setColor(color);
+        } else {
+          if (this.asukaKitaLabel) this.asukaKitaLabel.setVisible(false);
+          this.asukaKitaText.setVisible(false);
+        }
       }
     }
     if (

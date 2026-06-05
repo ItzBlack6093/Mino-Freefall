@@ -36,6 +36,7 @@ class TGM4AsukaMode extends BaseMode {
             { required: 11, timeLimit: 17.0, reduction: 2 },
             { required: 13, timeLimit: 16.5, reduction: 2 }
         ];
+        this.asukaTransitionStatus = null;
     }
 
     getModeConfig() {
@@ -212,7 +213,9 @@ class TGM4AsukaMode extends BaseMode {
                 : 1;
             if (this.kitas < requiredKitas) {
                 nextLevel = currentSection * 100 + 99;
+                this.asukaTransitionStatus = 'failed';
             } else {
+                this.asukaTransitionStatus = 'achieved';
                 this.sectionsPassed = Math.max(this.sectionsPassed, nextSection);
                 if (this.variant === 'hard') {
                     this.kitas = Math.max(0, this.kitas - requiredKitas);
@@ -283,6 +286,7 @@ class TGM4AsukaMode extends BaseMode {
             maxLevelReached: this.maxLevelReached,
             completed: this.completed,
             sectionStopBravoHold: this.sectionStopBravoHold,
+            asukaTransitionStatus: this.asukaTransitionStatus,
         };
     }
 
@@ -295,6 +299,7 @@ class TGM4AsukaMode extends BaseMode {
         this.maxLevelReached = state.maxLevelReached || 0;
         this.completed = !!state.completed;
         this.sectionStopBravoHold = !!state.sectionStopBravoHold;
+        this.asukaTransitionStatus = state.asukaTransitionStatus || null;
         this.currentRotationSystem = gameScene?.rotationSystem || this.currentRotationSystem;
         this.currentTiming = this.getTimingForLevel(gameScene?.level || 0);
         if (gameScene) {
