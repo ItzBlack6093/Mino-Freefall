@@ -127,6 +127,7 @@ class GameScene extends Phaser.Scene {
     this.lKeyPressed = false;
     this.rotate180Pressed = false;
     this.xKeyPressed = false;
+    this.drsExtraActive = false;
 
     // ARE (Appearance Delay) - will be set by mode
     this.areDelay = 30 / 60; // seconds until next piece appears
@@ -469,7 +470,7 @@ class GameScene extends Phaser.Scene {
       const colorInt =
         typeof RotationSystems !== "undefined"
           ? RotationSystems.getColor(type, this.rotationSystem)
-          : this.rotationSystem === "ARS" || this.rotationSystem === "DRS" || this.rotationSystem === "DTET"
+          : this.rotationSystem === "ARS" || this.rotationSystem === "DRS"
             ? ARS_COLORS[type] ?? 0xffffff
             : TETROMINOES[type]?.color ?? 0xffffff;
       return `#${colorInt.toString(16).padStart(6, "0")}`;
@@ -1549,6 +1550,10 @@ class GameScene extends Phaser.Scene {
     return typeof modeId === "string" && (modeId.startsWith("tgm4_konoha") || modeId.startsWith("konoha_"));
   }
 
+  isAsukaMode(modeId = this.getHintModeId()) {
+    return typeof modeId === "string" && (modeId.startsWith("tgm4_asuka") || modeId.startsWith("asuka_"));
+  }
+
   isZenMinosaGuideEnabled(modeId = this.getHintModeId()) {
     const id = typeof modeId === "string" ? modeId.toLowerCase() : "";
     const guideMode = String(this.zenSandboxConfig?.minosaGuideMode || "off").toLowerCase();
@@ -1655,8 +1660,9 @@ class GameScene extends Phaser.Scene {
 
   getPrimaryMinosaHint(modeId = this.getHintModeId()) {
     const isKonohaMode = this.isKonohaHintMode(modeId);
+    const isAsukaMode = this.isAsukaMode(modeId);
     const isZenMinosaMode = this.isZenMinosaGuideEnabled(modeId);
-    if (!isKonohaMode && !isZenMinosaMode) return null;
+    if (isAsukaMode || (!isKonohaMode && !isZenMinosaMode)) return null;
     if (isZenMinosaMode) {
       this.updateZenMinosaGuideHint(modeId);
     }
@@ -1862,6 +1868,7 @@ class GameScene extends Phaser.Scene {
     this.hintGraphics.clear();
     const modeId = this.getHintModeId();
     const isKonohaMode = this.isKonohaHintMode(modeId);
+    const isAsukaMode = this.isAsukaMode(modeId);
     const isZenMinosaMode = this.isZenMinosaGuideEnabled(modeId);
     if (
       !this.currentPiece ||
@@ -1870,6 +1877,7 @@ class GameScene extends Phaser.Scene {
       this.lineClearDelayActive ||
       this.loadingPhase ||
       this.readyGoPhase ||
+      isAsukaMode ||
       !(this.isNormalOrEasyMode() || isKonohaMode || isZenMinosaMode)
     ) {
       this.hintPlacement = null;
@@ -2107,6 +2115,10 @@ class GameScene extends Phaser.Scene {
     const raw = parseFloat(localStorage.getItem("gameplayHudZoom"));
     if (!Number.isFinite(raw)) return defaultZoom;
     return Math.min(maxZoom, Math.max(minZoom, raw));
+  }
+
+  shouldShowInputDisplay() {
+    return (localStorage.getItem("inputDisplayEnabled") || "false") === "true";
   }
 
   getVersusBoardLayoutSetting() {
@@ -2649,6 +2661,28 @@ class GameScene extends Phaser.Scene {
     const lineAre = this.lineAreOverride || 0;
     const lineClearDelay = this.lineClearDelayOverride || 0;
     return this.areDelay > 0 || this.pendingLineAREDelay > 0 || lineAre > 0 || lineClearDelay > 0;
+  }
+
+  getDrsExtraMode() {
+    const stored = localStorage.getItem("drsExtraMode");
+    return (stored || "hold") === "toggle" ? "toggle" : "hold";
+  }
+
+  isDrsExtraActive() {
+    return this.rotationSystem === "DRS" && !!this.drsExtraActive;
+  }
+
+  getEffectiveAREOverride() {
+    if (this.disableIhsIrsForZeroArr) {
+      return 0;
+    }
+    if (this.isDrsExtraActive()) {
+      return 7 / 60;
+    }
+    if (this.isEligibleTimingOverride && this.areOverride !== null) {
+      return this.areOverride;
+    }
+    return null;
   }
 
   resetActiveDASState() {
@@ -4242,6 +4276,7 @@ class GameScene extends Phaser.Scene {
       rotateCCW2: makeKey(keybinds.rotateCCW2, Phaser.Input.Keyboard.KeyCodes.CTRL),
       rotate180: makeKey(keybinds.rotate180, Phaser.Input.Keyboard.KeyCodes.A),
       hold: makeKey(keybinds.hold, Phaser.Input.Keyboard.KeyCodes.C),
+      extra: makeKey(keybinds.extra, Phaser.Input.Keyboard.KeyCodes.V),
       backstep: makeKey(keybinds.backstep, Phaser.Input.Keyboard.KeyCodes.BACKSPACE),
       pause: makeKey(keybinds.pause, Phaser.Input.Keyboard.KeyCodes.ESC),
       menu: makeKey(keybinds.menu, Phaser.Input.Keyboard.KeyCodes.M),
@@ -4260,6 +4295,7 @@ class GameScene extends Phaser.Scene {
       keybinds.rotateCCW2,
       keybinds.rotate180,
       keybinds.hold,
+      keybinds.extra,
       keybinds.backstep,
       keybinds.pause,
       keybinds.menu,
@@ -4370,7 +4406,21 @@ class GameScene extends Phaser.Scene {
   playSfx(key, baseVolume = 1) {
     const vol = this.getSfxVolumeFactor(baseVolume);
     try {
-      return this.sound?.add(key, { volume: vol })?.play();
+      const cache = this.cache?.audio;
+      const candidateKeys = [key];
+      if (typeof key === "string") {
+        if (key.startsWith("sound_")) {
+          candidateKeys.push(key.slice(6));
+        } else {
+          candidateKeys.push(`sound_${key}`);
+        }
+      }
+      const resolvedKey = candidateKeys.find((candidate) => cache?.exists?.(candidate));
+      if (!resolvedKey) {
+        console.warn("Sfx missing from cache", key);
+        return null;
+      }
+      return this.sound?.add(resolvedKey, { volume: vol })?.play();
     } catch (e) {
       console.warn("Sfx play error", key, e);
     }
@@ -5647,8 +5697,22 @@ class GameScene extends Phaser.Scene {
     const startDown = isDown(this.keys.start);
     const startJustDown = justDown(this.keys.start);
     const holdJustDown = justDown(this.keys.hold);
+    const extraDown = isDown(this.keys.extra);
+    const extraJustDown = justDown(this.keys.extra);
     if (holdJustDown) {
       this.holdRequest = true;
+    }
+    if (this.rotationSystem === "DRS") {
+      const extraMode = this.getDrsExtraMode();
+      if (extraMode === "toggle") {
+        if (extraJustDown) {
+          this.drsExtraActive = !this.drsExtraActive;
+        }
+      } else {
+        this.drsExtraActive = extraDown;
+      }
+    } else if (this.drsExtraActive) {
+      this.drsExtraActive = false;
     }
 
     if (
@@ -8460,9 +8524,10 @@ class GameScene extends Phaser.Scene {
       this.playSfx("clear", 0.7);
     } else {
       // Start normal ARE (prefer explicit override, else mode timing)
+      const effectiveAREOverride = this.getEffectiveAREOverride();
       const normalARE =
-        this.isEligibleTimingOverride && this.areOverride !== null
-          ? this.areOverride
+        effectiveAREOverride !== null
+          ? effectiveAREOverride
           : this.gameMode && this.gameMode.getARE
             ? this.gameMode.getARE()
             : 30 / 60;
@@ -8505,7 +8570,7 @@ class GameScene extends Phaser.Scene {
     const rotations =
       typeof RotationSystems !== "undefined"
         ? RotationSystems.getRotations(piece.type, this.rotationSystem)
-        : this.rotationSystem === "ARS" || this.rotationSystem === "DRS" || this.rotationSystem === "DTET"
+        : this.rotationSystem === "ARS" || this.rotationSystem === "DRS"
           ? SEGA_ROTATIONS[piece.type].rotations
           : TETROMINOES[piece.type].rotations;
     piece.rotation = 0;
@@ -9927,7 +9992,10 @@ class GameScene extends Phaser.Scene {
 
   isLegacySoftDropLockMode() {
     const modeId = this.getCurrentModeId();
-    return modeId === "tgm1" || modeId === "master_20g";
+    const isDrs20G =
+      this.rotationSystem === "DRS" &&
+      this.getTGMGravitySpeed(this.level) >= 5120;
+    return modeId === "tgm1" || modeId === "master_20g" || isDrs20G;
   }
 
   shouldShowB2BChain() {
@@ -10428,6 +10496,74 @@ class GameScene extends Phaser.Scene {
     }
   }
 
+  getInputDisplayButtons() {
+    const isDown = (key) => !!(key && key.isDown);
+    return [
+      { action: "moveLeft", icon: "←", label: "Left", active: isDown(this.cursors?.left) || isDown(this.keys?.left), col: 0, row: 1 },
+      { action: "softDrop", icon: "↓", label: "Soft", active: isDown(this.cursors?.down) || isDown(this.keys?.softDrop), col: 1, row: 1 },
+      { action: "moveRight", icon: "→", label: "Right", active: isDown(this.cursors?.right) || isDown(this.keys?.right), col: 2, row: 1 },
+      { action: "hardDrop", icon: "⤓", label: "Drop", active: isDown(this.keys?.hardDrop), col: 1, row: 0 },
+      { action: "rotateCCW", icon: "↺", label: "CCW", active: isDown(this.keys?.rotateCCW) || isDown(this.keys?.rotateCCW2), col: 3, row: 1 },
+      { action: "rotateCW", icon: "↻", label: "CW", active: isDown(this.keys?.rotateCW) || isDown(this.keys?.rotateCW2), col: 4, row: 1 },
+      { action: "rotate180", icon: "180", label: "180", active: isDown(this.keys?.rotate180), col: 5, row: 1 },
+      { action: "hold", icon: "H", label: "Hold", active: isDown(this.keys?.hold), col: 3, row: 0 },
+      { action: "backstep", icon: "↶", label: "Back", active: isDown(this.keys?.backstep), col: 4, row: 0 },
+    ];
+  }
+
+  drawInputDisplay() {
+    if (!this.shouldShowInputDisplay() || !this.keys) return;
+
+    const buttonSize = Math.max(18, Math.min(28, Math.floor(this.cellSize * 0.72)));
+    const gap = Math.max(3, Math.floor(buttonSize * 0.18));
+    const cols = 6;
+    const rows = 2;
+    const pad = Math.max(5, Math.floor(buttonSize * 0.22));
+    const width = cols * buttonSize + (cols - 1) * gap + pad * 2;
+    const height = rows * buttonSize + (rows - 1) * gap + pad * 2;
+    const matrixRight = this.matrixOffsetX + this.board.cols * this.cellSize + this.cellSize / 2;
+    const matrixBottom = this.matrixOffsetY + this.visibleRows * this.cellSize + this.cellSize / 2;
+    const viewportPad = 8;
+    let x = matrixRight + Math.max(8, Math.floor(this.cellSize * 0.35)) + 50;
+    let y = matrixBottom - height - Math.max(2, Math.floor(this.cellSize * 0.12));
+
+    if (x + width > this.windowWidth - viewportPad) {
+      x = Math.max(viewportPad, matrixRight - width - Math.max(8, Math.floor(this.cellSize * 0.35)));
+    }
+    y = Math.max(viewportPad, Math.min(y, this.windowHeight - height - viewportPad));
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x050505, 0.58);
+    panel.fillRoundedRect(x, y, width, height, 4);
+    panel.lineStyle(1, 0xffffff, 0.22);
+    panel.strokeRoundedRect(x, y, width, height, 4);
+    this.gameGroup.add(panel);
+
+    const buttons = this.getInputDisplayButtons();
+    const fontSize = Math.max(10, Math.min(15, Math.floor(buttonSize * 0.48)));
+    buttons.forEach((button) => {
+      const bx = x + pad + button.col * (buttonSize + gap);
+      const by = y + pad + button.row * (buttonSize + gap);
+      const bg = this.add.graphics();
+      const active = !!button.active;
+      bg.fillStyle(active ? 0x00ff88 : 0x171717, active ? 0.92 : 0.82);
+      bg.fillRoundedRect(bx, by, buttonSize, buttonSize, 3);
+      bg.lineStyle(1, active ? 0xffffff : 0x777777, active ? 0.75 : 0.35);
+      bg.strokeRoundedRect(bx, by, buttonSize, buttonSize, 3);
+      this.gameGroup.add(bg);
+
+      const text = this.add
+        .text(bx + buttonSize / 2, by + buttonSize / 2, button.icon, {
+          fontSize: `${fontSize}px`,
+          fill: active ? "#00150a" : "#d8d8d8",
+          fontFamily: "Courier New",
+          fontStyle: "bold",
+        })
+        .setOrigin(0.5);
+      this.gameGroup.add(text);
+    });
+  }
+
   getHeldKeys() {
     const held = [];
     if (this.leftKeyPressed) held.push("Z");
@@ -10436,6 +10572,7 @@ class GameScene extends Phaser.Scene {
     if (this.spaceKeyPressed) held.push("Space");
     if (this.lKeyPressed) held.push("L");
     if (this.xKeyPressed) held.push("X");
+    if (this.keys.extra && this.keys.extra.isDown) held.push(this.getCurrentKeybind("extra"));
     if (this.keys.s.isDown) held.push("S");
     return held;
   }
@@ -10533,6 +10670,7 @@ class GameScene extends Phaser.Scene {
     this.lKeyPressed = false;
     this.rotate180Pressed = false;
     this.xKeyPressed = false;
+    this.drsExtraActive = false;
 
     // Reset mino fading system
     this.placedMinos = [];
@@ -11131,6 +11269,7 @@ class GameScene extends Phaser.Scene {
     this.spaceKeyPressed = false;
     this.lKeyPressed = false;
     this.xKeyPressed = false;
+    this.drsExtraActive = false;
   }
 
   trackPlacedMino(x, y, color) {
@@ -11513,6 +11652,7 @@ class GameScene extends Phaser.Scene {
     this.spaceKeyPressed = false;
     this.lKeyPressed = false;
     this.xKeyPressed = false;
+    this.drsExtraActive = false;
 
     this.checkAchievements();
 
@@ -11851,6 +11991,7 @@ class GameScene extends Phaser.Scene {
     this.spaceKeyPressed = false;
     this.lKeyPressed = false;
     this.xKeyPressed = false;
+    this.drsExtraActive = false;
 
     if (this.bgmLoopTimer) {
       this.bgmLoopTimer.remove(false);
@@ -12442,7 +12583,7 @@ class GameScene extends Phaser.Scene {
           const textureKey =
             typeof RotationSystems !== "undefined"
               ? RotationSystems.getTextureKey(this.rotationSystem)
-              : this.rotationSystem === "ARS"
+              : this.rotationSystem === "ARS" || this.rotationSystem === "DRS"
                 ? "mino_ars"
                 : "mino_srs";
           const texture = this.textures ? this.textures.get(textureKey) : null;
@@ -12998,7 +13139,7 @@ class GameScene extends Phaser.Scene {
           ? rawNext.textureKey
           : typeof RotationSystems !== "undefined"
             ? RotationSystems.getTextureKey(this.rotationSystem)
-            : this.rotationSystem === "ARS"
+            : this.rotationSystem === "ARS" || this.rotationSystem === "DRS"
               ? "mino_ars"
               : "mino_srs";
       const previewRotation = this.getStoredPieceRotation(rawNext, 0);
@@ -13092,6 +13233,8 @@ class GameScene extends Phaser.Scene {
 
     // Add playfield border to game group (already created above)
     this.gameGroup.add(this.playfieldBorder);
+
+    this.drawInputDisplay();
 
     // Draw pause overlay - centered on screen
     if (this.isPaused) {

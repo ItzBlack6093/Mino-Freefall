@@ -2312,7 +2312,12 @@ class VersusHUD {
         : 0x444444,
     );
     this.miniGraphics.strokeRect(ox, oy, cs * 10, cs * 20);
-    const textureKey = this.opponentRotationSystem === "ARS" ? "mino_ars" : "mino_srs";
+    const textureKey =
+      typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(this.opponentRotationSystem)
+        : this.opponentRotationSystem === "ARS"
+          ? "mino_ars"
+          : "mino_srs";
     const hasTexture = !!(this.scene?.textures && this.scene.textures.exists(textureKey));
 
     for (let r = 0; r < 20 && r < boardData.length; r++) {

@@ -767,12 +767,12 @@ function computeFinesseActual(piece) {
 // ARS (Arika Rotation System) color scheme
 const ARS_COLORS = {
   I: 0xff0000,
-  O: 0x0000ff,
-  T: 0xffff00,
-  S: 0xff00ff, // purple
-  Z: 0x00ff00, // green
-  L: 0xffa500, // orange
-  J: 0x0000ff, // blue
+  T: 0x00ffff,
+  J: 0x0000ff,
+  L: 0xffa500,
+  S: 0xff00ff,
+  Z: 0x00ff00,
+  O: 0xffff00,
 };
 
 const TETROMINOES = {

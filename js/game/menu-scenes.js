@@ -3391,6 +3391,7 @@ class SettingsScene extends Phaser.Scene {
       rotate180: "Rotate 180",
       hardDrop: "Hard Drop",
       hold: "Hold",
+      extra: "Extra",
       backstep: "Backstep",
       pause: "Pause",
       menu: "Return to Menu",
@@ -3422,6 +3423,8 @@ class SettingsScene extends Phaser.Scene {
 
     // ARS lock reset mode toggle
     this.arsResetModeText = null;
+    this.drsExtraLabel = null;
+    this.drsExtraModeText = null;
 
     // Timing sliders (frames)
     this.dasLabel = null;
@@ -3462,6 +3465,8 @@ class SettingsScene extends Phaser.Scene {
     this.hudZoomSliderKnob = null;
     this.forceMRollLabel = null;
     this.forceMRollText = null;
+    this.inputDisplayLabel = null;
+    this.inputDisplayText = null;
     this.versusBoardLayoutLabel = null;
     this.versusBoardLayoutText = null;
 
@@ -3613,6 +3618,30 @@ class SettingsScene extends Phaser.Scene {
       this.updateArsResetModeText(next);
     });
     this.updateArsResetModeVisibility(rotationSystem);
+
+    const drsExtraMode = this.getDrsExtraMode();
+    this.drsExtraLabel = this.add
+      .text(centerX, centerY + 125, "DRS Extra", {
+        fontSize: "18px",
+        fill: "#ffffff",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.drsExtraModeText = this.add
+      .text(centerX, centerY + 150, drsExtraMode === "toggle" ? "Toggle" : "Hold", {
+        fontSize: "18px",
+        fill: "#00ff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    this.drsExtraModeText.on("pointerdown", () => {
+      const nextMode = this.getDrsExtraMode() === "toggle" ? "hold" : "toggle";
+      localStorage.setItem("drsExtraMode", nextMode);
+      this.updateDrsExtraModeText(nextMode);
+    });
+    this.updateDrsExtraModeVisibility(rotationSystem);
 
     // Keybind settings - moved to left side
     const keybindsX = centerX;
@@ -4472,7 +4501,32 @@ class SettingsScene extends Phaser.Scene {
     });
     this.updateVersusBoardLayoutDisplay();
 
-    const forceMRollY = versusBoardLayoutY + 95;
+    const inputDisplayY = versusBoardLayoutY + 78;
+    const inputDisplayEnabled = this.getInputDisplayEnabled();
+    this.inputDisplayLabel = this.add
+      .text(gameplayX, inputDisplayY - 24, "Input Display", {
+        fontSize: "20px",
+        fill: "#ffff00",
+        fontFamily: "Courier New",
+      })
+      .setOrigin(0.5);
+
+    this.inputDisplayText = this.add
+      .text(gameplayX, inputDisplayY, inputDisplayEnabled ? "ON" : "OFF", {
+        fontSize: "22px",
+        fill: inputDisplayEnabled ? "#00ff00" : "#ffffff",
+        fontFamily: "Courier New",
+        fontStyle: "bold",
+      })
+      .setOrigin(0.5)
+      .setInteractive();
+    this.inputDisplayText.on("pointerdown", () => {
+      const next = !this.getInputDisplayEnabled();
+      localStorage.setItem("inputDisplayEnabled", next ? "true" : "false");
+      this.updateInputDisplayToggle(next);
+    });
+
+    const forceMRollY = inputDisplayY + 82;
     const forceMRollEnabled = this.getForceMRollEnabled();
     this.forceMRollLabel = this.add
       .text(gameplayX, forceMRollY - 24, "Force M-Roll (TGM2 Master)", {
@@ -4594,6 +4648,8 @@ class SettingsScene extends Phaser.Scene {
         this.hudZoomText,
         this.versusBoardLayoutLabel,
         this.versusBoardLayoutText,
+        this.inputDisplayLabel,
+        this.inputDisplayText,
         this.forceMRollLabel,
         this.forceMRollText,
       ],
@@ -4602,6 +4658,8 @@ class SettingsScene extends Phaser.Scene {
         this.tPieceDisplay?.container,
         this.arsResetLabel,
         this.arsResetModeText,
+        this.drsExtraLabel,
+        this.drsExtraModeText,
       ],
       audio: [
         this.mainVolumeLabel,
@@ -4664,6 +4722,7 @@ class SettingsScene extends Phaser.Scene {
       });
     });
     this.updateArsResetModeVisibility(this.rotationSystem);
+    this.updateDrsExtraModeVisibility(this.rotationSystem);
   }
 
   getCurrentKeybind(action) {
@@ -5145,6 +5204,7 @@ class SettingsScene extends Phaser.Scene {
     localStorage.removeItem("gameplayHudZoom");
     localStorage.removeItem("startingLevel");
     localStorage.removeItem("forceMRoll");
+    localStorage.removeItem("drsExtraMode");
     // Refresh all keybind displays
     Object.keys(this.keybindActions).forEach((action) => {
       const currentKey = this.getCurrentKeybind(action);
@@ -5183,6 +5243,7 @@ class SettingsScene extends Phaser.Scene {
       width: this.hudZoomSlider ? this.hudZoomSlider.getBounds().width : 200,
       y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
     });
+    this.updateDrsExtraModeText();
     this.updateForceMRollDisplay(false);
   }
 
@@ -5556,6 +5617,16 @@ class SettingsScene extends Phaser.Scene {
     this.versusBoardLayoutText.setFill(isMini ? "#ffffff" : "#00ff88");
   }
 
+  getInputDisplayEnabled() {
+    return (localStorage.getItem("inputDisplayEnabled") || "false") === "true";
+  }
+
+  updateInputDisplayToggle(enabled = this.getInputDisplayEnabled()) {
+    if (!this.inputDisplayText) return;
+    this.inputDisplayText.setText(enabled ? "ON" : "OFF");
+    this.inputDisplayText.setFill(enabled ? "#00ff00" : "#ffffff");
+  }
+
   updateHudZoomFromPointer(pointer, slider) {
     if (!slider) return;
     const { x, width } = slider;
@@ -5720,6 +5791,7 @@ class SettingsScene extends Phaser.Scene {
     localStorage.removeItem("timing_sdf_mult");
     localStorage.removeItem("gameplayHudZoom");
     localStorage.removeItem("versusBoardLayout");
+    localStorage.removeItem("inputDisplayEnabled");
     localStorage.removeItem("startingLevel");
     localStorage.removeItem("forceMRoll");
     // Refresh all keybind displays
@@ -5763,6 +5835,7 @@ class SettingsScene extends Phaser.Scene {
       y: this.hudZoomSlider ? this.hudZoomSlider.getBounds().centerY : 0,
     });
     this.updateVersusBoardLayoutDisplay("full");
+    this.updateInputDisplayToggle(false);
     this.updateForceMRollDisplay(false);
 
     this.applyEffectiveVolumes();
@@ -5953,13 +6026,13 @@ class SettingsScene extends Phaser.Scene {
     const color =
       typeof RotationSystems !== "undefined"
         ? RotationSystems.getColor("T", system)
-        : system === "ARS"
+        : system === "ARS" || system === "DRS"
           ? ARS_COLORS.T
           : TETROMINOES.T.color;
     const textureKey =
       typeof RotationSystems !== "undefined"
         ? RotationSystems.getTextureKey(system)
-        : system === "ARS"
+        : system === "ARS" || system === "DRS"
           ? "mino_ars"
           : "mino_srs";
 
@@ -6020,9 +6093,13 @@ class SettingsScene extends Phaser.Scene {
         this.tPieceDisplay?.container,
         this.arsResetLabel,
         this.arsResetModeText,
+        this.drsExtraLabel,
+        this.drsExtraModeText,
       ];
       this.tPieceDisplay.container.setVisible(this.activeSettingsTab === "rotation");
     }
+    this.updateArsResetModeVisibility(newSystem);
+    this.updateDrsExtraModeVisibility(newSystem);
 
     // Animate 360-degree rotation with the new shape/color
     this.tweens.add({
@@ -6111,6 +6188,23 @@ class SettingsScene extends Phaser.Scene {
     if (this.arsResetModeText) this.arsResetModeText.setVisible(visible);
     if (this.arsResetLabel) this.arsResetLabel.setVisible(visible);
     if (this.arsResetModeText?.input) this.arsResetModeText.input.enabled = visible;
+  }
+
+  getDrsExtraMode() {
+    const stored = localStorage.getItem("drsExtraMode");
+    return (stored || "hold") === "toggle" ? "toggle" : "hold";
+  }
+
+  updateDrsExtraModeText(mode = this.getDrsExtraMode()) {
+    if (!this.drsExtraModeText) return;
+    this.drsExtraModeText.setText(mode === "toggle" ? "Toggle" : "Hold");
+  }
+
+  updateDrsExtraModeVisibility(rotationSystem) {
+    const visible = rotationSystem === "DRS" && this.activeSettingsTab === "rotation";
+    if (this.drsExtraModeText) this.drsExtraModeText.setVisible(visible);
+    if (this.drsExtraLabel) this.drsExtraLabel.setVisible(visible);
+    if (this.drsExtraModeText?.input) this.drsExtraModeText.input.enabled = visible;
   }
 
   editProfileName() {

@@ -14,6 +14,7 @@
       rotateCCW2: KeyCodes.CTRL,
       rotate180: KeyCodes.A,
       hold: KeyCodes.C,
+      extra: KeyCodes.V,
       backstep: KeyCodes.BACKSPACE,
       pause: KeyCodes.ESC,
       menu: KeyCodes.M,

@@ -386,7 +386,13 @@ class Piece {
         ? RotationSystems.normalize(rotationSystem)
         : rotationSystem;
     this.rotation = initialRotation;
-    this.textureKey = textureKey;
+    this.textureKey =
+      textureKey ||
+      (typeof RotationSystems !== "undefined"
+        ? RotationSystems.getTextureKey(this.rotationSystem)
+        : this.rotationSystem === "ARS"
+          ? "mino_ars"
+          : "mino_srs");
     const rotations =
       typeof RotationSystems !== "undefined"
         ? RotationSystems.getRotations(type, rotationSystem)
@@ -614,9 +620,11 @@ class Piece {
           if (pieceY >= minimumBoardY) {
             const textureKey =
               this.textureKey ||
-              (scene.rotationSystem === "ARS"
-                ? "mino_ars"
-                : "mino_srs");
+              (typeof RotationSystems !== "undefined"
+                ? RotationSystems.getTextureKey(scene?.rotationSystem || this.rotationSystem)
+                : scene.rotationSystem === "ARS" || this.rotationSystem === "ARS"
+                  ? "mino_ars"
+                  : "mino_srs");
             const tintColor =
               textureKey.startsWith("mono")
                 ? 0xffffff

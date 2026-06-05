@@ -157,7 +157,7 @@
     normalize(system) {
       const value = typeof system === "string" ? system.toUpperCase() : "SRS";
       if (value === "SRS" || value === "SRSX" || value === "SRS_X") return "SRS-X";
-      if (value === "ARS" || value === "TGM" || value === "CLASSIC" || value === "DTET") return "DRS";
+      if (value === "ARS" || value === "TGM" || value === "CLASSIC") return "DRS";
       return systems[value] && !systems[value].legacy ? value : "SRS-X";
     },
 
